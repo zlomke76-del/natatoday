@@ -8,10 +8,53 @@ const roles = [
 ];
 
 const candidates = [
-  { name: "Maria Lopez", role: "Sales Consultant", status: "Certified Ready", progress: 100, badge: "#22c55e" },
-  { name: "Ethan Brooks", role: "BDC Representative", status: "Training 82%", progress: 82, badge: "#fbbf24" },
-  { name: "Jordan Miles", role: "Service Advisor", status: "Screened", progress: 56, badge: "#60a5fa" },
-  { name: "Avery Coleman", role: "Sales Consultant", status: "Interview Requested", progress: 100, badge: "#111827" },
+  {
+    name: "Maria Lopez",
+    role: "Sales Consultant",
+    status: "Interview Ready",
+    progress: 100,
+    badge: "#22c55e",
+    scheduled: "Thursday · 10:30 AM",
+  },
+  {
+    name: "Ethan Brooks",
+    role: "BDC Representative",
+    status: "Final Screen",
+    progress: 82,
+    badge: "#fbbf24",
+    scheduled: "Scheduling now",
+  },
+  {
+    name: "Jordan Miles",
+    role: "Service Advisor",
+    status: "Pre-Screened",
+    progress: 56,
+    badge: "#60a5fa",
+    scheduled: "Needs training completion",
+  },
+  {
+    name: "Avery Coleman",
+    role: "Sales Consultant",
+    status: "Interview Set",
+    progress: 100,
+    badge: "#111827",
+    scheduled: "Friday · 2:00 PM",
+  },
+];
+
+const friction = [
+  {
+    title: "We pre-screen",
+    copy: "Candidates are reviewed for communication, role fit, availability, and dealership readiness before they ever reach your store.",
+  },
+  {
+    title: "We train",
+    copy: "NATA candidates complete structured readiness modules so they arrive prepared for the showroom, BDC, or service lane.",
+  },
+  {
+    title: "We arrange interviews",
+    copy: "Your dealership receives qualified candidates with interview timing already coordinated. You focus on hiring, not chasing.",
+  },
 ];
 
 export default function DealerDemoPage() {
@@ -29,7 +72,7 @@ export default function DealerDemoPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1.1fr 0.9fr",
+            gridTemplateColumns: "1.08fr 0.92fr",
             gap: 22,
             alignItems: "stretch",
           }}
@@ -38,9 +81,9 @@ export default function DealerDemoPage() {
             style={{
               border: "1px solid rgba(255,255,255,0.13)",
               borderRadius: 36,
-              padding: 40,
+              padding: 42,
               background:
-                "radial-gradient(circle at top right, rgba(20,115,255,0.24), transparent 34%), linear-gradient(145deg, rgba(255,255,255,0.10), rgba(255,255,255,0.035))",
+                "radial-gradient(circle at top right, rgba(20,115,255,0.28), transparent 34%), linear-gradient(145deg, rgba(255,255,255,0.105), rgba(255,255,255,0.035))",
               boxShadow: "0 28px 90px rgba(0,0,0,0.35)",
             }}
           >
@@ -49,21 +92,36 @@ export default function DealerDemoPage() {
             <h1
               style={{
                 margin: 0,
-                fontSize: "clamp(54px, 6vw, 86px)",
+                fontSize: "clamp(52px, 5.9vw, 84px)",
                 lineHeight: 0.94,
+                maxWidth: 820,
               }}
             >
-              NATA candidate command center
+              We send you interview-ready candidates.
             </h1>
 
-            <p className="lede" style={{ maxWidth: 680 }}>
-              A dealership-facing dashboard for seeing who is trained, who is
-              ready, and where every candidate stands.
+            <p className="lede" style={{ maxWidth: 710 }}>
+              NATA pre-screens, interviews, trains, and qualifies candidates before
+              they reach your dealership. You do not sort resumes. You meet people
+              already prepared for an in-person interview.
             </p>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 10,
+                marginTop: 26,
+              }}
+            >
+              <span className="trust-pill">No resume chasing</span>
+              <span className="trust-pill">No cold applicant pile</span>
+              <span className="trust-pill">Interviews arranged for you</span>
+            </div>
 
             <div className="hero-actions">
               <Link href="/candidate-demo" className="btn btn-primary">
-                Open candidate profile
+                View a ready candidate
               </Link>
 
               <Link href="/" className="btn btn-secondary">
@@ -78,38 +136,88 @@ export default function DealerDemoPage() {
               borderRadius: 36,
               padding: 32,
               background:
-                "radial-gradient(circle at top right, rgba(251,191,36,0.24), transparent 36%), rgba(255,255,255,0.06)",
+                "radial-gradient(circle at top right, rgba(251,191,36,0.25), transparent 38%), rgba(255,255,255,0.06)",
               boxShadow: "0 28px 90px rgba(0,0,0,0.32)",
             }}
           >
-            <h2 style={{ margin: 0, fontSize: 30 }}>
-              What the dealer sees
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: 38,
+                padding: "0 14px",
+                borderRadius: 999,
+                background: "rgba(34,197,94,0.16)",
+                color: "#86efac",
+                fontWeight: 900,
+                fontSize: 13,
+              }}
+            >
+              Next interview arriving
+            </div>
+
+            <h2 style={{ margin: "22px 0 8px", fontSize: 34, lineHeight: 1 }}>
+              Thursday at 10:30 AM
             </h2>
 
-            <p style={{ color: "#bfd6f5", lineHeight: 1.6 }}>
-              Instead of loose applications, the dealer gets organized candidate
-              visibility with role fit, progress, readiness, and next action.
+            <p style={{ color: "#bfd6f5", lineHeight: 1.6, margin: 0 }}>
+              Maria Lopez is already screened, trained, and ready to meet the
+              dealership in person.
             </p>
 
-            <div style={{ display: "grid", gap: 12, marginTop: 22 }}>
-              {["Role demand", "Candidate readiness", "Training progress", "Interview action"].map(
-                (item) => (
-                  <div
-                    key={item}
-                    style={{
-                      padding: "15px 16px",
-                      borderRadius: 18,
-                      background: "rgba(255,255,255,0.07)",
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      fontWeight: 800,
-                    }}
-                  >
-                    {item}
-                  </div>
-                )
-              )}
+            <div style={{ display: "grid", gap: 12, marginTop: 24 }}>
+              {[
+                ["Candidate", "Maria Lopez"],
+                ["Role", "Sales Consultant"],
+                ["Readiness", "Certified Ready"],
+                ["Dealer action", "Meet candidate"],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 14,
+                    padding: "15px 16px",
+                    borderRadius: 18,
+                    background: "rgba(255,255,255,0.07)",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                  }}
+                >
+                  <span style={{ color: "#bfd6f5" }}>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
             </div>
           </aside>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 16,
+            marginTop: 18,
+          }}
+        >
+          {friction.map((item) => (
+            <section
+              key={item.title}
+              style={{
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 28,
+                padding: 26,
+                background: "rgba(255,255,255,0.055)",
+                boxShadow: "0 18px 60px rgba(0,0,0,0.22)",
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: 24 }}>{item.title}</h3>
+              <p style={{ color: "#bfd6f5", lineHeight: 1.62, marginBottom: 0 }}>
+                {item.copy}
+              </p>
+            </section>
+          ))}
         </div>
 
         <div
@@ -120,10 +228,10 @@ export default function DealerDemoPage() {
             marginTop: 18,
           }}
         >
-          <Metric value="24" label="active candidates" />
-          <Metric value="8" label="certified ready" />
-          <Metric value="6" label="interviews requested" />
-          <Metric value="3" label="open roles" />
+          <Metric value="24" label="pre-screened candidates" />
+          <Metric value="8" label="interview-ready now" />
+          <Metric value="6" label="interviews arranged" />
+          <Metric value="3" label="roles being filled" />
         </div>
 
         <div
@@ -142,7 +250,12 @@ export default function DealerDemoPage() {
               background: "rgba(255,255,255,0.055)",
             }}
           >
-            <h2 style={{ margin: "0 0 18px", fontSize: 28 }}>Open roles</h2>
+            <h2 style={{ margin: "0 0 8px", fontSize: 28 }}>
+              Where we are sending candidates
+            </h2>
+            <p style={{ color: "#bfd6f5", lineHeight: 1.55, marginTop: 0 }}>
+              NATA aligns screened candidates to the roles your dealership needs.
+            </p>
 
             <div style={{ display: "grid", gap: 12 }}>
               {roles.map((role) => (
@@ -196,9 +309,13 @@ export default function DealerDemoPage() {
               background: "rgba(255,255,255,0.055)",
             }}
           >
-            <h2 style={{ margin: "0 0 18px", fontSize: 28 }}>
-              Candidate pipeline
+            <h2 style={{ margin: "0 0 8px", fontSize: 28 }}>
+              Interview-ready candidates
             </h2>
+            <p style={{ color: "#bfd6f5", lineHeight: 1.55, marginTop: 0 }}>
+              Every candidate below has already moved through NATA screening,
+              readiness review, and interview coordination.
+            </p>
 
             <div style={{ display: "grid", gap: 12 }}>
               {candidates.map((candidate) => (
@@ -220,13 +337,19 @@ export default function DealerDemoPage() {
                       {candidate.name}
                     </h3>
 
+                    <p style={{ margin: "5px 0 6px", color: "#bfd6f5" }}>
+                      {candidate.role}
+                    </p>
+
                     <p
                       style={{
-                        margin: "5px 0 12px",
-                        color: "#bfd6f5",
+                        margin: "0 0 12px",
+                        color: "#fbbf24",
+                        fontSize: 13,
+                        fontWeight: 900,
                       }}
                     >
-                      {candidate.role}
+                      {candidate.scheduled}
                     </p>
 
                     <div
@@ -243,8 +366,7 @@ export default function DealerDemoPage() {
                           width: `${candidate.progress}%`,
                           height: "100%",
                           borderRadius: 999,
-                          background:
-                            "linear-gradient(90deg, #1473ff, #fbbf24)",
+                          background: "linear-gradient(90deg, #1473ff, #fbbf24)",
                         }}
                       />
                     </div>
