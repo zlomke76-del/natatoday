@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import Nav from "./components/Nav";
 
@@ -23,11 +24,25 @@ export default function Home() {
 
       <section className="hero">
         <div>
+          <div className="brand-lockup">
+            <Image
+              src="/images/nata_logo_01.png"
+              alt="NATA Today"
+              width={180}
+              height={70}
+              priority
+              className="brand-logo"
+            />
+          </div>
+
           <div className="eyebrow">Automotive recruiting + training</div>
+
           <h1>Build the next dealership workforce.</h1>
+
           <p className="lede">
             NATA Today helps dealers recruit, train, certify, and place stronger candidates with a cleaner, faster, more visible hiring experience.
           </p>
+
           <div className="hero-actions">
             <Link className="btn btn-primary" href="/dealer-demo">
               View Dealer Demo
@@ -36,6 +51,7 @@ export default function Home() {
               See Candidate Profile
             </Link>
           </div>
+
           <div className="trust-row">
             <span className="trust-pill">Recruiting pipeline</span>
             <span className="trust-pill">Training visibility</span>
@@ -52,6 +68,7 @@ export default function Home() {
               <div className="wheel two" />
             </div>
           </div>
+
           <div className="signal-card">
             <div className="signal">
               <b>12 active candidates</b>
@@ -93,6 +110,7 @@ export default function Home() {
           <p className="section-copy">
             A modern NATA Today should make the value tangible before a sales call: who is ready, what roles are open, and what action should happen next.
           </p>
+
           <div className="metric-row">
             <div className="metric">
               <strong>24</strong>
