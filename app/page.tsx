@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import Nav from "./components/Nav";
 
@@ -17,30 +16,27 @@ const cards = [
   },
 ];
 
+const metrics = [
+  { value: "24", label: "candidates in pipeline" },
+  { value: "8", label: "ready for interview" },
+  { value: "91%", label: "training completion" },
+  { value: "3", label: "priority roles open" },
+];
+
 export default function Home() {
   return (
     <main className="shell">
       <Nav />
 
       <section className="hero">
-        <div>
-          <div className="brand-lockup">
-            <Image
-              src="/images/nata_logo_01.png"
-              alt="NATA Today"
-              width={180}
-              height={70}
-              priority
-              className="brand-logo"
-            />
-          </div>
-
+        <div className="hero-copy">
           <div className="eyebrow">Automotive recruiting + training</div>
 
           <h1>Build the next dealership workforce.</h1>
 
           <p className="lede">
-            NATA Today helps dealers recruit, train, certify, and place stronger candidates with a cleaner, faster, more visible hiring experience.
+            NATA Today helps dealers recruit, train, certify, and place stronger candidates with a cleaner,
+            faster, more visible hiring experience.
           </p>
 
           <div className="hero-actions">
@@ -52,14 +48,14 @@ export default function Home() {
             </Link>
           </div>
 
-          <div className="trust-row">
+          <div className="trust-row" aria-label="NATA Today capabilities">
             <span className="trust-pill">Recruiting pipeline</span>
             <span className="trust-pill">Training visibility</span>
             <span className="trust-pill">Certified-ready candidates</span>
           </div>
         </div>
 
-        <div className="hero-card" aria-label="Animated automotive workforce visual">
+        <div className="hero-card" aria-label="Automotive workforce visual">
           <div className="road">
             <div className="car">
               <div className="car-top" />
@@ -90,7 +86,8 @@ export default function Home() {
         <div className="wrap">
           <h2 className="section-title">Not another hiring form. A clearer operating layer.</h2>
           <p className="section-copy">
-            The V1 demo keeps the logic simple on purpose. It shows the face of the future first: dealer visibility, candidate readiness, and a system that can grow into real data later.
+            The V1 demo keeps the logic simple on purpose. It shows the face of the future first:
+            dealer visibility, candidate readiness, and a system that can grow into real data later.
           </p>
 
           <div className="grid-3">
@@ -104,30 +101,21 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="outcomes" className="section-light">
+      <section id="outcomes" className="section-light section-tight">
         <div className="wrap">
           <h2 className="section-title">What dealers should see immediately.</h2>
           <p className="section-copy">
-            A modern NATA Today should make the value tangible before a sales call: who is ready, what roles are open, and what action should happen next.
+            A modern NATA Today should make the value tangible before a sales call: who is ready,
+            what roles are open, and what action should happen next.
           </p>
 
           <div className="metric-row">
-            <div className="metric">
-              <strong>24</strong>
-              <span>candidates in pipeline</span>
-            </div>
-            <div className="metric">
-              <strong>8</strong>
-              <span>ready for interview</span>
-            </div>
-            <div className="metric">
-              <strong>91%</strong>
-              <span>training completion</span>
-            </div>
-            <div className="metric">
-              <strong>3</strong>
-              <span>priority roles open</span>
-            </div>
+            {metrics.map((metric) => (
+              <div className="metric" key={metric.label}>
+                <strong>{metric.value}</strong>
+                <span>{metric.label}</span>
+              </div>
+            ))}
           </div>
         </div>
       </section>
