@@ -3,16 +3,23 @@ import Nav from "../components/Nav";
 
 const readiness = [
   ["Status", "Interview Ready"],
-  ["Role fit", "Sales Consultant"],
-  ["Communication", "Strong"],
-  ["Availability", "Immediate"],
+  ["Role fit", "Service Technician"],
+  ["Certification", "ASE Master · CDJR Level 3"],
+  ["Availability", "Two weeks"],
 ];
 
 const training = [
   ["NATA pre-screen", "Complete"],
-  ["Initial interview", "Complete"],
-  ["Showroom readiness", "Complete"],
-  ["In-person coordination", "Thursday · 10:30 AM"],
+  ["Technical experience review", "Complete"],
+  ["Certification level", "Verified by candidate record"],
+  ["In-person coordination", "Thursday · 9:00 AM"],
+];
+
+const serviceProfile = [
+  ["Primary skill", "Diagnostics + drivability"],
+  ["Shop experience", "8 years"],
+  ["Tool readiness", "Owns core tool set"],
+  ["Preferred lane", "Main shop / used-car recon"],
 ];
 
 export default function CandidateDemoPage() {
@@ -35,7 +42,6 @@ export default function CandidateDemoPage() {
             alignItems: "stretch",
           }}
         >
-          {/* LEFT CARD */}
           <section
             style={{
               border: "1px solid rgba(255,255,255,0.12)",
@@ -46,7 +52,7 @@ export default function CandidateDemoPage() {
               boxShadow: "0 28px 90px rgba(0,0,0,0.34)",
             }}
           >
-            <div className="eyebrow">Candidate readiness profile</div>
+            <div className="eyebrow">Technician readiness profile</div>
 
             <h1
               style={{
@@ -55,13 +61,11 @@ export default function CandidateDemoPage() {
                 lineHeight: 0.92,
               }}
             >
-              Maria Lopez
+              Derrick Hayes
             </h1>
 
             <p className="lede" style={{ maxWidth: 700 }}>
-              Sales Consultant candidate · Houston market · pre-screened,
-              interviewed, trained, and ready for an in-person dealership
-              interview.
+              Service Technician candidate · Houston market · ASE Master · CDJR Level 3 · pre-screened, reviewed, and ready for an in-person dealership interview.
             </p>
 
             <div
@@ -72,13 +76,12 @@ export default function CandidateDemoPage() {
                 marginTop: 28,
               }}
             >
-              <span className="trust-pill">Pre-screened</span>
-              <span className="trust-pill">NATA interviewed</span>
-              <span className="trust-pill">Thursday · 10:30 AM</span>
+              <span className="trust-pill">ASE Master</span>
+              <span className="trust-pill">CDJR Level 3</span>
+              <span className="trust-pill">Thursday · 9:00 AM</span>
             </div>
           </section>
 
-          {/* RIGHT CARD (FIXED) */}
           <aside
             style={{
               border: "1px solid rgba(251,191,36,0.32)",
@@ -89,53 +92,48 @@ export default function CandidateDemoPage() {
               boxShadow: "0 28px 90px rgba(0,0,0,0.32)",
             }}
           >
-            {/* IMAGE REPLACES INITIALS */}
             <div
               style={{
                 width: 96,
                 height: 96,
                 borderRadius: 24,
-                overflow: "hidden",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "linear-gradient(135deg, #1473ff, #0f172a)",
+                color: "#ffffff",
+                fontSize: 34,
+                fontWeight: 950,
                 boxShadow: "0 18px 48px rgba(0,0,0,0.35)",
               }}
+              aria-label="Derrick Hayes initials"
             >
-              <img
-                src="/images/maria_lopez_01.png"
-                alt="Maria Lopez"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                }}
-              />
+              DH
             </div>
 
             <h2 style={{ margin: "26px 0 10px", fontSize: 30 }}>
-              Ready to meet the dealer
+              Ready for the service manager
             </h2>
 
             <p style={{ margin: 0, color: "#bfd6f5", lineHeight: 1.6 }}>
-              NATA has already removed the screening friction. The dealer
-              receives a candidate with readiness, fit, and interview timing
-              already handled.
+              NATA has already organized the technician-specific context: certification level, shop experience, availability, and where Derrick best fits.
             </p>
           </aside>
         </div>
 
-        {/* PANELS */}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr",
+            gridTemplateColumns: "repeat(3, 1fr)",
             gap: 18,
             marginTop: 18,
           }}
         >
           <InfoPanel title="Readiness summary" items={readiness} />
           <InfoPanel title="NATA process completed" items={training} />
+          <InfoPanel title="Service profile" items={serviceProfile} />
         </div>
 
-        {/* ACTION */}
         <section
           style={{
             marginTop: 18,
@@ -147,14 +145,13 @@ export default function CandidateDemoPage() {
         >
           <h2 style={{ margin: 0, fontSize: 28 }}>Dealer action</h2>
 
-          <p style={{ maxWidth: 800, color: "#cfe2ff", lineHeight: 1.65 }}>
-            The dealership does not screen or chase. Maria has already been
-            evaluated and scheduled for an in-person interview.
+          <p style={{ maxWidth: 840, color: "#cfe2ff", lineHeight: 1.65 }}>
+            The dealership does not start by chasing or screening. Derrick arrives as a technician candidate with certification level, service fit, and interview timing already prepared for the service manager.
           </p>
 
           <div className="hero-actions">
             <Link className="btn btn-primary" href="#">
-              Confirm interview
+              Confirm technician interview
             </Link>
 
             <Link className="btn btn-secondary" href="/dealer-demo">
@@ -194,7 +191,7 @@ function InfoPanel({ title, items }: { title: string; items: string[][] }) {
             }}
           >
             <span style={{ color: "#bfd6f5" }}>{label}</span>
-            <strong style={{ color: "#fff" }}>{value}</strong>
+            <strong style={{ color: "#fff", textAlign: "right" }}>{value}</strong>
           </div>
         ))}
       </div>
