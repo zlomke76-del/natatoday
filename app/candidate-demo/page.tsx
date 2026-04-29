@@ -2,17 +2,17 @@ import Link from "next/link";
 import Nav from "../components/Nav";
 
 const readiness = [
-  ["Status", "Certified Ready"],
+  ["Status", "Interview Ready"],
   ["Role fit", "Sales Consultant"],
   ["Communication", "Strong"],
   ["Availability", "Immediate"],
 ];
 
 const training = [
-  ["Meet & greet", "Complete"],
-  ["Needs discovery", "Complete"],
-  ["Vehicle walkaround", "Complete"],
-  ["Follow-up discipline", "Complete"],
+  ["NATA pre-screen", "Complete"],
+  ["Initial interview", "Complete"],
+  ["Showroom readiness", "Complete"],
+  ["In-person coordination", "Thursday · 10:30 AM"],
 ];
 
 export default function CandidateDemoPage() {
@@ -57,9 +57,10 @@ export default function CandidateDemoPage() {
               Maria Lopez
             </h1>
 
-            <p className="lede" style={{ maxWidth: 680 }}>
-              Sales Consultant candidate · Houston market · interview-ready
-              after completing NATA showroom readiness modules.
+            <p className="lede" style={{ maxWidth: 700 }}>
+              Sales Consultant candidate · Houston market · pre-screened,
+              interviewed, trained, and ready for an in-person dealership
+              interview.
             </p>
 
             <div
@@ -70,9 +71,9 @@ export default function CandidateDemoPage() {
                 marginTop: 28,
               }}
             >
-              <span className="trust-pill">Certified Ready</span>
-              <span className="trust-pill">Houston market</span>
-              <span className="trust-pill">Immediate availability</span>
+              <span className="trust-pill">Pre-screened</span>
+              <span className="trust-pill">NATA interviewed</span>
+              <span className="trust-pill">Thursday · 10:30 AM</span>
             </div>
           </section>
 
@@ -104,12 +105,12 @@ export default function CandidateDemoPage() {
             </div>
 
             <h2 style={{ margin: "26px 0 10px", fontSize: 30 }}>
-              Dealer-ready candidate
+              Ready to meet the dealer
             </h2>
 
             <p style={{ margin: 0, color: "#bfd6f5", lineHeight: 1.6 }}>
-              Clear profile, visible readiness, and direct dealer action in one
-              clean view.
+              NATA has already removed the screening friction. The dealer receives
+              a candidate with readiness, fit, and interview timing visible.
             </p>
           </aside>
         </div>
@@ -123,7 +124,7 @@ export default function CandidateDemoPage() {
           }}
         >
           <InfoPanel title="Readiness summary" items={readiness} />
-          <InfoPanel title="Training progress" items={training} />
+          <InfoPanel title="NATA process completed" items={training} />
         </div>
 
         <section
@@ -137,19 +138,19 @@ export default function CandidateDemoPage() {
         >
           <h2 style={{ margin: 0, fontSize: 28 }}>Dealer action</h2>
 
-          <p style={{ maxWidth: 760, color: "#cfe2ff", lineHeight: 1.65 }}>
-            Maria is presented as a realistic V1 demo candidate: screened,
-            trained, and ready for a dealership interview. The dealer gets a
-            clean decision view instead of another loose applicant record.
+          <p style={{ maxWidth: 800, color: "#cfe2ff", lineHeight: 1.65 }}>
+            The dealership does not need to chase, sort, or conduct the first
+            screening step. Maria has already been evaluated and coordinated for
+            an in-person interview.
           </p>
 
           <div className="hero-actions">
             <Link className="btn btn-primary" href="#">
-              Request interview
+              Confirm interview
             </Link>
 
             <Link className="btn btn-secondary" href="/dealer-demo">
-              Back to dashboard
+              Back to dealer view
             </Link>
           </div>
         </section>
@@ -158,13 +159,7 @@ export default function CandidateDemoPage() {
   );
 }
 
-function InfoPanel({
-  title,
-  items,
-}: {
-  title: string;
-  items: string[][];
-}) {
+function InfoPanel({ title, items }: { title: string; items: string[][] }) {
   return (
     <section
       style={{
