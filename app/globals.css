@@ -1017,3 +1017,97 @@ h1 {
     text-align: center;
   }
 }
+
+/* =====================
+   FINAL MOBILE NAV CONTROL
+   Keeps desktop intact and makes the mobile header compact, readable, and stable.
+===================== */
+
+@media (max-width: 680px) {
+  .nav {
+    position: sticky;
+    top: 0;
+    height: auto;
+    padding: 0;
+  }
+
+  .nav-inner {
+    width: min(100% - 24px, 1180px);
+    min-height: 64px;
+    height: auto;
+    padding: 10px 0 12px;
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-items: center;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .brand {
+    width: auto;
+    max-width: 100%;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .brand-logo-wrap {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+  }
+
+  .brand-logo {
+    width: 35px;
+    height: 35px;
+  }
+
+  .brand-text {
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  .nav-links {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, auto));
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1;
+    white-space: normal;
+  }
+
+  .nav-links a {
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8px;
+    border-radius: 999px;
+    text-align: center;
+  }
+
+  .nav-links a:not(.nav-cta) {
+    background: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .nav-cta {
+    min-height: 34px;
+    padding: 0 10px;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 420px) {
+  .nav-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nav-links a,
+  .nav-cta {
+    width: 100%;
+  }
+}
+
