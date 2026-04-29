@@ -2,12 +2,22 @@ import Link from "next/link";
 import Nav from "../components/Nav";
 
 const roles = [
-  { title: "Sales Consultant", count: 8, priority: "High" },
-  { title: "BDC Representative", count: 5, priority: "Medium" },
-  { title: "Service Advisor", count: 3, priority: "High" },
+  { title: "Service Technician", count: 5, priority: "Critical", detail: "ASE / OEM certification visible" },
+  { title: "Sales Consultant", count: 8, priority: "High", detail: "Showroom-ready candidates" },
+  { title: "BDC Representative", count: 5, priority: "Medium", detail: "Phone and follow-up fit" },
+  { title: "Service Advisor", count: 3, priority: "High", detail: "Lane communication ready" },
 ];
 
 const candidates = [
+  {
+    name: "Derrick Hayes",
+    role: "Service Technician",
+    status: "Master Certified",
+    progress: 100,
+    badge: "#1473ff",
+    scheduled: "Thursday · 9:00 AM",
+    certification: "ASE Master · CDJR Level 3",
+  },
   {
     name: "Maria Lopez",
     role: "Sales Consultant",
@@ -15,6 +25,7 @@ const candidates = [
     progress: 100,
     badge: "#22c55e",
     scheduled: "Thursday · 10:30 AM",
+    certification: "NATA showroom ready",
   },
   {
     name: "Ethan Brooks",
@@ -23,6 +34,7 @@ const candidates = [
     progress: 82,
     badge: "#fbbf24",
     scheduled: "Scheduling now",
+    certification: "Phone screen complete",
   },
   {
     name: "Jordan Miles",
@@ -31,25 +43,18 @@ const candidates = [
     progress: 56,
     badge: "#60a5fa",
     scheduled: "Needs training completion",
-  },
-  {
-    name: "Avery Coleman",
-    role: "Sales Consultant",
-    status: "Interview Set",
-    progress: 100,
-    badge: "#111827",
-    scheduled: "Friday · 2:00 PM",
+    certification: "Lane readiness in progress",
   },
 ];
 
 const friction = [
   {
     title: "We pre-screen",
-    copy: "Candidates are reviewed for communication, role fit, availability, and dealership readiness before they ever reach your store.",
+    copy: "Candidates are reviewed for communication, role fit, availability, certification level, and dealership readiness before they ever reach your store.",
   },
   {
-    title: "We train",
-    copy: "NATA candidates complete structured readiness modules so they arrive prepared for the showroom, BDC, or service lane.",
+    title: "We verify readiness",
+    copy: "Technician candidates can be organized by ASE/OEM certification, service experience, tool readiness, availability, and bay fit.",
   },
   {
     title: "We arrange interviews",
@@ -58,6 +63,8 @@ const friction = [
 ];
 
 export default function DealerDemoPage() {
+  const featuredCandidate = candidates[0];
+
   return (
     <main className="shell">
       <Nav />
@@ -97,13 +104,11 @@ export default function DealerDemoPage() {
                 maxWidth: 820,
               }}
             >
-              We send you interview-ready candidates.
+              We send you people worth interviewing.
             </h1>
 
             <p className="lede" style={{ maxWidth: 710 }}>
-              NATA pre-screens, interviews, trains, and qualifies candidates before
-              they reach your dealership. You do not sort resumes. You meet people
-              already prepared for an in-person interview.
+              NATA pre-screens, interviews, trains, and qualifies candidates before they reach your dealership. For technicians, we surface certification level and service readiness so your team is not guessing who can actually help the shop.
             </p>
 
             <div
@@ -114,14 +119,14 @@ export default function DealerDemoPage() {
                 marginTop: 26,
               }}
             >
-              <span className="trust-pill">No resume chasing</span>
-              <span className="trust-pill">No cold applicant pile</span>
+              <span className="trust-pill">Technician pipeline</span>
+              <span className="trust-pill">Certification level visible</span>
               <span className="trust-pill">Interviews arranged for you</span>
             </div>
 
             <div className="hero-actions">
               <Link href="/candidate-demo" className="btn btn-primary">
-                View a ready candidate
+                View technician profile
               </Link>
 
               <Link href="/" className="btn btn-secondary">
@@ -154,23 +159,22 @@ export default function DealerDemoPage() {
                 fontSize: 13,
               }}
             >
-              Next interview arriving
+              Technician candidate ready
             </div>
 
             <h2 style={{ margin: "22px 0 8px", fontSize: 34, lineHeight: 1 }}>
-              Thursday at 10:30 AM
+              {featuredCandidate.name}
             </h2>
 
             <p style={{ color: "#bfd6f5", lineHeight: 1.6, margin: 0 }}>
-              Maria Lopez is already screened, trained, and ready to meet the
-              dealership in person.
+              A service technician profile with certification level, experience, readiness, and interview timing already organized.
             </p>
 
             <div style={{ display: "grid", gap: 12, marginTop: 24 }}>
               {[
-                ["Candidate", "Maria Lopez"],
-                ["Role", "Sales Consultant"],
-                ["Readiness", "Certified Ready"],
+                ["Candidate", featuredCandidate.name],
+                ["Role", featuredCandidate.role],
+                ["Certification", featuredCandidate.certification],
                 ["Dealer action", "Meet candidate"],
               ].map(([label, value]) => (
                 <div
@@ -186,7 +190,7 @@ export default function DealerDemoPage() {
                   }}
                 >
                   <span style={{ color: "#bfd6f5" }}>{label}</span>
-                  <strong>{value}</strong>
+                  <strong style={{ textAlign: "right" }}>{value}</strong>
                 </div>
               ))}
             </div>
@@ -230,8 +234,8 @@ export default function DealerDemoPage() {
         >
           <Metric value="24" label="pre-screened candidates" />
           <Metric value="8" label="interview-ready now" />
-          <Metric value="6" label="interviews arranged" />
-          <Metric value="3" label="roles being filled" />
+          <Metric value="5" label="technician candidates" />
+          <Metric value="3" label="certification levels" />
         </div>
 
         <div
@@ -254,7 +258,7 @@ export default function DealerDemoPage() {
               Where we are sending candidates
             </h2>
             <p style={{ color: "#bfd6f5", lineHeight: 1.55, marginTop: 0 }}>
-              NATA aligns screened candidates to the roles your dealership needs.
+              NATA aligns screened candidates to the roles your dealership needs, with technician certification called out where it matters.
             </p>
 
             <div style={{ display: "grid", gap: 12 }}>
@@ -277,7 +281,7 @@ export default function DealerDemoPage() {
                       {role.title}
                     </strong>
                     <span style={{ color: "#bfd6f5", fontSize: 13 }}>
-                      {role.count} candidates matched
+                      {role.count} candidates matched · {role.detail}
                     </span>
                   </div>
 
@@ -286,10 +290,17 @@ export default function DealerDemoPage() {
                       borderRadius: 999,
                       padding: "8px 12px",
                       background:
-                        role.priority === "High"
-                          ? "rgba(251,191,36,0.18)"
-                          : "rgba(96,165,250,0.16)",
-                      color: role.priority === "High" ? "#fbbf24" : "#93c5fd",
+                        role.priority === "Critical"
+                          ? "rgba(239,68,68,0.18)"
+                          : role.priority === "High"
+                            ? "rgba(251,191,36,0.18)"
+                            : "rgba(96,165,250,0.16)",
+                      color:
+                        role.priority === "Critical"
+                          ? "#fca5a5"
+                          : role.priority === "High"
+                            ? "#fbbf24"
+                            : "#93c5fd",
                       fontSize: 12,
                       fontWeight: 900,
                     }}
@@ -313,8 +324,7 @@ export default function DealerDemoPage() {
               Interview-ready candidates
             </h2>
             <p style={{ color: "#bfd6f5", lineHeight: 1.55, marginTop: 0 }}>
-              Every candidate below has already moved through NATA screening,
-              readiness review, and interview coordination.
+              Every candidate below has moved through NATA screening, readiness review, and interview coordination.
             </p>
 
             <div style={{ display: "grid", gap: 12 }}>
@@ -338,7 +348,7 @@ export default function DealerDemoPage() {
                     </h3>
 
                     <p style={{ margin: "5px 0 6px", color: "#bfd6f5" }}>
-                      {candidate.role}
+                      {candidate.role} · {candidate.certification}
                     </p>
 
                     <p
