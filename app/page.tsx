@@ -29,8 +29,12 @@ export default function Home() {
             NATA Today helps dealers recruit, train, certify, and place stronger candidates with a cleaner, faster, more visible hiring experience.
           </p>
           <div className="hero-actions">
-            <Link className="btn btn-primary" href="/dealer-demo">View Dealer Demo</Link>
-            <Link className="btn btn-secondary" href="/candidate-demo">See Candidate Profile</Link>
+            <Link className="btn btn-primary" href="/dealer-demo">
+              View Dealer Demo
+            </Link>
+            <Link className="btn btn-secondary" href="/candidate-demo">
+              See Candidate Profile
+            </Link>
           </div>
           <div className="trust-row">
             <span className="trust-pill">Recruiting pipeline</span>
@@ -39,7 +43,7 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="hero-card" aria-label="Animated automotive workforce demo">
+        <div className="hero-card" aria-label="Animated automotive workforce visual">
           <div className="road">
             <div className="car">
               <div className="car-top" />
@@ -49,19 +53,29 @@ export default function Home() {
             </div>
           </div>
           <div className="signal-card">
-            <div className="signal"><b>12</b><span>active candidates</span></div>
-            <div className="signal"><b>7</b><span>certified ready</span></div>
-            <div className="signal"><b>3</b><span>open dealer roles</span></div>
+            <div className="signal">
+              <b>12 active candidates</b>
+              <span>in current dealer pipeline</span>
+            </div>
+            <div className="signal">
+              <b>7 certified ready</b>
+              <span>prepared for interviews</span>
+            </div>
+            <div className="signal">
+              <b>3 open dealer roles</b>
+              <span>matched by priority</span>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="section-light" id="system">
+      <section id="system" className="section-light">
         <div className="wrap">
           <h2 className="section-title">Not another hiring form. A clearer operating layer.</h2>
           <p className="section-copy">
             The V1 demo keeps the logic simple on purpose. It shows the face of the future first: dealer visibility, candidate readiness, and a system that can grow into real data later.
           </p>
+
           <div className="grid-3">
             {cards.map((card) => (
               <article className="card-light" key={card.title}>
@@ -73,17 +87,29 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="section-light" id="outcomes" style={{ paddingTop: 0 }}>
+      <section id="outcomes" className="section-light">
         <div className="wrap">
           <h2 className="section-title">What dealers should see immediately.</h2>
           <p className="section-copy">
             A modern NATA Today should make the value tangible before a sales call: who is ready, what roles are open, and what action should happen next.
           </p>
           <div className="metric-row">
-            <div className="metric"><strong>24</strong><span>candidates in pipeline</span></div>
-            <div className="metric"><strong>8</strong><span>ready for interview</span></div>
-            <div className="metric"><strong>91%</strong><span>training completion</span></div>
-            <div className="metric"><strong>3</strong><span>priority roles open</span></div>
+            <div className="metric">
+              <strong>24</strong>
+              <span>candidates in pipeline</span>
+            </div>
+            <div className="metric">
+              <strong>8</strong>
+              <span>ready for interview</span>
+            </div>
+            <div className="metric">
+              <strong>91%</strong>
+              <span>training completion</span>
+            </div>
+            <div className="metric">
+              <strong>3</strong>
+              <span>priority roles open</span>
+            </div>
           </div>
         </div>
       </section>
