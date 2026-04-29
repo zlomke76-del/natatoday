@@ -35,6 +35,7 @@ export default function CandidateDemoPage() {
             alignItems: "stretch",
           }}
         >
+          {/* LEFT CARD */}
           <section
             style={{
               border: "1px solid rgba(255,255,255,0.12)",
@@ -77,6 +78,7 @@ export default function CandidateDemoPage() {
             </div>
           </section>
 
+          {/* RIGHT CARD (FIXED) */}
           <aside
             style={{
               border: "1px solid rgba(251,191,36,0.32)",
@@ -87,21 +89,25 @@ export default function CandidateDemoPage() {
               boxShadow: "0 28px 90px rgba(0,0,0,0.32)",
             }}
           >
+            {/* IMAGE REPLACES INITIALS */}
             <div
               style={{
                 width: 96,
                 height: 96,
-                borderRadius: 28,
-                display: "grid",
-                placeItems: "center",
-                background: "linear-gradient(135deg, #1473ff, #fbbf24)",
-                color: "#fff",
-                fontSize: 34,
-                fontWeight: 900,
-                boxShadow: "0 18px 48px rgba(20,115,255,0.34)",
+                borderRadius: 24,
+                overflow: "hidden",
+                boxShadow: "0 18px 48px rgba(0,0,0,0.35)",
               }}
             >
-              ML
+              <img
+                src="/images/maria_lopez_01.png"
+                alt="Maria Lopez"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                }}
+              />
             </div>
 
             <h2 style={{ margin: "26px 0 10px", fontSize: 30 }}>
@@ -109,12 +115,14 @@ export default function CandidateDemoPage() {
             </h2>
 
             <p style={{ margin: 0, color: "#bfd6f5", lineHeight: 1.6 }}>
-              NATA has already removed the screening friction. The dealer receives
-              a candidate with readiness, fit, and interview timing visible.
+              NATA has already removed the screening friction. The dealer
+              receives a candidate with readiness, fit, and interview timing
+              already handled.
             </p>
           </aside>
         </div>
 
+        {/* PANELS */}
         <div
           style={{
             display: "grid",
@@ -127,6 +135,7 @@ export default function CandidateDemoPage() {
           <InfoPanel title="NATA process completed" items={training} />
         </div>
 
+        {/* ACTION */}
         <section
           style={{
             marginTop: 18,
@@ -139,9 +148,8 @@ export default function CandidateDemoPage() {
           <h2 style={{ margin: 0, fontSize: 28 }}>Dealer action</h2>
 
           <p style={{ maxWidth: 800, color: "#cfe2ff", lineHeight: 1.65 }}>
-            The dealership does not need to chase, sort, or conduct the first
-            screening step. Maria has already been evaluated and coordinated for
-            an in-person interview.
+            The dealership does not screen or chase. Maria has already been
+            evaluated and scheduled for an in-person interview.
           </p>
 
           <div className="hero-actions">
