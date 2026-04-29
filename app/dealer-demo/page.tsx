@@ -2,14 +2,57 @@ import Image from "next/image";
 import Link from "next/link";
 import Nav from "../components/Nav";
 
-const roles = [
-  { title: "Service Technician", count: 5, priority: "Critical", detail: "ASE / OEM certification visible" },
-  { title: "Sales Consultant", count: 8, priority: "High", detail: "Showroom-ready candidates" },
-  { title: "BDC Representative", count: 5, priority: "Medium", detail: "Phone and follow-up fit" },
-  { title: "Service Advisor", count: 3, priority: "High", detail: "Lane communication ready" },
+type Role = {
+  title: string;
+  count: number;
+  priority: "Critical" | "High" | "Medium";
+  detail: string;
+};
+
+type Candidate = {
+  slug: string;
+  name: string;
+  initials: string;
+  role: string;
+  status: string;
+  progress: number;
+  badge: string;
+  scheduled: string;
+  certification: string;
+  experience: string;
+  image: string;
+  highlight: string;
+  dealerValue: string;
+};
+
+const roles: Role[] = [
+  {
+    title: "Service Technician",
+    count: 5,
+    priority: "Critical",
+    detail: "ASE / OEM certification visible before interview",
+  },
+  {
+    title: "Sales Consultant",
+    count: 8,
+    priority: "High",
+    detail: "Showroom-ready candidates with communication notes",
+  },
+  {
+    title: "BDC Representative",
+    count: 5,
+    priority: "Medium",
+    detail: "Phone fit, follow-up discipline, and CRM readiness",
+  },
+  {
+    title: "Service Advisor",
+    count: 3,
+    priority: "High",
+    detail: "Lane communication and customer handling signals",
+  },
 ];
 
-const candidates = [
+const candidates: Candidate[] = [
   {
     slug: "derrick-hayes",
     name: "Derrick Hayes",
@@ -20,8 +63,10 @@ const candidates = [
     badge: "#1473ff",
     scheduled: "Thursday · 9:00 AM",
     certification: "ASE Master · CDJR Level 3",
+    experience: "8 years · diagnostics + drivability",
     image: "/images/derrick_hayes_01.png",
-    highlight: "Technician candidate ready",
+    highlight: "Hard-to-find technician talent",
+    dealerValue: "Certification, shop fit, and interview timing are already organized for the service manager.",
   },
   {
     slug: "maria-lopez",
@@ -33,8 +78,10 @@ const candidates = [
     badge: "#22c55e",
     scheduled: "Thursday · 10:30 AM",
     certification: "NATA showroom ready",
+    experience: "Retail sales · customer rapport",
     image: "/images/maria_lopez_01.png",
     highlight: "Sales candidate ready",
+    dealerValue: "Communication fit and showroom readiness are clear before the sales manager meets her.",
   },
   {
     slug: "ethan-brooks",
@@ -46,8 +93,10 @@ const candidates = [
     badge: "#fbbf24",
     scheduled: "Scheduling now",
     certification: "Phone screen complete",
-    image: "",
+    experience: "Customer support · CRM follow-up",
+    image: "/images/ethan_brooks_01.png",
     highlight: "BDC candidate in final screen",
+    dealerValue: "Phone presence and follow-up discipline are visible before the BDC manager spends time.",
   },
   {
     slug: "jordan-miles",
@@ -59,23 +108,25 @@ const candidates = [
     badge: "#60a5fa",
     scheduled: "Needs training completion",
     certification: "Lane readiness in progress",
-    image: "",
+    experience: "Service lane support · customer communication",
+    image: "/images/jordan_miles_01.png",
     highlight: "Advisor candidate in progress",
+    dealerValue: "The dealer can see what is ready and what still needs work before committing interview time.",
   },
 ];
 
 const friction = [
   {
-    title: "We pre-screen",
-    copy: "Candidates are reviewed for communication, role fit, availability, certification level, and dealership readiness before they ever reach your store.",
+    title: "We pre-screen before your managers spend time",
+    copy: "NATA reviews communication, role fit, availability, certification level, and dealership readiness before candidates reach the store.",
   },
   {
-    title: "We verify readiness",
-    copy: "Technician candidates can be organized by ASE/OEM certification, service experience, tool readiness, availability, and bay fit.",
+    title: "Technician quality is visible",
+    copy: "Service candidates can be sorted by ASE/OEM certification, experience, tool readiness, preferred lane, and shop fit.",
   },
   {
-    title: "We arrange interviews",
-    copy: "Your dealership receives qualified candidates with interview timing already coordinated. You focus on hiring, not chasing.",
+    title: "We make the handoff easy",
+    copy: "Your dealership receives qualified candidates with context and interview timing already coordinated. You focus on the hire.",
   },
 ];
 
@@ -121,11 +172,11 @@ export default function DealerDemoPage() {
                 maxWidth: 820,
               }}
             >
-              We send you people worth interviewing.
+              Stop sorting applicants. Start meeting the right ones.
             </h1>
 
-            <p className="lede" style={{ maxWidth: 710 }}>
-              NATA pre-screens, interviews, trains, and qualifies candidates before they reach your dealership. For technicians, we surface certification level and service readiness so your team is not guessing who can actually help the shop.
+            <p className="lede" style={{ maxWidth: 720 }}>
+              NATA pre-screens, interviews, trains, and organizes candidates before they reach your dealership. For technicians, certification level and service readiness are surfaced up front so your team is not guessing who can actually help the shop.
             </p>
 
             <div
@@ -137,8 +188,8 @@ export default function DealerDemoPage() {
               }}
             >
               <span className="trust-pill">Technician pipeline</span>
-              <span className="trust-pill">Certification level visible</span>
-              <span className="trust-pill">Multiple demo profiles</span>
+              <span className="trust-pill">ASE / OEM level visible</span>
+              <span className="trust-pill">Multiple candidate profiles</span>
               <span className="trust-pill">Interviews arranged for you</span>
             </div>
 
@@ -147,8 +198,8 @@ export default function DealerDemoPage() {
                 View technician profile
               </Link>
 
-              <Link href="/" className="btn btn-secondary">
-                Back to system
+              <Link href="/candidate-demo?profile=ethan-brooks" className="btn btn-secondary">
+                Switch demo profile
               </Link>
             </div>
           </section>
@@ -171,8 +222,8 @@ export default function DealerDemoPage() {
                 minHeight: 38,
                 padding: "0 14px",
                 borderRadius: 999,
-                background: "rgba(34,197,94,0.16)",
-                color: "#86efac",
+                background: "rgba(239,68,68,0.18)",
+                color: "#fca5a5",
                 fontWeight: 900,
                 fontSize: 13,
               }}
@@ -193,7 +244,7 @@ export default function DealerDemoPage() {
             </div>
 
             <p style={{ color: "#bfd6f5", lineHeight: 1.6, margin: "22px 0 0" }}>
-              A service technician profile with certification level, experience, readiness, and interview timing already organized.
+              Technician hiring is one of the dealership’s hardest pressure points. This view makes certification, shop fit, and readiness obvious before the service manager gives up time.
             </p>
 
             <div style={{ display: "grid", gap: 12, marginTop: 24 }}>
@@ -201,6 +252,7 @@ export default function DealerDemoPage() {
                 ["Candidate", featuredCandidate.name],
                 ["Role", featuredCandidate.role],
                 ["Certification", featuredCandidate.certification],
+                ["Experience", featuredCandidate.experience],
                 ["Dealer action", "Meet candidate"],
               ].map(([label, value]) => (
                 <div
@@ -281,10 +333,10 @@ export default function DealerDemoPage() {
             }}
           >
             <h2 style={{ margin: "0 0 8px", fontSize: 28 }}>
-              Where we are sending candidates
+              Where candidates are being matched
             </h2>
             <p style={{ color: "#bfd6f5", lineHeight: 1.55, marginTop: 0 }}>
-              NATA aligns screened candidates to the roles your dealership needs, with technician certification called out where it matters.
+              NATA aligns screened candidates to the roles your dealership needs, with technician certification called out where it matters most.
             </p>
 
             <div style={{ display: "grid", gap: 12 }}>
@@ -329,6 +381,7 @@ export default function DealerDemoPage() {
                             : "#93c5fd",
                       fontSize: 12,
                       fontWeight: 900,
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {role.priority}
@@ -364,8 +417,14 @@ export default function DealerDemoPage() {
                     alignItems: "center",
                     padding: 18,
                     borderRadius: 22,
-                    background: "rgba(255,255,255,0.075)",
-                    border: "1px solid rgba(255,255,255,0.10)",
+                    background:
+                      candidate.slug === "derrick-hayes"
+                        ? "linear-gradient(135deg, rgba(20,115,255,0.18), rgba(255,255,255,0.075))"
+                        : "rgba(255,255,255,0.075)",
+                    border:
+                      candidate.slug === "derrick-hayes"
+                        ? "1px solid rgba(96,165,250,0.45)"
+                        : "1px solid rgba(255,255,255,0.10)",
                   }}
                 >
                   <CandidateAvatar candidate={candidate} size={58} />
@@ -470,6 +529,7 @@ function CandidateAvatar({
           border: "1px solid rgba(255,255,255,0.18)",
           boxShadow: "0 16px 40px rgba(0,0,0,0.32)",
         }}
+        priority={size > 80}
       />
     );
   }
