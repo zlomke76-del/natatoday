@@ -6,38 +6,38 @@ const roles = ["Sales Consultant", "BDC Representative", "Service Advisor", "Par
 const steps = [
   {
     number: "01",
-    title: "Candidate interest comes in",
-    copy: "Applicants, referrals, walk-ins, and campaign responses move into one structured intake instead of scattered inboxes and notes.",
+    title: "Candidates come in",
+    copy: "Applicants, referrals, walk-ins, and campaigns feed into one organized pipeline instead of scattered inboxes.",
   },
   {
     number: "02",
-    title: "NATA screens and interviews first",
-    copy: "We review candidates before the dealership spends manager time. Serious people move forward. Noise gets filtered out.",
+    title: "We filter and qualify",
+    copy: "We review and interview candidates before your managers spend time. Serious people move forward. Noise gets removed.",
   },
   {
     number: "03",
-    title: "Training creates readiness signals",
-    copy: "Progress, completion, confidence, and role alignment become visible so the store knows who is actually prepared.",
+    title: "Readiness becomes clear",
+    copy: "Training, role fit, and confidence become visible so you know who is actually prepared.",
   },
   {
     number: "04",
-    title: "Dealer gets interview-ready candidates",
-    copy: "The handoff is clean: who they are, where they fit, what they completed, and why they are worth meeting in person.",
+    title: "You meet the right people",
+    copy: "You get a clean shortlist with context — not a pile of unknown applicants.",
   },
 ];
 
 const proofCards = [
   {
-    title: "Less manager drag",
-    copy: "Your managers are not chasing every applicant or guessing who is serious. They see organized people who have already been reviewed.",
+    title: "Less manager time wasted",
+    copy: "Your team is not chasing every applicant or guessing who is serious. They focus on candidates worth meeting.",
   },
   {
-    title: "Cleaner candidate handoff",
-    copy: "Each candidate arrives with role fit, readiness, training progress, and notes that make the next conversation easier.",
+    title: "Clearer candidate handoff",
+    copy: "Each person arrives with role fit, readiness, and context already defined.",
   },
   {
-    title: "Better use of interviews",
-    copy: "The in-person interview becomes a decision point, not the first filter.",
+    title: "Interviews become decisions",
+    copy: "The interview is no longer the first filter — it’s where you decide yes or no.",
   },
 ];
 
@@ -53,6 +53,7 @@ export default function Home() {
     <main className="shell">
       <Nav />
 
+      {/* HERO */}
       <section className="hero hero-bg">
         <div className="hero-overlay" />
 
@@ -61,13 +62,12 @@ export default function Home() {
             <div className="eyebrow">Automotive recruiting + training</div>
 
             <h1>
-              America’s #1 Automotive Recruiting & Training{" "}
-              <span className="accent">Platform</span>
+              Stop sorting through applicants.{" "}
+              <span className="accent">Start meeting the right ones.</span>
             </h1>
 
             <p className="lede">
-              We recruit, screen, interview, train, and prepare candidates before
-              your dealership spends manager time.
+              NATA Today handles recruiting, screening, and preparation before your team gets involved — so your managers spend time on real candidates, not guesswork.
             </p>
 
             <div className="hero-actions">
@@ -79,7 +79,7 @@ export default function Home() {
               </Link>
             </div>
 
-            <div className="icon-row" aria-label="NATA Today workflow">
+            <div className="icon-row">
               <span>Recruit</span>
               <span>Screen</span>
               <span>Interview</span>
@@ -90,20 +90,19 @@ export default function Home() {
         </div>
       </section>
 
+      {/* SYSTEM */}
       <section id="system" className="process-section">
         <div className="wrap">
-          <div className="section-kicker">Where the friction gets removed</div>
+          <div className="section-kicker">Where the work gets removed</div>
 
           <div className="process-hero">
-            <h2>We do the work before the dealer says yes to an interview.</h2>
+            <h2>You don’t sort candidates. You meet the ones that matter.</h2>
             <p>
-              The dealership still makes the hiring decision. NATA Today improves
-              what reaches that decision: cleaner candidates, clearer readiness,
-              and better use of manager time.
+              The dealership still makes the hiring decision — but only after candidates have been reviewed, organized, and prepared. No more starting from zero.
             </p>
           </div>
 
-          <div className="role-strip" aria-label="Roles supported">
+          <div className="role-strip">
             {roles.map((role) => (
               <span key={role}>{role}</span>
             ))}
@@ -121,14 +120,14 @@ export default function Home() {
         </div>
       </section>
 
+      {/* OUTCOMES */}
       <section id="outcomes" className="outcome-section">
         <div className="wrap">
           <div className="outcome-heading">
-            <div className="section-kicker dark">What the dealer sees</div>
-            <h2>A cleaner pipeline. A sharper handoff. A better interview.</h2>
+            <div className="section-kicker dark">What changes for the dealer</div>
+            <h2>A cleaner pipeline. Less noise. Better hires.</h2>
             <p>
-              NATA Today gives dealerships a practical operating layer for recruiting
-              and training, not another passive form waiting for someone to follow up.
+              NATA Today doesn’t add another tool to manage — it removes the work that slows hiring down.
             </p>
           </div>
 
@@ -155,8 +154,7 @@ export default function Home() {
               <span>Dealer-ready recruiting</span>
               <h3>Stop starting from zero with every applicant.</h3>
               <p>
-                Give managers candidates who have already been organized, screened,
-                trained, and prepared for the conversation that matters.
+                Your team gets candidates who have already been organized, screened, and prepared for a real conversation.
               </p>
             </div>
             <Link className="btn btn-primary" href="/dealer-demo">
