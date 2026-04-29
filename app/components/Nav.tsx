@@ -6,14 +6,16 @@ export default function Nav() {
     <header className="nav">
       <div className="nav-inner">
         <Link href="/" className="brand" aria-label="NATA Today home">
-          <Image
-            src="/images/nata_logo_01.png"
-            alt="NATA Today"
-            width={132}
-            height={54}
-            priority
-            className="brand-logo"
-          />
+          <span className="brand-logo-wrap" aria-hidden="true">
+            <Image
+              src="/images/nata_logo_01.png"
+              alt=""
+              width={132}
+              height={54}
+              priority
+              className="brand-logo"
+            />
+          </span>
           <span className="brand-text">NATA Today</span>
         </Link>
 
