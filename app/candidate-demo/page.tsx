@@ -13,9 +13,10 @@ type CandidateProfile = {
   badges: string[];
   readiness: string[][];
   training: string[][];
-  serviceProfile: string[][];
+  roleProfile: string[][];
   dealerAction: string;
   primaryCta: string;
+  hotButton?: string;
 };
 
 const profiles: CandidateProfile[] = [
@@ -25,10 +26,10 @@ const profiles: CandidateProfile[] = [
     initials: "DH",
     image: "/images/derrick_hayes_01.png",
     eyebrow: "Technician readiness profile",
-    title: "Ready for the service manager",
+    title: "Master-certified technician ready for the service manager",
     summary:
       "Service Technician candidate · Houston market · ASE Master · CDJR Level 3 · pre-screened, reviewed, and ready for an in-person dealership interview.",
-    badges: ["ASE Master", "CDJR Level 3", "Thursday · 9:00 AM"],
+    badges: ["ASE Master", "CDJR Level 3", "Hard-to-Find Talent", "Thursday · 9:00 AM"],
     readiness: [
       ["Status", "Interview Ready"],
       ["Role fit", "Service Technician"],
@@ -38,18 +39,19 @@ const profiles: CandidateProfile[] = [
     training: [
       ["NATA pre-screen", "Complete"],
       ["Technical experience review", "Complete"],
-      ["Certification level", "Verified by candidate record"],
+      ["Certification level", "Visible in candidate record"],
       ["In-person coordination", "Thursday · 9:00 AM"],
     ],
-    serviceProfile: [
+    roleProfile: [
       ["Primary skill", "Diagnostics + drivability"],
       ["Shop experience", "8 years"],
       ["Tool readiness", "Owns core tool set"],
       ["Preferred lane", "Main shop / used-car recon"],
     ],
     dealerAction:
-      "Derrick arrives as a technician candidate with certification level, service fit, and interview timing already prepared for the service manager.",
+      "Derrick arrives as a technician candidate with certification level, service fit, and interview timing already prepared for the service manager. This is the kind of hard-to-find profile dealers care about most.",
     primaryCta: "Confirm technician interview",
+    hotButton: "Fills a high-value service bay faster.",
   },
   {
     slug: "maria-lopez",
@@ -60,7 +62,7 @@ const profiles: CandidateProfile[] = [
     title: "Ready for the sales manager",
     summary:
       "Sales Consultant candidate · customer-facing experience · showroom-ready communication · pre-screened and ready for an in-person interview.",
-    badges: ["Showroom Ready", "Customer-facing", "Thursday · 10:30 AM"],
+    badges: ["Showroom Ready", "Customer-facing", "Interview Ready", "Thursday · 10:30 AM"],
     readiness: [
       ["Status", "Interview Ready"],
       ["Role fit", "Sales Consultant"],
@@ -73,7 +75,7 @@ const profiles: CandidateProfile[] = [
       ["Role alignment", "Sales floor"],
       ["In-person coordination", "Thursday · 10:30 AM"],
     ],
-    serviceProfile: [
+    roleProfile: [
       ["Primary skill", "Customer rapport"],
       ["Experience", "Retail sales + follow-up"],
       ["CRM readiness", "Strong"],
@@ -87,12 +89,12 @@ const profiles: CandidateProfile[] = [
     slug: "ethan-brooks",
     name: "Ethan Brooks",
     initials: "EB",
-    image: "",
+    image: "/images/ethan_brooks_01.png",
     eyebrow: "BDC readiness profile",
-    title: "Final screen for BDC manager",
+    title: "Final screen for the BDC manager",
     summary:
       "BDC Representative candidate · phone fit reviewed · follow-up discipline in progress · nearly ready for dealer interview coordination.",
-    badges: ["Phone Screen Complete", "82% Ready", "Scheduling now"],
+    badges: ["Phone Screen Complete", "82% Ready", "CRM Discipline", "Scheduling now"],
     readiness: [
       ["Status", "Final Screen"],
       ["Role fit", "BDC Representative"],
@@ -105,7 +107,7 @@ const profiles: CandidateProfile[] = [
       ["Follow-up workflow", "In progress"],
       ["In-person coordination", "Scheduling now"],
     ],
-    serviceProfile: [
+    roleProfile: [
       ["Primary skill", "Phone follow-up"],
       ["Experience", "Customer support"],
       ["CRM readiness", "In progress"],
@@ -119,12 +121,12 @@ const profiles: CandidateProfile[] = [
     slug: "jordan-miles",
     name: "Jordan Miles",
     initials: "JM",
-    image: "",
+    image: "/images/jordan_miles_01.png",
     eyebrow: "Service advisor readiness profile",
     title: "Service lane candidate in progress",
     summary:
       "Service Advisor candidate · lane communication reviewed · training still in progress · visible readiness before interview handoff.",
-    badges: ["Pre-Screened", "Lane Readiness", "Training in progress"],
+    badges: ["Pre-Screened", "Lane Readiness", "Advisor Track", "Training in progress"],
     readiness: [
       ["Status", "Pre-Screened"],
       ["Role fit", "Service Advisor"],
@@ -137,7 +139,7 @@ const profiles: CandidateProfile[] = [
       ["Objection handling", "In progress"],
       ["In-person coordination", "Pending completion"],
     ],
-    serviceProfile: [
+    roleProfile: [
       ["Primary skill", "Customer communication"],
       ["Experience", "Service lane support"],
       ["Write-up readiness", "Developing"],
@@ -182,7 +184,9 @@ export default function CandidateDemoPage({
               borderRadius: 34,
               padding: 38,
               background:
-                "linear-gradient(145deg, rgba(255,255,255,0.09), rgba(255,255,255,0.035))",
+                activeProfile.slug === "derrick-hayes"
+                  ? "radial-gradient(circle at top right, rgba(251,191,36,0.22), transparent 36%), linear-gradient(145deg, rgba(20,115,255,0.14), rgba(255,255,255,0.04))"
+                  : "linear-gradient(145deg, rgba(255,255,255,0.09), rgba(255,255,255,0.035))",
               boxShadow: "0 28px 90px rgba(0,0,0,0.34)",
             }}
           >
@@ -198,9 +202,24 @@ export default function CandidateDemoPage({
               {activeProfile.name}
             </h1>
 
-            <p className="lede" style={{ maxWidth: 700 }}>
+            <p className="lede" style={{ maxWidth: 760 }}>
               {activeProfile.summary}
             </p>
+
+            {activeProfile.hotButton ? (
+              <p
+                style={{
+                  marginTop: 18,
+                  maxWidth: 680,
+                  color: "#ffffff",
+                  fontSize: 20,
+                  fontWeight: 900,
+                  lineHeight: 1.35,
+                }}
+              >
+                {activeProfile.hotButton}
+              </p>
+            ) : null}
 
             <div
               style={{
@@ -230,7 +249,7 @@ export default function CandidateDemoPage({
           >
             <CandidateAvatar candidate={activeProfile} size={124} />
 
-            <h2 style={{ margin: "26px 0 10px", fontSize: 30 }}>
+            <h2 style={{ margin: "26px 0 10px", fontSize: 30, lineHeight: 1.05 }}>
               {activeProfile.title}
             </h2>
 
@@ -249,8 +268,8 @@ export default function CandidateDemoPage({
           }}
         >
           <InfoPanel title="Readiness summary" items={activeProfile.readiness} />
-          <InfoPanel title="NATA process completed" items={activeProfile.training} />
-          <InfoPanel title="Role profile" items={activeProfile.serviceProfile} />
+          <InfoPanel title="NATA work completed" items={activeProfile.training} />
+          <InfoPanel title="Role profile" items={activeProfile.roleProfile} />
         </div>
 
         <section
@@ -264,7 +283,7 @@ export default function CandidateDemoPage({
         >
           <h2 style={{ margin: 0, fontSize: 28 }}>Dealer action</h2>
 
-          <p style={{ maxWidth: 840, color: "#cfe2ff", lineHeight: 1.65 }}>
+          <p style={{ maxWidth: 880, color: "#cfe2ff", lineHeight: 1.65 }}>
             {activeProfile.dealerAction}
           </p>
 
@@ -290,7 +309,7 @@ export default function CandidateDemoPage({
         >
           <h2 style={{ margin: "0 0 8px", fontSize: 28 }}>Switch demo profile</h2>
           <p style={{ marginTop: 0, color: "#bfd6f5", lineHeight: 1.55 }}>
-            Use these profiles to show the dealer how NATA surfaces different readiness signals by role.
+            Use these profiles to show the dealer how NATA surfaces different readiness signals by role. Derrick makes the technician certification value obvious; Ethan and Jordan show the broader pipeline.
           </p>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
@@ -316,6 +335,9 @@ export default function CandidateDemoPage({
                   <strong style={{ color: "#ffffff" }}>{profile.name}</strong>
                   <span style={{ color: "#bfd6f5", fontSize: 13 }}>
                     {profile.readiness[1]?.[1] ?? "Candidate"}
+                  </span>
+                  <span style={{ color: "#fbbf24", fontSize: 12, fontWeight: 900 }}>
+                    {profile.readiness[2]?.[1] ?? "Readiness visible"}
                   </span>
                 </Link>
               );
