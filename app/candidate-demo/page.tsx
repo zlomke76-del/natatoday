@@ -3,17 +3,17 @@ import Nav from "../components/Nav";
 
 export default function CandidateDemoPage() {
   return (
-    <main className="page">
+    <main className="shell">
       <div className="topbar">
         <Nav />
       </div>
 
-      <section className="profile">
+      <section className="profile wrap">
         <div className="profile-hero">
           <div>
             <div className="eyebrow">Candidate readiness profile</div>
             <h1>Maria Lopez</h1>
-            <p className="lede" style={{ marginBottom: 0 }}>
+            <p className="lede">
               Sales Consultant candidate · Houston market · Interview-ready after completing NATA showroom readiness modules.
             </p>
           </div>
@@ -44,14 +44,16 @@ export default function CandidateDemoPage() {
 
         <section className="panel" style={{ marginTop: 18 }}>
           <h2>Dealer action</h2>
-          <p style={{ color: "#64748b", lineHeight: 1.6 }}>
+          <p className="section-copy" style={{ textAlign: "left", margin: 0 }}>
             Maria is presented as a realistic V1 demo candidate: screened, trained, and ready for a dealership interview. This page is intentionally static so the visual model can be approved before database logic is introduced.
           </p>
+
           <div className="hero-actions">
-            <Link className="btn btn-primary" href="/candidate-demo">
+            <Link className="btn btn-primary" href="#">
               Request interview
             </Link>
-            <Link className="btn btn-secondary" href="/dealer-demo" style={{ color: "#0f172a", borderColor: "#cbd5e1" }}>
+
+            <Link className="btn btn-secondary" href="/dealer-demo">
               Back to dashboard
             </Link>
           </div>
