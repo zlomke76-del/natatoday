@@ -1,435 +1,868 @@
-import Image from "next/image";
-import Link from "next/link";
-import Nav from "../components/Nav";
-
-type CandidateProfile = {
-  slug: string;
-  name: string;
-  initials: string;
-  image: string;
-  eyebrow: string;
-  title: string;
-  summary: string;
-  badges: string[];
-  readiness: string[][];
-  training: string[][];
-  roleProfile: string[][];
-  dealerAction: string;
-  primaryCta: string;
-  hotButton?: string;
-};
-
-const profiles: CandidateProfile[] = [
-  {
-    slug: "derrick-hayes",
-    name: "Derrick Hayes",
-    initials: "DH",
-    image: "/images/derrick_hayes_01.png",
-    eyebrow: "Technician readiness profile",
-    title: "Master-certified technician ready for the service manager",
-    summary:
-      "Service Technician candidate · Houston market · ASE Master · CDJR Level 3 · pre-screened, reviewed, and ready for an in-person dealership interview.",
-    badges: ["ASE Master", "CDJR Level 3", "Hard-to-Find Talent", "Thursday · 9:00 AM"],
-    readiness: [
-      ["Status", "Interview Ready"],
-      ["Role fit", "Service Technician"],
-      ["Certification", "ASE Master · CDJR Level 3"],
-      ["Availability", "Two weeks"],
-    ],
-    training: [
-      ["NATA pre-screen", "Complete"],
-      ["Technical experience review", "Complete"],
-      ["Certification level", "Visible in candidate record"],
-      ["In-person coordination", "Thursday · 9:00 AM"],
-    ],
-    roleProfile: [
-      ["Primary skill", "Diagnostics + drivability"],
-      ["Shop experience", "8 years"],
-      ["Tool readiness", "Owns core tool set"],
-      ["Preferred lane", "Main shop / used-car recon"],
-    ],
-    dealerAction:
-      "Derrick arrives as a technician candidate with certification level, service fit, and interview timing already prepared for the service manager. This is the kind of hard-to-find profile dealers care about most.",
-    primaryCta: "Confirm technician interview",
-    hotButton: "Fills a high-value service bay faster.",
-  },
-  {
-    slug: "maria-lopez",
-    name: "Maria Lopez",
-    initials: "ML",
-    image: "/images/maria_lopez_01.png",
-    eyebrow: "Sales readiness profile",
-    title: "Ready for the sales manager",
-    summary:
-      "Sales Consultant candidate · customer-facing experience · showroom-ready communication · pre-screened and ready for an in-person interview.",
-    badges: ["Showroom Ready", "Customer-facing", "Interview Ready", "Thursday · 10:30 AM"],
-    readiness: [
-      ["Status", "Interview Ready"],
-      ["Role fit", "Sales Consultant"],
-      ["Certification", "NATA showroom ready"],
-      ["Availability", "Immediate"],
-    ],
-    training: [
-      ["NATA pre-screen", "Complete"],
-      ["Communication review", "Complete"],
-      ["Role alignment", "Sales floor"],
-      ["In-person coordination", "Thursday · 10:30 AM"],
-    ],
-    roleProfile: [
-      ["Primary skill", "Customer rapport"],
-      ["Experience", "Retail sales + follow-up"],
-      ["CRM readiness", "Strong"],
-      ["Best fit", "New/used sales floor"],
-    ],
-    dealerAction:
-      "Maria arrives with sales fit, communication notes, and interview timing already prepared for the sales manager.",
-    primaryCta: "Confirm sales interview",
-  },
-  {
-    slug: "ethan-brooks",
-    name: "Ethan Brooks",
-    initials: "EB",
-    image: "/images/ethan_brooks_01.png",
-    eyebrow: "BDC readiness profile",
-    title: "Final screen for the BDC manager",
-    summary:
-      "BDC Representative candidate · phone fit reviewed · follow-up discipline in progress · nearly ready for dealer interview coordination.",
-    badges: ["Phone Screen Complete", "82% Ready", "CRM Discipline", "Scheduling now"],
-    readiness: [
-      ["Status", "Final Screen"],
-      ["Role fit", "BDC Representative"],
-      ["Certification", "Phone screen complete"],
-      ["Availability", "One week"],
-    ],
-    training: [
-      ["NATA pre-screen", "Complete"],
-      ["Phone presence", "Complete"],
-      ["Follow-up workflow", "In progress"],
-      ["In-person coordination", "Scheduling now"],
-    ],
-    roleProfile: [
-      ["Primary skill", "Phone follow-up"],
-      ["Experience", "Customer support"],
-      ["CRM readiness", "In progress"],
-      ["Best fit", "Internet / BDC desk"],
-    ],
-    dealerAction:
-      "Ethan is close to interview-ready, with remaining follow-up workflow readiness clearly visible before the dealer spends time.",
-    primaryCta: "Review BDC readiness",
-  },
-  {
-    slug: "jordan-miles",
-    name: "Jordan Miles",
-    initials: "JM",
-    image: "/images/jordan_miles_01.png",
-    eyebrow: "Service advisor readiness profile",
-    title: "Service lane candidate in progress",
-    summary:
-      "Service Advisor candidate · lane communication reviewed · training still in progress · visible readiness before interview handoff.",
-    badges: ["Pre-Screened", "Lane Readiness", "Advisor Track", "Training in progress"],
-    readiness: [
-      ["Status", "Pre-Screened"],
-      ["Role fit", "Service Advisor"],
-      ["Certification", "Lane readiness in progress"],
-      ["Availability", "Two weeks"],
-    ],
-    training: [
-      ["NATA pre-screen", "Complete"],
-      ["Advisor communication", "Complete"],
-      ["Objection handling", "In progress"],
-      ["In-person coordination", "Pending completion"],
-    ],
-    roleProfile: [
-      ["Primary skill", "Customer communication"],
-      ["Experience", "Service lane support"],
-      ["Write-up readiness", "Developing"],
-      ["Best fit", "Express lane / advisor desk"],
-    ],
-    dealerAction:
-      "Jordan is visible as a developing candidate, so the dealership knows what is ready and what still needs work before an interview.",
-    primaryCta: "Review advisor progress",
-  },
-];
-
-export default function CandidateDemoPage({
-  searchParams,
-}: {
-  searchParams?: { profile?: string };
-}) {
-  const activeProfile =
-    profiles.find((profile) => profile.slug === searchParams?.profile) ?? profiles[0];
-
-  return (
-    <main className="shell">
-      <Nav />
-
-      <section
-        style={{
-          width: "min(1180px, calc(100% - 40px))",
-          margin: "0 auto",
-          padding: "54px 0 90px",
-        }}
-      >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.2fr 0.8fr",
-            gap: 22,
-            alignItems: "stretch",
-          }}
-        >
-          <section
-            style={{
-              border: "1px solid rgba(255,255,255,0.12)",
-              borderRadius: 34,
-              padding: 38,
-              background:
-                activeProfile.slug === "derrick-hayes"
-                  ? "radial-gradient(circle at top right, rgba(251,191,36,0.22), transparent 36%), linear-gradient(145deg, rgba(20,115,255,0.14), rgba(255,255,255,0.04))"
-                  : "linear-gradient(145deg, rgba(255,255,255,0.09), rgba(255,255,255,0.035))",
-              boxShadow: "0 28px 90px rgba(0,0,0,0.34)",
-            }}
-          >
-            <div className="eyebrow">{activeProfile.eyebrow}</div>
-
-            <h1
-              style={{
-                marginTop: 0,
-                fontSize: "clamp(54px, 7vw, 92px)",
-                lineHeight: 0.92,
-              }}
-            >
-              {activeProfile.name}
-            </h1>
-
-            <p className="lede" style={{ maxWidth: 760 }}>
-              {activeProfile.summary}
-            </p>
-
-            {activeProfile.hotButton ? (
-              <p
-                style={{
-                  marginTop: 18,
-                  maxWidth: 680,
-                  color: "#ffffff",
-                  fontSize: 20,
-                  fontWeight: 900,
-                  lineHeight: 1.35,
-                }}
-              >
-                {activeProfile.hotButton}
-              </p>
-            ) : null}
-
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                flexWrap: "wrap",
-                marginTop: 28,
-              }}
-            >
-              {activeProfile.badges.map((badge) => (
-                <span className="trust-pill" key={badge}>
-                  {badge}
-                </span>
-              ))}
-            </div>
-          </section>
-
-          <aside
-            style={{
-              border: "1px solid rgba(251,191,36,0.32)",
-              borderRadius: 34,
-              padding: 34,
-              background:
-                "radial-gradient(circle at top right, rgba(251,191,36,0.22), transparent 36%), rgba(255,255,255,0.06)",
-              boxShadow: "0 28px 90px rgba(0,0,0,0.32)",
-            }}
-          >
-            <CandidateAvatar candidate={activeProfile} size={124} />
-
-            <h2 style={{ margin: "26px 0 10px", fontSize: 30, lineHeight: 1.05 }}>
-              {activeProfile.title}
-            </h2>
-
-            <p style={{ margin: 0, color: "#bfd6f5", lineHeight: 1.6 }}>
-              NATA organizes the role-specific context before the dealer invests manager time.
-            </p>
-          </aside>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 18,
-            marginTop: 18,
-          }}
-        >
-          <InfoPanel title="Readiness summary" items={activeProfile.readiness} />
-          <InfoPanel title="NATA work completed" items={activeProfile.training} />
-          <InfoPanel title="Role profile" items={activeProfile.roleProfile} />
-        </div>
-
-        <section
-          style={{
-            marginTop: 18,
-            border: "1px solid rgba(255,255,255,0.12)",
-            borderRadius: 30,
-            padding: 30,
-            background: "rgba(255,255,255,0.055)",
-          }}
-        >
-          <h2 style={{ margin: 0, fontSize: 28 }}>Dealer action</h2>
-
-          <p style={{ maxWidth: 880, color: "#cfe2ff", lineHeight: 1.65 }}>
-            {activeProfile.dealerAction}
-          </p>
-
-          <div className="hero-actions">
-            <Link className="btn btn-primary" href="#">
-              {activeProfile.primaryCta}
-            </Link>
-
-            <Link className="btn btn-secondary" href="/dealer-demo">
-              Back to dealer view
-            </Link>
-          </div>
-        </section>
-
-        <section
-          style={{
-            marginTop: 18,
-            border: "1px solid rgba(255,255,255,0.12)",
-            borderRadius: 30,
-            padding: 30,
-            background: "rgba(255,255,255,0.045)",
-          }}
-        >
-          <h2 style={{ margin: "0 0 8px", fontSize: 28 }}>Switch demo profile</h2>
-          <p style={{ marginTop: 0, color: "#bfd6f5", lineHeight: 1.55 }}>
-            Use these profiles to show the dealer how NATA surfaces different readiness signals by role. Derrick makes the technician certification value obvious; Ethan and Jordan show the broader pipeline.
-          </p>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-            {profiles.map((profile) => {
-              const isActive = profile.slug === activeProfile.slug;
-
-              return (
-                <Link
-                  href={`/candidate-demo?profile=${profile.slug}`}
-                  key={profile.slug}
-                  style={{
-                    display: "grid",
-                    gap: 10,
-                    padding: 16,
-                    borderRadius: 22,
-                    background: isActive ? "rgba(20,115,255,0.20)" : "rgba(255,255,255,0.06)",
-                    border: isActive
-                      ? "1px solid rgba(96,165,250,0.50)"
-                      : "1px solid rgba(255,255,255,0.10)",
-                  }}
-                >
-                  <CandidateAvatar candidate={profile} size={54} />
-                  <strong style={{ color: "#ffffff" }}>{profile.name}</strong>
-                  <span style={{ color: "#bfd6f5", fontSize: 13 }}>
-                    {profile.readiness[1]?.[1] ?? "Candidate"}
-                  </span>
-                  <span style={{ color: "#fbbf24", fontSize: 12, fontWeight: 900 }}>
-                    {profile.readiness[2]?.[1] ?? "Readiness visible"}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-      </section>
-    </main>
-  );
+* {
+  box-sizing: border-box;
 }
 
-function CandidateAvatar({
-  candidate,
-  size,
-}: {
-  candidate: { name: string; initials: string; image: string };
-  size: number;
-}) {
-  if (candidate.image) {
-    return (
-      <Image
-        src={candidate.image}
-        alt={candidate.name}
-        width={size}
-        height={size}
-        style={{
-          width: size,
-          height: size,
-          borderRadius: Math.round(size * 0.24),
-          objectFit: "cover",
-          border: "1px solid rgba(255,255,255,0.18)",
-          boxShadow: "0 16px 40px rgba(0,0,0,0.32)",
-        }}
-        priority={size > 100}
-      />
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: #07101f;
+  color: #eef6ff;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.shell {
+  min-height: 100vh;
+  background: #07101f;
+}
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  width: 100%;
+  height: 76px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(5, 13, 24, 0.94);
+  backdrop-filter: blur(16px);
+}
+
+.nav-inner {
+  width: min(1180px, calc(100% - 40px));
+  height: 76px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.brand-logo-wrap {
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+}
+
+.brand-logo {
+  width: 40px;
+  height: 40px;
+  display: block;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.brand-text {
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 950;
+  letter-spacing: -0.025em;
+  line-height: 1;
+  white-space: nowrap;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.42);
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 26px;
+  color: #cfe2ff;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.nav-links a:not(.nav-cta) {
+  opacity: 0.88;
+  transition: opacity 160ms ease, color 160ms ease;
+}
+
+.nav-links a:not(.nav-cta):hover {
+  color: #ffffff;
+  opacity: 1;
+}
+
+.nav-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font-weight: 800;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.hero {
+  position: relative;
+}
+
+.hero-bg {
+  position: relative;
+  min-height: calc(100vh - 76px);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  background: url("/images/hero_background_01.png") center right / cover no-repeat;
+}
+
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(6, 16, 31, 0.97) 0%,
+      rgba(6, 16, 31, 0.9) 32%,
+      rgba(6, 16, 31, 0.52) 58%,
+      rgba(6, 16, 31, 0.16) 78%,
+      rgba(6, 16, 31, 0.08) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(6, 16, 31, 0.18) 0%,
+      rgba(6, 16, 31, 0.04) 45%,
+      rgba(6, 16, 31, 0.32) 100%
+    );
+}
+
+.hero-inner,
+.wrap {
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto;
+}
+
+.hero-inner {
+  position: relative;
+  z-index: 2;
+  padding: 92px 0;
+}
+
+.hero-copy {
+  max-width: 650px;
+}
+
+.eyebrow,
+.section-kicker {
+  margin-bottom: 18px;
+  color: #fbbf24;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.section-kicker.dark {
+  color: #0757c9;
+}
+
+h1 {
+  margin: 0;
+  color: #eef8ff;
+  font-size: clamp(48px, 6vw, 82px);
+  line-height: 0.96;
+  font-weight: 850;
+  letter-spacing: -0.065em;
+  text-wrap: balance;
+}
+
+.accent {
+  color: #1473ff;
+}
+
+.lede {
+  max-width: 620px;
+  margin: 24px 0 0;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 19px;
+  line-height: 1.58;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 32px;
+}
+
+.btn {
+  display: inline-flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0 24px;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #1473ff, #0757c9);
+  color: #ffffff;
+  box-shadow: 0 18px 42px rgba(20, 115, 255, 0.28);
+}
+
+.btn-secondary {
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+
+.icon-row,
+.trust-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin-top: 28px;
+}
+
+.icon-row span,
+.trust-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(96, 165, 250, 0.22);
+  border-radius: 999px;
+  padding: 9px 13px;
+  background: rgba(255, 255, 255, 0.055);
+  color: #cfe2ff;
+  font-size: 13px;
+}
+
+#system,
+#outcomes {
+  scroll-margin-top: 96px;
+}
+
+.process-section {
+  position: relative;
+  overflow: hidden;
+  padding: 96px 0 104px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(20, 115, 255, 0.18), transparent 34%),
+    linear-gradient(180deg, #06101f 0%, #081426 100%);
+  color: #ffffff;
+}
+
+.process-section::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55), transparent 72%);
+}
+
+.process-section .wrap {
+  position: relative;
+  z-index: 1;
+}
+
+.process-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: 44px;
+  align-items: end;
+}
+
+.process-hero h2,
+.outcome-heading h2 {
+  margin: 0;
+  font-size: clamp(42px, 5vw, 72px);
+  line-height: 0.95;
+  font-weight: 900;
+  letter-spacing: -0.065em;
+  text-wrap: balance;
+}
+
+.process-hero p,
+.outcome-heading p {
+  margin: 0;
+  color: rgba(224, 238, 255, 0.78);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.role-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 34px;
+}
+
+.role-strip span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #d7e8ff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.process-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-top: 34px;
+}
+
+.process-card {
+  min-height: 292px;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 28px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.045)),
+    rgba(7, 18, 34, 0.82);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+}
+
+.step-number {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 26px;
+  border-radius: 14px;
+  background: #1473ff;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 950;
+  box-shadow: 0 14px 32px rgba(20, 115, 255, 0.28);
+}
+
+.process-card h3 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 21px;
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+.process-card p {
+  margin: 14px 0 0;
+  color: rgba(221, 235, 255, 0.76);
+  line-height: 1.55;
+  font-size: 14px;
+}
+
+.outcome-section {
+  background: #f4f7fb;
+  color: #101827;
+  padding: 96px 0;
+}
+
+.outcome-heading {
+  max-width: 940px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.outcome-heading h2 {
+  color: #0f172a;
+}
+
+.outcome-heading p {
+  max-width: 760px;
+  margin: 20px auto 0;
+  color: #4b5870;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin-top: 42px;
+}
+
+.card-light,
+.metric {
+  border: 1px solid #dce4ef;
+  border-radius: 24px;
+  background: #ffffff;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.07);
+}
+
+.card-light {
+  padding: 28px;
+}
+
+.card-light h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+
+.card-light p {
+  margin: 14px 0 0;
+  color: #526071;
+  line-height: 1.58;
+}
+
+.metric-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.metric {
+  padding: 24px;
+  text-align: center;
+}
+
+.metric strong {
+  display: block;
+  color: #0f172a;
+  font-size: 42px;
+  letter-spacing: -0.05em;
+}
+
+.metric span {
+  display: block;
+  margin-top: 8px;
+  color: #526071;
+  font-size: 14px;
+}
+
+.closing-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  margin-top: 44px;
+  padding: 30px;
+  border-radius: 30px;
+  background:
+    linear-gradient(135deg, rgba(20, 115, 255, 0.16), rgba(7, 16, 31, 0.02)),
+    #ffffff;
+  border: 1px solid #dce4ef;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+}
+
+.closing-band span {
+  color: #0757c9;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.closing-band h3 {
+  margin: 10px 0 0;
+  color: #0f172a;
+  font-size: clamp(28px, 3vw, 42px);
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.closing-band p {
+  max-width: 690px;
+  margin: 12px 0 0;
+  color: #526071;
+  line-height: 1.6;
+}
+
+.footer {
+  padding: 28px 0;
+  background: #0a1220;
+  color: #9fb1cc;
+  font-size: 13px;
+}
+
+.hero-card {
+  padding: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 34px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06)),
+    rgba(8, 15, 28, 0.88);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.46);
+}
+
+.road {
+  position: relative;
+  height: 220px;
+  overflow: hidden;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #172943 0 53%, #0d1529 53% 100%);
+}
+
+.road::before {
+  content: "";
+  position: absolute;
+  inset: 54% 0 auto;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.road::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 62px;
+  height: 3px;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.66) 0 44px,
+    transparent 44px 82px
+  );
+  opacity: 0.65;
+}
+
+.car {
+  position: absolute;
+  left: 50%;
+  top: 94px;
+  width: 220px;
+  height: 80px;
+  transform: translateX(-50%);
+}
+
+.car-body {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 18px;
+  height: 52px;
+  border-radius: 42px 54px 24px 24px;
+  background: linear-gradient(110deg, #e8f2ff 0 42%, #fbbf24 42% 58%, #c6d8ee 58% 100%);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.32);
+}
+
+.car-top {
+  position: absolute;
+  left: 66px;
+  top: 0;
+  width: 94px;
+  height: 48px;
+  border-radius: 46px 46px 4px 4px;
+  background: linear-gradient(180deg, #dbeafe, #9fb5cc);
+}
+
+.wheel {
+  position: absolute;
+  bottom: 0;
+  width: 44px;
+  height: 44px;
+  border: 10px solid #1e293b;
+  border-radius: 999px;
+  background: #94a3b8;
+  z-index: 2;
+}
+
+.wheel.one {
+  left: 28px;
+}
+
+.wheel.two {
+  right: 28px;
+}
+
+.signal-card {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.signal {
+  min-height: 80px;
+  padding: 16px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.signal b {
+  display: block;
+  margin-bottom: 5px;
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.signal span {
+  display: block;
+  color: #bfd6f5;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.shell > .eyebrow,
+.shell > h1,
+.shell > p,
+.shell > h2,
+.shell > ul,
+.shell > .hero-actions,
+.shell > .metric-row,
+.shell > .grid-3,
+.shell > h3,
+.shell > strong,
+.shell > b {
+  width: min(1180px, calc(100% - 40px));
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.shell > .eyebrow {
+  margin-top: 46px;
+}
+
+.shell > h1 {
+  max-width: 1180px;
+  margin-top: 18px;
+  font-size: clamp(54px, 7vw, 94px);
+  line-height: 0.94;
+}
+
+.shell > p {
+  margin-top: 18px;
+  color: #cfe2ff;
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+.shell > h2 {
+  margin-top: 42px;
+  margin-bottom: 16px;
+  color: #ffffff;
+  font-size: 26px;
+  letter-spacing: -0.03em;
+}
+
+.shell > ul {
+  margin-top: 14px;
+  padding: 24px 28px 24px 46px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #e6f0ff;
+  line-height: 1.7;
+}
+
+.shell > ul li strong,
+.shell > ul b {
+  color: #ffffff;
+}
+
+.shell > .metric-row .metric {
+  background: rgba(255, 255, 255, 0.96);
+}
+
+@media (max-width: 980px) {
+  .nav {
+    height: auto;
+  }
+
+  .nav-inner {
+    width: min(100% - 32px, 1180px);
+    height: auto;
+    min-height: 76px;
+    padding: 12px 0;
+    align-items: center;
+  }
+
+  .nav-links {
+    gap: 12px 18px;
+    font-size: 13px;
+  }
+
+  .hero-bg {
+    min-height: auto;
+    background-position: center;
+  }
+
+  .hero-overlay {
+    background: linear-gradient(
+      90deg,
+      rgba(6, 16, 31, 0.96) 0%,
+      rgba(6, 16, 31, 0.84) 55%,
+      rgba(6, 16, 31, 0.58) 100%
     );
   }
 
-  return (
-    <div
-      aria-label={`${candidate.name} initials`}
-      style={{
-        width: size,
-        height: size,
-        borderRadius: Math.round(size * 0.24),
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "linear-gradient(135deg, #1473ff, #0f172a)",
-        color: "#ffffff",
-        fontSize: Math.round(size * 0.34),
-        fontWeight: 950,
-        border: "1px solid rgba(255,255,255,0.18)",
-        boxShadow: "0 16px 40px rgba(0,0,0,0.32)",
-      }}
-    >
-      {candidate.initials}
-    </div>
-  );
+  .hero-inner {
+    padding: 72px 0;
+  }
+
+  .process-hero {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .process-grid,
+  .grid-3,
+  .metric-row {
+    grid-template-columns: 1fr;
+  }
+
+  .process-card {
+    min-height: auto;
+  }
+
+  .closing-band {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .signal-card {
+    grid-template-columns: 1fr;
+  }
 }
 
-function InfoPanel({ title, items }: { title: string; items: string[][] }) {
-  return (
-    <section
-      style={{
-        border: "1px solid rgba(255,255,255,0.12)",
-        borderRadius: 30,
-        padding: 28,
-        background: "rgba(255,255,255,0.055)",
-      }}
-    >
-      <h2 style={{ margin: "0 0 18px", fontSize: 26 }}>{title}</h2>
+@media (max-width: 680px) {
+  .nav-inner,
+  .hero-inner,
+  .wrap,
+  .shell > .eyebrow,
+  .shell > h1,
+  .shell > p,
+  .shell > h2,
+  .shell > ul,
+  .shell > .hero-actions,
+  .shell > .metric-row,
+  .shell > .grid-3 {
+    width: min(100% - 28px, 1180px);
+  }
 
-      <div style={{ display: "grid", gap: 12 }}>
-        {items.map(([label, value]) => (
-          <div
-            key={label}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 18,
-              padding: "14px 16px",
-              borderRadius: 18,
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.09)",
-            }}
-          >
-            <span style={{ color: "#bfd6f5" }}>{label}</span>
-            <strong style={{ color: "#fff", textAlign: "right" }}>{value}</strong>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
+  .nav-inner {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px 16px;
+  }
+
+  .brand {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .brand-logo-wrap {
+    width: 46px;
+    height: 46px;
+    border-radius: 13px;
+  }
+
+  .brand-logo {
+    width: 38px;
+    height: 38px;
+  }
+
+  .brand-text {
+    font-size: 16px;
+  }
+
+  .nav-links {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    font-size: 13px;
+  }
+
+  .nav-cta {
+    min-height: 40px;
+    padding: 0 18px;
+  }
+
+  h1,
+  .shell > h1 {
+    font-size: 48px;
+    letter-spacing: -0.055em;
+  }
+
+  .lede,
+  .process-hero p,
+  .outcome-heading p {
+    font-size: 17px;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .btn {
+    width: 100%;
+  }
+
+  .process-section,
+  .outcome-section {
+    padding: 68px 0;
+  }
+
+  .process-hero h2,
+  .outcome-heading h2 {
+    font-size: 42px;
+    letter-spacing: -0.055em;
+  }
+
+  .process-card,
+  .card-light,
+  .closing-band {
+    border-radius: 22px;
+    padding: 22px;
+  }
+
+  .role-strip span {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .hero-card {
+    padding: 16px;
+    border-radius: 24px;
+  }
+
+  .road {
+    height: 180px;
+  }
+
+  .car {
+    width: 188px;
+    top: 78px;
+  }
 }
