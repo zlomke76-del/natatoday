@@ -16,18 +16,21 @@ const candidates = [
 
 export default function DealerDemoPage() {
   return (
-    <main className="page">
+    <main className="shell">
       <div className="topbar">
         <Nav />
       </div>
 
-      <section className="dashboard">
+      <section className="dashboard wrap">
         <div className="dash-header">
           <div>
             <div className="eyebrow">Dealer demo</div>
             <h1>NATA candidate command center</h1>
-            <p>Static V1 dashboard showing the management experience before Supabase logic is added.</p>
+            <p className="lede">
+              Static V1 dashboard showing the management experience before Supabase logic is added.
+            </p>
           </div>
+
           <Link href="/candidate-demo" className="btn btn-primary">
             Open candidate profile
           </Link>
@@ -52,14 +55,15 @@ export default function DealerDemoPage() {
           </div>
         </div>
 
-        <div className="dash-grid" style={{ marginTop: 18 }}>
+        <div className="dash-grid">
           <aside className="panel">
             <h2>Open roles</h2>
+
             {roles.map((role) => (
               <div className="role" key={role.title}>
                 <div>
                   <strong>{role.title}</strong>
-                  <p style={{ color: "#64748b", margin: "6px 0 0" }}>{role.count} candidates matched</p>
+                  <p>{role.count} candidates matched</p>
                 </div>
                 <span className="badge">{role.priority}</span>
               </div>
@@ -68,6 +72,7 @@ export default function DealerDemoPage() {
 
           <section className="panel">
             <h2>Candidate pipeline</h2>
+
             {candidates.map((candidate) => (
               <article className="candidate" key={candidate.name}>
                 <div>
@@ -77,7 +82,10 @@ export default function DealerDemoPage() {
                     <span style={{ width: `${candidate.progress}%` }} />
                   </div>
                 </div>
-                <span className={`badge ${candidate.badge}`}>{candidate.status}</span>
+
+                <span className={`badge ${candidate.badge}`}>
+                  {candidate.status}
+                </span>
               </article>
             ))}
           </section>
