@@ -28,66 +28,49 @@ export default function Home() {
     <main className="shell">
       <Nav />
 
-      <section className="hero">
-        <div className="hero-copy">
-          <div className="eyebrow">Automotive recruiting + training</div>
+      {/* HERO */}
+      <section className="hero hero-bg">
+        <div className="hero-overlay" />
 
-          <h1>Build the next dealership workforce.</h1>
+        <div className="hero-inner">
+          <div className="hero-copy">
+            <div className="eyebrow">Automotive recruiting + training</div>
 
-          <p className="lede">
-            NATA Today helps dealers recruit, train, certify, and place stronger candidates with a cleaner,
-            faster, more visible hiring experience.
-          </p>
+            <h1>
+              America’s #1 Automotive Recruiting & Training{" "}
+              <span className="accent">Platform</span>
+            </h1>
 
-          <div className="hero-actions">
-            <Link className="btn btn-primary" href="/dealer-demo">
-              View Dealer Demo
-            </Link>
-            <Link className="btn btn-secondary" href="/candidate-demo">
-              See Candidate Profile
-            </Link>
-          </div>
+            <p className="lede">
+              We recruit the right people, train them to perform, and help your dealership win.
+            </p>
 
-          <div className="trust-row" aria-label="NATA Today capabilities">
-            <span className="trust-pill">Recruiting pipeline</span>
-            <span className="trust-pill">Training visibility</span>
-            <span className="trust-pill">Certified-ready candidates</span>
-          </div>
-        </div>
-
-        <div className="hero-card" aria-label="Automotive workforce visual">
-          <div className="road">
-            <div className="car">
-              <div className="car-top" />
-              <div className="car-body" />
-              <div className="wheel one" />
-              <div className="wheel two" />
+            <div className="hero-actions">
+              <Link className="btn btn-primary" href="/dealer-demo">
+                View Dealer Demo
+              </Link>
+              <Link className="btn btn-secondary" href="/pricing">
+                See Pricing
+              </Link>
             </div>
-          </div>
 
-          <div className="signal-card">
-            <div className="signal">
-              <b>12 active candidates</b>
-              <span>in current dealer pipeline</span>
-            </div>
-            <div className="signal">
-              <b>7 certified ready</b>
-              <span>prepared for interviews</span>
-            </div>
-            <div className="signal">
-              <b>3 open dealer roles</b>
-              <span>matched by priority</span>
+            <div className="icon-row">
+              <span>Recruit</span>
+              <span>Train</span>
+              <span>Certify</span>
+              <span>Place</span>
+              <span>Track</span>
             </div>
           </div>
         </div>
       </section>
 
+      {/* SYSTEM */}
       <section id="system" className="section-light">
         <div className="wrap">
           <h2 className="section-title">Not another hiring form. A clearer operating layer.</h2>
           <p className="section-copy">
-            The V1 demo keeps the logic simple on purpose. It shows the face of the future first:
-            dealer visibility, candidate readiness, and a system that can grow into real data later.
+            Dealer visibility, candidate readiness, and a system designed to scale into real-world data.
           </p>
 
           <div className="grid-3">
@@ -101,13 +84,10 @@ export default function Home() {
         </div>
       </section>
 
+      {/* OUTCOMES */}
       <section id="outcomes" className="section-light section-tight">
         <div className="wrap">
           <h2 className="section-title">What dealers should see immediately.</h2>
-          <p className="section-copy">
-            A modern NATA Today should make the value tangible before a sales call: who is ready,
-            what roles are open, and what action should happen next.
-          </p>
 
           <div className="metric-row">
             {metrics.map((metric) => (
@@ -121,7 +101,7 @@ export default function Home() {
       </section>
 
       <footer className="footer">
-        <div className="wrap">NATA Today V1 demo · Static Next.js build · Ready for Vercel</div>
+        <div className="wrap">NATA Today · Powered by clarity</div>
       </footer>
     </main>
   );
