@@ -3,25 +3,53 @@ import Nav from "./components/Nav";
 
 const cards = [
   {
-    title: "Recruit with structure",
-    copy: "Turn interest into organized candidate profiles with role fit, availability, and dealership readiness visible from the start.",
+    eyebrow: "Recruit",
+    title: "Source dealership-ready people before your team burns time.",
+    copy: "NATA Today turns raw interest into structured candidate profiles with role fit, availability, communication notes, and readiness signals visible from the start.",
   },
   {
-    title: "Train with purpose",
-    copy: "Move beyond passive content. Show progress, completion, and readiness signals dealers can actually use.",
+    eyebrow: "Train",
+    title: "Move candidates through a visible readiness path.",
+    copy: "Managers see who is learning, who is stalling, and who is ready to meet the store. No guessing. No spreadsheet chasing. No black box pipeline.",
   },
   {
-    title: "Place with confidence",
-    copy: "Give managers a clear view of who is interview-ready, who needs work, and where every candidate stands.",
+    eyebrow: "Place",
+    title: "Only send people who are prepared for the dealership floor.",
+    copy: "We pre-screen, interview, train, and organize candidates before the in-person interview is arranged with the dealership.",
   },
 ];
 
 const metrics = [
-  { value: "24", label: "candidates in pipeline" },
-  { value: "8", label: "ready for interview" },
-  { value: "91%", label: "training completion" },
-  { value: "3", label: "priority roles open" },
+  { value: "24", label: "candidates organized in pipeline" },
+  { value: "8", label: "ready for dealer interview" },
+  { value: "91%", label: "training completion visibility" },
+  { value: "3", label: "priority roles being filled" },
 ];
+
+const workflow = [
+  {
+    step: "01",
+    title: "Candidate interest comes in",
+    copy: "Applicants, referrals, walk-ins, and recruiting campaigns feed into one structured system instead of scattered inboxes and notes.",
+  },
+  {
+    step: "02",
+    title: "NATA screens and interviews first",
+    copy: "The dealership does not waste time guessing who is serious. Candidates are reviewed, organized, and advanced before the store gets involved.",
+  },
+  {
+    step: "03",
+    title: "Training creates readiness signals",
+    copy: "Progress, completion, confidence, and role alignment become visible so the dealer knows who is actually prepared.",
+  },
+  {
+    step: "04",
+    title: "Dealer receives interview-ready candidates",
+    copy: "The store gets a cleaner handoff: who they are, what they fit, where they stand, and why they are worth meeting in person.",
+  },
+];
+
+const roles = ["Sales Consultant", "BDC Representative", "Service Advisor", "Parts Advisor"];
 
 export default function Home() {
   return (
@@ -37,29 +65,28 @@ export default function Home() {
             <div className="eyebrow">Automotive recruiting + training</div>
 
             <h1>
-              America’s #1 Automotive Recruiting & Training{" "}
-              <span className="accent">Platform</span>
+              Your next dealership hire should arrive already moving.
             </h1>
 
             <p className="lede">
-              We recruit the right people, train them to perform, and help your dealership win.
+              NATA Today recruits, pre-screens, interviews, trains, and organizes candidates before your dealership spends time on the in-person interview.
             </p>
 
             <div className="hero-actions">
               <Link className="btn btn-primary" href="/dealer-demo">
                 View Dealer Demo
               </Link>
-              <Link className="btn btn-secondary" href="/pricing">
-                See Pricing
+              <Link className="btn btn-secondary" href="/candidate-demo">
+                View Candidate Path
               </Link>
             </div>
 
             <div className="icon-row">
               <span>Recruit</span>
+              <span>Screen</span>
+              <span>Interview</span>
               <span>Train</span>
-              <span>Certify</span>
               <span>Place</span>
-              <span>Track</span>
             </div>
           </div>
         </div>
@@ -68,16 +95,52 @@ export default function Home() {
       {/* SYSTEM */}
       <section id="system" className="section-light">
         <div className="wrap">
-          <h2 className="section-title">Not another hiring form. A clearer operating layer.</h2>
+          <div className="section-kicker">The operating layer</div>
+          <h2 className="section-title">
+            Dealers do not need another form. They need fewer bad interviews.
+          </h2>
           <p className="section-copy">
-            Dealer visibility, candidate readiness, and a system designed to scale into real-world data.
+            The old process makes managers chase applicants, judge readiness manually, and waste interviews on people who were never prepared. NATA Today moves that work upstream.
           </p>
 
           <div className="grid-3">
             {cards.map((card) => (
               <article className="card-light" key={card.title}>
+                <span>{card.eyebrow}</span>
                 <h3>{card.title}</h3>
                 <p>{card.copy}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* WORKFLOW */}
+      <section className="section-dark">
+        <div className="wrap split-section">
+          <div>
+            <div className="section-kicker">Where the friction gets removed</div>
+            <h2 className="section-title dark-title">
+              We do the work before the dealer says yes to an interview.
+            </h2>
+            <p className="section-copy dark-copy">
+              The dealership still makes the hiring decision. NATA Today improves what reaches that decision: cleaner candidates, clearer readiness, and better use of manager time.
+            </p>
+            <div className="role-row">
+              {roles.map((role) => (
+                <span key={role}>{role}</span>
+              ))}
+            </div>
+          </div>
+
+          <div className="workflow-card">
+            {workflow.map((item) => (
+              <article className="workflow-step" key={item.step}>
+                <strong>{item.step}</strong>
+                <div>
+                  <h3>{item.title}</h3>
+                  <p>{item.copy}</p>
+                </div>
               </article>
             ))}
           </div>
@@ -87,7 +150,11 @@ export default function Home() {
       {/* OUTCOMES */}
       <section id="outcomes" className="section-light section-tight">
         <div className="wrap">
-          <h2 className="section-title">What dealers should see immediately.</h2>
+          <div className="section-kicker">What the dealer sees</div>
+          <h2 className="section-title">A cleaner pipeline. A sharper handoff. A better interview.</h2>
+          <p className="section-copy">
+            The value is not more applicants. The value is knowing who is worth the manager’s time and why.
+          </p>
 
           <div className="metric-row">
             {metrics.map((metric) => (
@@ -96,6 +163,18 @@ export default function Home() {
                 <span>{metric.label}</span>
               </div>
             ))}
+          </div>
+
+          <div className="closing-panel">
+            <div>
+              <h2>Built for dealerships that need people ready to perform.</h2>
+              <p>
+                Recruiting is not the finish line. Readiness is. NATA Today gives dealers a more disciplined way to find, prepare, and place automotive talent.
+              </p>
+            </div>
+            <Link className="btn btn-primary" href="/dealer-demo">
+              See the Dealer View
+            </Link>
           </div>
         </div>
       </section>
