@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import Nav from "../components/Nav";
 
@@ -10,40 +11,56 @@ const roles = [
 
 const candidates = [
   {
+    slug: "derrick-hayes",
     name: "Derrick Hayes",
+    initials: "DH",
     role: "Service Technician",
     status: "Master Certified",
     progress: 100,
     badge: "#1473ff",
     scheduled: "Thursday · 9:00 AM",
     certification: "ASE Master · CDJR Level 3",
+    image: "/images/derrick_hayes_01.png",
+    highlight: "Technician candidate ready",
   },
   {
+    slug: "maria-lopez",
     name: "Maria Lopez",
+    initials: "ML",
     role: "Sales Consultant",
     status: "Interview Ready",
     progress: 100,
     badge: "#22c55e",
     scheduled: "Thursday · 10:30 AM",
     certification: "NATA showroom ready",
+    image: "/images/maria_lopez_01.png",
+    highlight: "Sales candidate ready",
   },
   {
+    slug: "ethan-brooks",
     name: "Ethan Brooks",
+    initials: "EB",
     role: "BDC Representative",
     status: "Final Screen",
     progress: 82,
     badge: "#fbbf24",
     scheduled: "Scheduling now",
     certification: "Phone screen complete",
+    image: "",
+    highlight: "BDC candidate in final screen",
   },
   {
+    slug: "jordan-miles",
     name: "Jordan Miles",
+    initials: "JM",
     role: "Service Advisor",
     status: "Pre-Screened",
     progress: 56,
     badge: "#60a5fa",
     scheduled: "Needs training completion",
     certification: "Lane readiness in progress",
+    image: "",
+    highlight: "Advisor candidate in progress",
   },
 ];
 
@@ -121,11 +138,12 @@ export default function DealerDemoPage() {
             >
               <span className="trust-pill">Technician pipeline</span>
               <span className="trust-pill">Certification level visible</span>
+              <span className="trust-pill">Multiple demo profiles</span>
               <span className="trust-pill">Interviews arranged for you</span>
             </div>
 
             <div className="hero-actions">
-              <Link href="/candidate-demo" className="btn btn-primary">
+              <Link href="/candidate-demo?profile=derrick-hayes" className="btn btn-primary">
                 View technician profile
               </Link>
 
@@ -159,14 +177,22 @@ export default function DealerDemoPage() {
                 fontSize: 13,
               }}
             >
-              Technician candidate ready
+              {featuredCandidate.highlight}
             </div>
 
-            <h2 style={{ margin: "22px 0 8px", fontSize: 34, lineHeight: 1 }}>
-              {featuredCandidate.name}
-            </h2>
+            <div style={{ display: "flex", gap: 18, alignItems: "center", marginTop: 24 }}>
+              <CandidateAvatar candidate={featuredCandidate} size={92} />
+              <div>
+                <h2 style={{ margin: "0 0 8px", fontSize: 34, lineHeight: 1 }}>
+                  {featuredCandidate.name}
+                </h2>
+                <p style={{ margin: 0, color: "#fbbf24", fontWeight: 900 }}>
+                  {featuredCandidate.certification}
+                </p>
+              </div>
+            </div>
 
-            <p style={{ color: "#bfd6f5", lineHeight: 1.6, margin: 0 }}>
+            <p style={{ color: "#bfd6f5", lineHeight: 1.6, margin: "22px 0 0" }}>
               A service technician profile with certification level, experience, readiness, and interview timing already organized.
             </p>
 
@@ -321,10 +347,10 @@ export default function DealerDemoPage() {
             }}
           >
             <h2 style={{ margin: "0 0 8px", fontSize: 28 }}>
-              Interview-ready candidates
+              Demo candidate profiles
             </h2>
             <p style={{ color: "#bfd6f5", lineHeight: 1.55, marginTop: 0 }}>
-              Every candidate below has moved through NATA screening, readiness review, and interview coordination.
+              Click into different profiles to show the dealer how readiness changes by role. Technician certification stays front and center where it matters.
             </p>
 
             <div style={{ display: "grid", gap: 12 }}>
@@ -333,8 +359,8 @@ export default function DealerDemoPage() {
                   key={candidate.name}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr auto",
-                    gap: 18,
+                    gridTemplateColumns: "auto 1fr auto",
+                    gap: 16,
                     alignItems: "center",
                     padding: 18,
                     borderRadius: 22,
@@ -342,6 +368,8 @@ export default function DealerDemoPage() {
                     border: "1px solid rgba(255,255,255,0.10)",
                   }}
                 >
+                  <CandidateAvatar candidate={candidate} size={58} />
+
                   <div>
                     <h3 style={{ margin: 0, fontSize: 20 }}>
                       {candidate.name}
@@ -382,19 +410,34 @@ export default function DealerDemoPage() {
                     </div>
                   </div>
 
-                  <span
-                    style={{
-                      borderRadius: 999,
-                      padding: "9px 13px",
-                      background: candidate.badge,
-                      color: "#fff",
-                      fontSize: 12,
-                      fontWeight: 900,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {candidate.status}
-                  </span>
+                  <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
+                    <span
+                      style={{
+                        borderRadius: 999,
+                        padding: "9px 13px",
+                        background: candidate.badge,
+                        color: "#fff",
+                        fontSize: 12,
+                        fontWeight: 900,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {candidate.status}
+                    </span>
+
+                    <Link
+                      href={`/candidate-demo?profile=${candidate.slug}`}
+                      style={{
+                        color: "#ffffff",
+                        fontSize: 13,
+                        fontWeight: 900,
+                        textDecoration: "underline",
+                        textUnderlineOffset: 4,
+                      }}
+                    >
+                      View profile
+                    </Link>
+                  </div>
                 </article>
               ))}
             </div>
@@ -402,6 +445,55 @@ export default function DealerDemoPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function CandidateAvatar({
+  candidate,
+  size,
+}: {
+  candidate: { name: string; initials: string; image: string };
+  size: number;
+}) {
+  if (candidate.image) {
+    return (
+      <Image
+        src={candidate.image}
+        alt={candidate.name}
+        width={size}
+        height={size}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: Math.round(size * 0.24),
+          objectFit: "cover",
+          border: "1px solid rgba(255,255,255,0.18)",
+          boxShadow: "0 16px 40px rgba(0,0,0,0.32)",
+        }}
+      />
+    );
+  }
+
+  return (
+    <div
+      aria-label={`${candidate.name} initials`}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: Math.round(size * 0.24),
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "linear-gradient(135deg, #1473ff, #0f172a)",
+        color: "#ffffff",
+        fontSize: Math.round(size * 0.34),
+        fontWeight: 950,
+        border: "1px solid rgba(255,255,255,0.18)",
+        boxShadow: "0 16px 40px rgba(0,0,0,0.32)",
+      }}
+    >
+      {candidate.initials}
+    </div>
   );
 }
 
