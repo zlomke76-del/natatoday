@@ -163,21 +163,24 @@ export default async function JobPage({
 
           <aside
             style={{
-              borderRadius: 24,
-              padding: 24,
+              borderRadius: 28,
+              padding: 26,
               background: "#f7f9fc",
               color: "#111",
               position: "sticky",
               top: 100,
+              boxShadow: "0 24px 80px rgba(0,0,0,0.22)",
             }}
           >
-            <h3 style={{ marginTop: 0, fontSize: 26 }}>Apply for this role</h3>
+            <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: 28 }}>
+              Apply for this role
+            </h3>
 
             <p
               style={{
                 fontSize: 13,
-                color: "#555",
-                marginBottom: 16,
+                color: "#4b5563",
+                marginBottom: 18,
                 lineHeight: 1.45,
               }}
             >
@@ -199,45 +202,43 @@ export default async function JobPage({
 
               <div style={{ marginTop: 12 }}>
                 <label>
-                  Short note
-                  <textarea name="cover_note" rows={3} style={inputStyle} />
+                  <span style={labelStyle}>Short note</span>
+                  <textarea
+                    name="cover_note"
+                    rows={3}
+                    placeholder="Tell us briefly why this role fits you."
+                    style={inputStyle}
+                  />
                 </label>
               </div>
 
-              <div style={{ marginTop: 14 }}>
-                <label>
-                  Profile photo{" "}
-                  <span style={{ color: "#666" }}>(recommended)</span>
-                  <input
-                    type="file"
-                    name="profile_photo"
-                    accept="image/*"
-                    style={{ marginTop: 6, display: "block" }}
-                  />
-                  <span
-                    style={{
-                      display: "block",
-                      fontSize: 12,
-                      color: "#666",
-                      marginTop: 6,
-                    }}
-                  >
-                    Helps the team recognize and remember candidates.
-                  </span>
-                </label>
-              </div>
+              <UploadField
+                label="Profile photo"
+                name="profile_photo"
+                accept="image/*"
+                recommended
+                helper="Optional, but helps the recruiting team recognize and remember you."
+              />
+
+              <UploadField
+                label="Resume"
+                name="resume"
+                accept=".pdf,.doc,.docx"
+                helper="Upload a PDF, DOC, or DOCX resume."
+              />
 
               <button
                 style={{
-                  marginTop: 18,
+                  marginTop: 20,
                   width: "100%",
-                  padding: "14px",
+                  padding: "15px",
                   borderRadius: 999,
                   background: "#1473ff",
                   color: "#fff",
-                  fontWeight: 900,
+                  fontWeight: 950,
                   border: "none",
                   cursor: "pointer",
+                  fontSize: 15,
                 }}
               >
                 Send application
@@ -286,17 +287,89 @@ function Input({
   return (
     <div style={{ marginTop: 12 }}>
       <label>
-        {label}
+        <span style={labelStyle}>{label}</span>
         <input name={name} type={type} required={required} style={inputStyle} />
       </label>
     </div>
   );
 }
 
+function UploadField({
+  label,
+  name,
+  accept,
+  helper,
+  recommended = false,
+}: {
+  label: string;
+  name: string;
+  accept: string;
+  helper: string;
+  recommended?: boolean;
+}) {
+  return (
+    <div style={{ marginTop: 14 }}>
+      <label>
+        <span style={labelStyle}>
+          {label}{" "}
+          {recommended ? (
+            <span style={{ color: "#6b7280", fontWeight: 600 }}>
+              (recommended)
+            </span>
+          ) : null}
+        </span>
+
+        <div
+          style={{
+            marginTop: 7,
+            border: "1px dashed #b8c2d6",
+            borderRadius: 16,
+            background: "#fff",
+            padding: "16px",
+          }}
+        >
+          <input
+            type="file"
+            name={name}
+            accept={accept}
+            style={{
+              width: "100%",
+              color: "#111827",
+              fontSize: 13,
+            }}
+          />
+
+          <span
+            style={{
+              display: "block",
+              marginTop: 8,
+              color: "#6b7280",
+              fontSize: 12,
+              lineHeight: 1.35,
+            }}
+          >
+            {helper}
+          </span>
+        </div>
+      </label>
+    </div>
+  );
+}
+
+const labelStyle = {
+  display: "block",
+  color: "#111827",
+  fontWeight: 800,
+  marginBottom: 6,
+};
+
 const inputStyle = {
   width: "100%",
-  padding: "10px",
-  borderRadius: 8,
-  border: "1px solid #ccc",
+  padding: "11px 12px",
+  borderRadius: 10,
+  border: "1px solid #cfd7e6",
   marginTop: 6,
+  outline: "none",
+  background: "#fff",
+  color: "#111",
 };
