@@ -53,6 +53,9 @@ export default function Nav() {
           <Link href="/dealer-demo" onClick={closeMenu}>
             Dealer Demo
           </Link>
+          <Link href="/careers" onClick={closeMenu}>
+            Careers
+          </Link>
           <Link className="nav-cta" href="/candidate-demo" onClick={closeMenu}>
             View Candidate
           </Link>
