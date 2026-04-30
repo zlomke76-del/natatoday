@@ -1,6 +1,5 @@
 import Link from "next/link";
 import Nav from "../components/Nav";
-import { supabaseAdmin } from "../../lib/supabaseAdmin";
 
 type Job = {
   id: string;
@@ -10,50 +9,31 @@ type Job = {
   type: string | null;
   salary: string | null;
   description: string | null;
-  requirements: string | null;
   dealer_slug: string | null;
-  created_at: string | null;
   publish_mode: string | null;
-  public_dealer_name: string | null;
-  public_location: string | null;
-  confidential_note: string | null;
   published_by: string | null;
-  publish_status: string | null;
+  display_dealer?: string;
+  display_location?: string;
+  is_confidential?: boolean;
+  confidential_note?: string | null;
 };
 
-function getDealerName(job: Job) {
-  if (job.publish_mode === "confidential") {
-    return "Confidential Dealership";
-  }
-
-  return job.public_dealer_name || "Jersey Village Chrysler Jeep Dodge Ram";
-}
-
-function getDisplayLocation(job: Job) {
-  if (job.publish_mode === "confidential") {
-    return job.public_location || "Houston, TX Market";
-  }
-
-  return job.public_location || job.location || "Dealership location";
-}
+export const dynamic = "force-dynamic";
 
 async function getJobs(): Promise<Job[]> {
-  const { data, error } = await supabaseAdmin
-    .schema("nata")
-    .from("jobs")
-    .select(
-      "id,title,slug,location,type,salary,description,requirements,dealer_slug,created_at,publish_mode,public_dealer_name,public_location,confidential_note,published_by,publish_status"
-    )
-    .eq("is_active", true)
-    .eq("publish_status", "published")
-    .order("created_at", { ascending: false });
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://natatoday.vercel.app";
 
-  if (error) {
-    console.error("Failed to load published dealership jobs:", error);
+  const res = await fetch(`${appUrl}/api/nata/jobs`, {
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    console.error("Failed to load jobs:", res.status);
     return [];
   }
 
-  return data || [];
+  const data = await res.json();
+  return data.jobs || [];
 }
 
 export default async function CareersPage() {
@@ -98,9 +78,17 @@ export default async function CareersPage() {
             </div>
           ) : (
             jobs.map((job) => {
-              const isConfidential = job.publish_mode === "confidential";
-              const dealerName = getDealerName(job);
-              const displayLocation = getDisplayLocation(job);
+              const isConfidential = Boolean(job.is_confidential);
+              const dealerName =
+                job.display_dealer ||
+                (isConfidential
+                  ? "Confidential Dealership"
+                  : "Jersey Village Chrysler Jeep Dodge Ram");
+
+              const location =
+                job.display_location ||
+                job.location ||
+                "Dealership location";
 
               return (
                 <Link
@@ -163,7 +151,7 @@ export default async function CareersPage() {
                       <h2 style={{ margin: 0 }}>{job.title}</h2>
 
                       <p style={{ margin: "10px 0 0", color: "#cfe2ff" }}>
-                        {dealerName} · {displayLocation}
+                        {dealerName} · {location}
                         {job.type ? ` · ${job.type}` : ""}
                       </p>
 
@@ -193,13 +181,7 @@ export default async function CareersPage() {
                       ) : null}
                     </div>
 
-                    <div
-                      style={{
-                        display: "grid",
-                        gap: 12,
-                        justifyItems: "end",
-                      }}
-                    >
+                    <div style={{ display: "grid", gap: 12, justifyItems: "end" }}>
                       {job.salary ? (
                         <div
                           style={{
