@@ -23,9 +23,10 @@ type ManagerInterviewCandidate = {
   summary: string;
   notes: string[];
   packet: {
-    resume: string;
-    donThoughts: string;
-    solaceSummary: string;
+    resumeLabel: string;
+    resumeUrl: string;
+    nataNotes: string;
+    interviewQuestions: string[];
     verificationItems: string[];
   };
 };
@@ -102,11 +103,16 @@ const managerInterviewCandidates: ManagerInterviewCandidate[] = [
       "Strong communication fit, sales background, and availability confirmed.",
     notes: ["Interview ready", "Retail sales experience", "Availability confirmed"],
     packet: {
-      resume: "Resume on file",
-      donThoughts:
-        "Strong phone presence, confident retail background, available weekends, compensation expectations aligned.",
-      solaceSummary:
-        "Recommended for dealer interview. Candidate shows strong communication, availability, and sales readiness signals.",
+      resumeLabel: "Open Maria Lopez resume",
+      resumeUrl: "/resumes/maria-lopez-resume.html",
+      nataNotes:
+        "NATA review: Maria presents as a credible early-stage sales hire with strong customer presence, consistent follow-up habits, weekend availability, and experience explaining higher-consideration products. Solace recommends using the manager interview to validate dealership pace, CRM discipline, coachability, prior sales volume, and comfort with phone/text follow-up expectations before offer discussion.",
+      interviewQuestions: [
+        "Walk me through how you follow up with a customer who is interested but not ready to buy today.",
+        "Tell me about a time you had to explain a higher-priced product to a hesitant customer.",
+        "How do you stay organized when you have multiple customers, calls, and appointments in motion?",
+        "What would help you ramp quickly in a Jeep, Ram, and used-inventory sales environment?"
+      ],
       verificationItems: [
         "Confirm Saturday schedule",
         "Review prior sales volume",
@@ -127,11 +133,15 @@ const managerInterviewCandidates: ManagerInterviewCandidate[] = [
       "Strong technician experience. Certification documentation needs final confirmation.",
     notes: ["8 years experience", "Certification pending", "Good fixed-ops fit"],
     packet: {
-      resume: "Resume on file",
-      donThoughts:
-        "Experienced technician with strong shop background. Needs certification documents confirmed before final offer.",
-      solaceSummary:
-        "Advance with verification. Candidate may be a strong service fit if credentials and availability are confirmed.",
+      resumeLabel: "Resume pending final packet",
+      resumeUrl: "",
+      nataNotes:
+        "NATA review: James has promising technician background, but this packet should remain internal until certification documents, tool availability, and compensation structure are confirmed. Do not surface to manager board until packet is ready and the dealer interview is scheduled.",
+      interviewQuestions: [
+        "Which diagnostic and repair categories are you strongest in?",
+        "What certifications can you provide before the manager interview?",
+        "What flat-rate or hourly structure are you targeting?"
+      ],
       verificationItems: [
         "Confirm ASE/OEM certifications",
         "Confirm tool availability",
@@ -152,11 +162,15 @@ const managerInterviewCandidates: ManagerInterviewCandidate[] = [
       "Entry-level candidate. Training path and availability need confirmation before advancing.",
     notes: ["Entry-level pathway", "Training incomplete", "Availability missing"],
     packet: {
-      resume: "Resume on file",
-      donThoughts:
-        "Motivated candidate, but not enough confirmed information yet for a final dealer interview recommendation.",
-      solaceSummary:
-        "Hold for more information. Candidate may fit a training pathway if availability and baseline skills are confirmed.",
+      resumeLabel: "Resume pending final packet",
+      resumeUrl: "",
+      nataNotes:
+        "NATA review: Tyler may be a future training-path candidate, but the current state is insufficient for manager handoff. Availability, training interest, and baseline technical comfort should be verified before the dealer sees this candidate.",
+      interviewQuestions: [
+        "What kind of automotive training path are you looking for?",
+        "What schedule can you reliably support?",
+        "What hands-on technical experience do you already have?"
+      ],
       verificationItems: [
         "Confirm schedule",
         "Confirm training interest",
@@ -547,7 +561,7 @@ export default function DealerDashboardPage({ params, searchParams }: PageProps)
             <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
               <ReviewPill
                 title="Packet ready"
-                copy="Resume, Don's notes, Solace summary, and verification items are prepared."
+                copy="Resume, NATA notes, suggested manager questions, and verification items are prepared."
               />
               <ReviewPill
                 title="Interview scheduled"
@@ -799,14 +813,20 @@ export default function DealerDashboardPage({ params, searchParams }: PageProps)
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                        gridTemplateColumns: "minmax(0, 0.85fr) minmax(0, 1.15fr)",
                         gap: 12,
                         marginTop: 14,
                       }}
                     >
-                      <PacketBlock title="Resume" copy={candidate.packet.resume} />
-                      <PacketBlock title="Don's notes" copy={candidate.packet.donThoughts} />
-                      <PacketBlock title="Solace summary" copy={candidate.packet.solaceSummary} />
+                      <ResumeBlock
+                        label={candidate.packet.resumeLabel}
+                        url={candidate.packet.resumeUrl}
+                      />
+                      <QuestionBlock questions={candidate.packet.interviewQuestions} />
+                    </div>
+
+                    <div style={{ marginTop: 12 }}>
+                      <PacketBlock title="NATA notes" copy={candidate.packet.nataNotes} />
                     </div>
 
                     <div style={{ marginTop: 14 }}>
@@ -1003,6 +1023,81 @@ function Metric({ label, value }: { label: string; value: string | number }) {
       <span style={{ display: "block", color: "#9fb4d6", fontSize: 12 }}>
         {label}
       </span>
+    </div>
+  );
+}
+
+function ResumeBlock({ label, url }: { label: string; url: string }) {
+  return (
+    <div
+      style={{
+        padding: 14,
+        borderRadius: 16,
+        background: "rgba(5,10,18,0.5)",
+        border: "1px solid rgba(255,255,255,0.08)",
+      }}
+    >
+      <strong style={{ color: "#fff", display: "block" }}>Resume</strong>
+      {url ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: "inline-flex",
+            marginTop: 10,
+            color: "#93c5fd",
+            fontWeight: 900,
+            textDecoration: "none",
+          }}
+        >
+          {label} →
+        </a>
+      ) : (
+        <span
+          style={{
+            color: "#bfd6f5",
+            display: "block",
+            marginTop: 6,
+            fontSize: 13,
+            lineHeight: 1.45,
+          }}
+        >
+          {label}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function QuestionBlock({ questions }: { questions: string[] }) {
+  return (
+    <div
+      style={{
+        padding: 14,
+        borderRadius: 16,
+        background: "rgba(5,10,18,0.5)",
+        border: "1px solid rgba(255,255,255,0.08)",
+      }}
+    >
+      <strong style={{ color: "#fff", display: "block" }}>
+        Suggested manager questions
+      </strong>
+      <ol
+        style={{
+          margin: "8px 0 0",
+          paddingLeft: 18,
+          color: "#bfd6f5",
+          fontSize: 13,
+          lineHeight: 1.45,
+        }}
+      >
+        {questions.map((question) => (
+          <li key={question} style={{ marginTop: 6 }}>
+            {question}
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }
