@@ -310,7 +310,7 @@ function buildNataNotes(application: AnyRow, role: string) {
   return `NATA review: ${summary}${fitScoreLine} Use the manager interview to verify role fit, availability, compensation alignment, and any remaining concerns before a final hiring decision.`;
 }
 
-function toManagerCandidate(application: AnyRow, job: AnyRow): ManagerCandidate | null {
+function toManagerCandidate(application: AnyRow, job: AnyRow | undefined): ManagerCandidate | null {
   const status = getApplicationStatus(application);
   const dealerInterviewAt = getDealerInterviewAt(application);
 
