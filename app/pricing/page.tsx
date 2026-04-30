@@ -35,6 +35,46 @@ const volumeOptions = [
   "16+ dealerships / group",
 ];
 
+const programLevels = [
+  {
+    name: "Starter Pipeline",
+    price: "$995",
+    note: "Best for one store with light-to-moderate hiring needs.",
+    items: [
+      "Monthly recruiting pipeline access",
+      "Submit active hiring requests",
+      "Sales, BDC, advisor, parts, and technician roles",
+      "Candidate organization and basic screening",
+      "Interview-ready handoff support",
+    ],
+  },
+  {
+    name: "Active Pipeline",
+    price: "$1,295",
+    badge: "Most popular",
+    note: "Best for stores actively hiring across sales and fixed ops.",
+    items: [
+      "Everything in Starter Pipeline",
+      "Expanded role request support",
+      "Technician and advisor priority focus",
+      "Candidate pre-screening and readiness review",
+      "Ongoing pipeline movement month to month",
+    ],
+  },
+  {
+    name: "Full Pipeline Coverage",
+    price: "$1,595",
+    note: "Best for high-volume stores or groups with ongoing hiring pressure.",
+    items: [
+      "Everything in Active Pipeline",
+      "Multi-role hiring request coverage",
+      "Master Certified technician priority",
+      "OEM / ASE visibility support",
+      "Higher-touch recruiting and interview coordination",
+    ],
+  },
+];
+
 export default function PricingIntakePage() {
   return (
     <main className="shell">
@@ -50,7 +90,7 @@ export default function PricingIntakePage() {
           }}
         >
           <div>
-            <div className="eyebrow">Monthly dealer enrollment</div>
+            <div className="eyebrow">Monthly dealer program</div>
 
             <h1 style={{ fontSize: "clamp(44px,6vw,72px)", lineHeight: 0.95 }}>
               Ongoing recruiting support for your dealership pipeline.
@@ -111,8 +151,9 @@ export default function PricingIntakePage() {
                   fontSize: 15,
                 }}
               >
-                Your dealership stays on the program month to month. When you
-                need technicians, advisors, salespeople, BDC, or parts
+                This is not a one-time applicant list or a static training
+                package. Your dealership stays on the program month to month.
+                When you need technicians, advisors, salespeople, BDC, or parts
                 candidates, you submit the request and we help screen, organize,
                 and prepare candidates before your managers spend time
                 interviewing.
@@ -161,7 +202,7 @@ export default function PricingIntakePage() {
                 marginBottom: 10,
               }}
             >
-              Enrollment starts here
+              Program starts here
             </div>
 
             <h2
@@ -196,12 +237,182 @@ export default function PricingIntakePage() {
               <span>✓ Dealer group setup available</span>
               <span>✓ Interview-ready handoff focus</span>
             </div>
+
+            <div
+              style={{
+                marginTop: 22,
+                paddingTop: 18,
+                borderTop: "1px solid rgba(255,255,255,0.1)",
+              }}
+            >
+              <Link className="btn btn-primary" href="#enrollment">
+                Start my pipeline
+              </Link>
+            </div>
           </aside>
         </div>
 
+        <section style={{ marginTop: 54 }}>
+          <div style={{ maxWidth: 760 }}>
+            <div className="eyebrow">Program levels</div>
+
+            <h2
+              style={{
+                margin: 0,
+                color: "#fff",
+                fontSize: "clamp(36px,4vw,54px)",
+                lineHeight: 1,
+                letterSpacing: "-0.055em",
+              }}
+            >
+              Pick the level of pipeline support your store needs.
+            </h2>
+
+            <p style={{ marginTop: 14, color: "#bfd6f5", lineHeight: 1.65 }}>
+              Each plan runs on the same monthly recruiting pipeline model. The
+              difference is how much coverage, role support, and candidate-prep
+              capacity your dealership needs.
+            </p>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gap: 16,
+              marginTop: 24,
+            }}
+          >
+            {programLevels.map((level) => (
+              <article
+                key={level.name}
+                style={{
+                  position: "relative",
+                  padding: 24,
+                  borderRadius: 24,
+                  background:
+                    level.badge
+                      ? "linear-gradient(145deg, rgba(20,115,255,0.18), rgba(255,255,255,0.06))"
+                      : "rgba(255,255,255,0.05)",
+                  border: level.badge
+                    ? "1px solid rgba(20,115,255,0.35)"
+                    : "1px solid rgba(255,255,255,0.1)",
+                  boxShadow: level.badge
+                    ? "0 24px 70px rgba(20,115,255,0.16)"
+                    : "none",
+                }}
+              >
+                {level.badge ? (
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      marginBottom: 14,
+                      padding: "7px 10px",
+                      borderRadius: 999,
+                      background: "#fbbf24",
+                      color: "#07101f",
+                      fontSize: 11,
+                      fontWeight: 950,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {level.badge}
+                  </div>
+                ) : null}
+
+                <h3
+                  style={{
+                    margin: 0,
+                    color: "#fff",
+                    fontSize: 24,
+                    lineHeight: 1,
+                    letterSpacing: "-0.04em",
+                  }}
+                >
+                  {level.name}
+                </h3>
+
+                <p style={{ color: "#bfd6f5", lineHeight: 1.5, minHeight: 64 }}>
+                  {level.note}
+                </p>
+
+                <div
+                  style={{
+                    marginTop: 18,
+                    paddingTop: 18,
+                    borderTop: "1px solid rgba(255,255,255,0.1)",
+                  }}
+                >
+                  <strong
+                    style={{
+                      display: "block",
+                      color: "#fff",
+                      fontSize: 34,
+                      letterSpacing: "-0.05em",
+                    }}
+                  >
+                    {level.price}
+                    <span
+                      style={{
+                        color: "#9fb4d6",
+                        fontSize: 15,
+                        letterSpacing: 0,
+                      }}
+                    >
+                      /month
+                    </span>
+                  </strong>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 10,
+                    marginTop: 18,
+                    color: "#d7e8ff",
+                    fontSize: 14,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {level.items.map((item) => (
+                    <span key={item}>✓ {item}</span>
+                  ))}
+                </div>
+
+                <Link
+                  className="btn btn-primary"
+                  href="#enrollment"
+                  style={{ width: "100%", marginTop: 24 }}
+                >
+                  Start my pipeline
+                </Link>
+              </article>
+            ))}
+          </div>
+
+          <div
+            style={{
+              marginTop: 16,
+              padding: 18,
+              borderRadius: 18,
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              color: "#cfe2ff",
+              fontSize: 14,
+              lineHeight: 1.55,
+            }}
+          >
+            <strong style={{ color: "#fff" }}>Simple model:</strong> monthly
+            subscription, ongoing pipeline support, and hiring requests submitted
+            as your dealership’s needs change.
+          </div>
+        </section>
+
         <form
+          id="enrollment"
           style={{
-            marginTop: 34,
+            marginTop: 44,
             padding: 28,
             borderRadius: 24,
             background: "rgba(255,255,255,0.05)",
@@ -272,10 +483,10 @@ export default function PricingIntakePage() {
               justifyContent: "space-between",
             }}
           >
-            <button className="btn btn-primary">Start enrollment</button>
+            <button className="btn btn-primary">Start my pipeline</button>
 
             <p style={{ margin: 0, color: "#9fb4d6", fontSize: 14 }}>
-              Monthly program. No long-term commitment required.
+              Month-to-month program. No long-term commitment required.
             </p>
           </div>
         </form>
@@ -292,9 +503,8 @@ export default function PricingIntakePage() {
           }}
         >
           <strong style={{ color: "#fff" }}>After submission:</strong> we review
-          your store needs, configure the recommended monthly pipeline program,
-          and show you how candidates move from request to screening to prepared
-          interview.
+          your store needs, confirm the right monthly program level, and show you
+          how candidates move from request to screening to prepared interview.
         </div>
       </section>
     </main>
