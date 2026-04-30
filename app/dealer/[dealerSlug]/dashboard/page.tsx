@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import Nav from "../../../components/Nav";
 
@@ -9,8 +8,25 @@ type PageProps = {
   searchParams?: {
     request?: string;
     role?: string;
-    decision?: string;
-    candidate?: string;
+  };
+};
+
+type ManagerInterviewCandidate = {
+  id: string;
+  applicationId: string;
+  jobId: string;
+  name: string;
+  role: string;
+  status: string;
+  packetStatus: "pending" | "review" | "ready";
+  dealerInterviewAt: string | null;
+  summary: string;
+  notes: string[];
+  packet: {
+    resume: string;
+    donThoughts: string;
+    solaceSummary: string;
+    verificationItems: string[];
   };
 };
 
@@ -72,62 +88,80 @@ const filledRequests = [
   },
 ];
 
-const reviewCandidates = [
+const managerInterviewCandidates: ManagerInterviewCandidate[] = [
   {
-    id: "demo-maria-lopez",
-    jobId: "demo-sales-consultant-job",
-    applicationId: "demo-maria-lopez-application",
+    id: "maria-lopez",
+    applicationId: "demo-application-maria-lopez",
+    jobId: "demo-job-sales-consultant",
     name: "Maria Lopez",
     role: "Sales Consultant",
-    status: "Ready for interview",
-    detail: "Strong communication fit, sales background, and availability confirmed.",
+    status: "dealer_interview_scheduled",
+    packetStatus: "ready",
+    dealerInterviewAt: "2026-05-02T15:00:00-05:00",
+    summary:
+      "Strong communication fit, sales background, and availability confirmed.",
     notes: ["Interview ready", "Retail sales experience", "Availability confirmed"],
-    interviewStage: "Dealer manager interview",
     packet: {
       resume: "Resume on file",
-      donNotes:
+      donThoughts:
         "Strong phone presence, confident retail background, available weekends, compensation expectations aligned.",
       solaceSummary:
         "Recommended for dealer interview. Candidate shows strong communication, availability, and sales readiness signals.",
-      verification: ["Confirm Saturday schedule", "Review prior sales volume", "Confirm start date"],
+      verificationItems: [
+        "Confirm Saturday schedule",
+        "Review prior sales volume",
+        "Confirm start date",
+      ],
     },
   },
   {
-    id: "demo-james-carter",
-    jobId: "demo-service-technician-job",
-    applicationId: "demo-james-carter-application",
+    id: "james-carter",
+    applicationId: "demo-application-james-carter",
+    jobId: "demo-job-service-technician",
     name: "James Carter",
     role: "Service Technician",
-    status: "Needs manager review",
-    detail: "Strong technician experience. Certification documentation needs final confirmation.",
+    status: "packet_review",
+    packetStatus: "review",
+    dealerInterviewAt: null,
+    summary:
+      "Strong technician experience. Certification documentation needs final confirmation.",
     notes: ["8 years experience", "Certification pending", "Good fixed-ops fit"],
-    interviewStage: "Dealer manager interview",
     packet: {
       resume: "Resume on file",
-      donNotes:
+      donThoughts:
         "Experienced technician with strong shop background. Needs certification documents confirmed before final offer.",
       solaceSummary:
         "Advance with verification. Candidate may be a strong service fit if credentials and availability are confirmed.",
-      verification: ["Confirm ASE/OEM certifications", "Confirm tool availability", "Confirm desired flat-rate/hourly structure"],
+      verificationItems: [
+        "Confirm ASE/OEM certifications",
+        "Confirm tool availability",
+        "Confirm desired flat-rate/hourly structure",
+      ],
     },
   },
   {
-    id: "demo-tyler-ng",
-    jobId: "demo-service-technician-job",
-    applicationId: "demo-tyler-ng-application",
+    id: "tyler-ng",
+    applicationId: "demo-application-tyler-ng",
+    jobId: "demo-job-service-technician-entry",
     name: "Tyler Ng",
     role: "Service Technician",
-    status: "More information needed",
-    detail: "Entry-level candidate. Training path and availability need confirmation before advancing.",
+    status: "virtual_completed",
+    packetStatus: "pending",
+    dealerInterviewAt: null,
+    summary:
+      "Entry-level candidate. Training path and availability need confirmation before advancing.",
     notes: ["Entry-level pathway", "Training incomplete", "Availability missing"],
-    interviewStage: "Pre-manager review",
     packet: {
       resume: "Resume on file",
-      donNotes:
+      donThoughts:
         "Motivated candidate, but not enough confirmed information yet for a final dealer interview recommendation.",
       solaceSummary:
         "Hold for more information. Candidate may fit a training pathway if availability and baseline skills are confirmed.",
-      verification: ["Confirm schedule", "Confirm training interest", "Confirm basic tool/technical background"],
+      verificationItems: [
+        "Confirm schedule",
+        "Confirm training interest",
+        "Confirm basic tool/technical background",
+      ],
     },
   },
 ];
@@ -169,15 +203,46 @@ function getBaseUrl() {
   return "http://localhost:3000";
 }
 
+function isVisibleOnManagerBoard(candidate: ManagerInterviewCandidate) {
+  const allowedStatuses = new Set([
+    "dealer_interview_scheduled",
+    "dealer_review",
+  ]);
+
+  return (
+    candidate.packetStatus === "ready" &&
+    Boolean(candidate.dealerInterviewAt) &&
+    allowedStatuses.has(candidate.status)
+  );
+}
+
+function formatInterviewTime(value: string | null) {
+  if (!value) return "Interview scheduled";
+
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    }).format(new Date(value));
+  } catch {
+    return "Interview scheduled";
+  }
+}
+
 export default function DealerDashboardPage({ params, searchParams }: PageProps) {
   const dealerName = formatDealerName(params.dealerSlug);
   const dealerLocation = getDealerLocation(params.dealerSlug);
   const requestSubmitted = searchParams?.request === "submitted";
-  const submittedRole = searchParams?.role ? decodeURIComponent(searchParams.role) : "Hiring request";
-  const decisionSubmitted = searchParams?.decision === "submitted";
-  const decisionCandidate = searchParams?.candidate
-    ? decodeURIComponent(searchParams.candidate)
-    : "Candidate";
+  const submittedRole = searchParams?.role
+    ? decodeURIComponent(searchParams.role)
+    : "Hiring request";
+  const visibleManagerCandidates = managerInterviewCandidates.filter(
+    isVisibleOnManagerBoard
+  );
 
   async function submitHiringRequest(formData: FormData) {
     "use server";
@@ -195,7 +260,9 @@ export default function DealerDashboardPage({ params, searchParams }: PageProps)
 
     const adminKey = process.env.NATA_ADMIN_KEY;
     if (!adminKey) {
-      throw new Error("Missing NATA_ADMIN_KEY. Add it to Vercel before submitting hiring requests.");
+      throw new Error(
+        "Missing NATA_ADMIN_KEY. Add it to Vercel before submitting hiring requests."
+      );
     }
 
     const response = await fetch(`${getBaseUrl()}/api/nata/jobs`, {
@@ -230,63 +297,9 @@ export default function DealerDashboardPage({ params, searchParams }: PageProps)
     }
 
     redirect(
-      `/dealer/${params.dealerSlug}/dashboard?request=submitted&role=${encodeURIComponent(title)}`
-    );
-  }
-
-  async function submitInterviewDecision(formData: FormData) {
-    "use server";
-
-    const candidateName = cleanFormValue(formData.get("candidateName"));
-    const jobId = cleanFormValue(formData.get("jobId"));
-    const applicationId = cleanFormValue(formData.get("applicationId"));
-    const outcome = cleanFormValue(formData.get("outcome"));
-    const decisionReason = cleanFormValue(formData.get("decision_reason"));
-    const interviewerName = cleanFormValue(formData.get("interviewer_name"));
-    const strengths = cleanFormValue(formData.get("strengths"));
-    const concerns = cleanFormValue(formData.get("concerns"));
-    const verificationFlags = cleanFormValue(formData.get("verification_flags"));
-
-    if (!outcome || !decisionReason) {
-      throw new Error("Decision outcome and why are required.");
-    }
-
-    const adminKey = process.env.NATA_ADMIN_KEY;
-    if (!adminKey) {
-      throw new Error("Missing NATA_ADMIN_KEY. Add it to Vercel before submitting interview decisions.");
-    }
-
-    const response = await fetch(`${getBaseUrl()}/api/nata/decisions`, {
-      method: "POST",
-      cache: "no-store",
-      headers: {
-        "Content-Type": "application/json",
-        "x-nata-admin-key": adminKey,
-      },
-      body: JSON.stringify({
-        job_id: jobId,
-        application_id: applicationId,
-        interviewer_name: interviewerName || "Dealer manager",
-        interview_type: "dealer",
-        interview_stage: "2",
-        outcome,
-        decision_reason: decisionReason,
-        strengths: strengths ? strengths.split("\n").map((item) => item.trim()).filter(Boolean) : [],
-        concerns: concerns ? concerns.split("\n").map((item) => item.trim()).filter(Boolean) : [],
-        verification_flags: verificationFlags
-          ? verificationFlags.split("\n").map((item) => item.trim()).filter(Boolean)
-          : [],
-      }),
-    });
-
-    const result = await response.json().catch(() => null);
-
-    if (!response.ok) {
-      throw new Error(result?.error || "Interview decision could not be saved.");
-    }
-
-    redirect(
-      `/dealer/${params.dealerSlug}/dashboard?decision=submitted&candidate=${encodeURIComponent(candidateName || "Candidate")}`
+      `/dealer/${params.dealerSlug}/dashboard?request=submitted&role=${encodeURIComponent(
+        title
+      )}`
     );
   }
 
@@ -312,9 +325,10 @@ export default function DealerDashboardPage({ params, searchParams }: PageProps)
             </h1>
 
             <p className="lede">
-              Submit hiring requests, track open roles, review qualified candidates,
-              and document final interview outcomes. Our team handles the posting,
-              screening, candidate routing, and interview packet preparation.
+              Submit hiring requests, track open roles, and act only when a
+              manager interview is scheduled with a completed packet. Our team
+              handles posting, screening, candidate routing, and interview packet
+              preparation before anything lands on your board.
             </p>
           </div>
 
@@ -335,17 +349,25 @@ export default function DealerDashboardPage({ params, searchParams }: PageProps)
         </div>
 
         {requestSubmitted ? (
-          <SuccessNotice
-            title={`${submittedRole} request received.`}
-            copy="NATA Today will handle the job posting, candidate intake, screening, and routing. Qualified candidates will appear in your review pipeline when ready."
-          />
-        ) : null}
-
-        {decisionSubmitted ? (
-          <SuccessNotice
-            title={`${decisionCandidate} decision recorded.`}
-            copy="The interview outcome and reason have been documented. If the candidate was marked hired, the public listing will be closed by the decision workflow."
-          />
+          <div
+            style={{
+              marginTop: 24,
+              padding: 18,
+              borderRadius: 22,
+              background: "rgba(34,197,94,0.1)",
+              border: "1px solid rgba(34,197,94,0.24)",
+              color: "#d1fae5",
+              display: "grid",
+              gap: 6,
+            }}
+          >
+            <strong style={{ color: "#fff" }}>{submittedRole} request received.</strong>
+            <span>
+              NATA Today will handle the job posting, candidate intake, screening,
+              routing, and packet preparation. Candidates will appear on your manager
+              board only when the interview is scheduled and the packet is ready.
+            </span>
+          </div>
         ) : null}
 
         <div
@@ -384,7 +406,7 @@ export default function DealerDashboardPage({ params, searchParams }: PageProps)
 
             <p style={{ color: "#bfd6f5", lineHeight: 1.6, marginTop: 12 }}>
               Submit the role, pay range, urgency, visibility preference, and notes.
-              NATA Today formats the post, handles publication, and opens the candidate review pipeline.
+              NATA Today formats the post, handles publication, and opens the candidate pipeline.
             </p>
 
             <form action={submitHiringRequest} style={{ marginTop: 24 }}>
@@ -501,7 +523,7 @@ export default function DealerDashboardPage({ params, searchParams }: PageProps)
             }}
           >
             <div className="eyebrow" style={{ marginBottom: 12 }}>
-              Review standards
+              Manager board rule
             </div>
 
             <h2
@@ -513,27 +535,27 @@ export default function DealerDashboardPage({ params, searchParams }: PageProps)
                 letterSpacing: "-0.04em",
               }}
             >
-              Candidates are reviewed before handoff.
+              You only see candidates when it is time to act.
             </h2>
 
             <p style={{ color: "#cfe2ff", lineHeight: 1.6 }}>
-              Your managers should not have to sort every applicant. Candidates
-              are organized by fit, availability, role readiness, and supporting
-              information before they reach your review queue.
+              Candidates do not appear on the dealer board while NATA Today is still
+              screening, completing the virtual interview, scheduling the manager
+              interview, or preparing the packet.
             </p>
 
             <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
               <ReviewPill
-                title="Ready for interview"
-                copy="Candidate appears prepared for manager review."
+                title="Packet ready"
+                copy="Resume, Don's notes, Solace summary, and verification items are prepared."
               />
               <ReviewPill
-                title="Needs manager review"
-                copy="Promising candidate with one or more items to confirm."
+                title="Interview scheduled"
+                copy="A manager interview time exists before the candidate appears here."
               />
               <ReviewPill
-                title="More information needed"
-                copy="Candidate is not advanced until missing details are collected."
+                title="Human decision required"
+                copy="The manager submits outcome and why after the interview."
               />
             </div>
           </aside>
@@ -683,112 +705,244 @@ export default function DealerDashboardPage({ params, searchParams }: PageProps)
         </section>
 
         <section style={{ marginTop: 40 }}>
-          <div className="eyebrow">Candidate review desk</div>
+          <div className="eyebrow">Manager interview board</div>
 
-          <div style={{ display: "grid", gap: 14, marginTop: 16 }}>
-            {reviewCandidates.map((candidate) => (
-              <article
-                key={candidate.name}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(0, 1fr)",
-                  gap: 18,
-                  alignItems: "start",
-                  padding: 22,
-                  borderRadius: 24,
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                }}
-              >
-                <div
+          {visibleManagerCandidates.length > 0 ? (
+            <div style={{ display: "grid", gap: 14, marginTop: 16 }}>
+              {visibleManagerCandidates.map((candidate) => (
+                <article
+                  key={candidate.id}
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr) auto",
-                    gap: 20,
-                    alignItems: "start",
+                    padding: 22,
+                    borderRadius: 24,
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.1)",
                   }}
                 >
-                  <div>
-                    <h3
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 18,
+                      alignItems: "flex-start",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div>
+                      <h3
+                        style={{
+                          margin: 0,
+                          color: "#fff",
+                          fontSize: 24,
+                          letterSpacing: "-0.035em",
+                        }}
+                      >
+                        {candidate.name}
+                      </h3>
+
+                      <p style={{ margin: "6px 0 0", color: "#bfd6f5" }}>
+                        {candidate.role} · {formatInterviewTime(candidate.dealerInterviewAt)}
+                      </p>
+                    </div>
+
+                    <StatusBadge status="Packet ready · interview scheduled" />
+                  </div>
+
+                  <p style={{ color: "#9fb4d6", lineHeight: 1.55, marginTop: 14 }}>
+                    {candidate.summary}
+                  </p>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 8,
+                      marginTop: 12,
+                    }}
+                  >
+                    {candidate.notes.map((note) => (
+                      <span
+                        key={note}
+                        style={{
+                          padding: "8px 10px",
+                          borderRadius: 999,
+                          background: "rgba(255,255,255,0.055)",
+                          border: "1px solid rgba(255,255,255,0.09)",
+                          color: "#d7e8ff",
+                          fontSize: 13,
+                        }}
+                      >
+                        {note}
+                      </span>
+                    ))}
+                  </div>
+
+                  <details
+                    style={{
+                      marginTop: 16,
+                      padding: 16,
+                      borderRadius: 18,
+                      background: "rgba(255,255,255,0.045)",
+                      border: "1px solid rgba(255,255,255,0.09)",
+                    }}
+                  >
+                    <summary
                       style={{
-                        margin: 0,
                         color: "#fff",
-                        fontSize: 22,
-                        letterSpacing: "-0.035em",
+                        fontWeight: 900,
+                        cursor: "pointer",
                       }}
                     >
-                      {candidate.name}
-                    </h3>
-
-                    <p style={{ margin: "6px 0 0", color: "#bfd6f5" }}>
-                      {candidate.role} · {candidate.interviewStage}
-                    </p>
-
-                    <p style={{ color: "#9fb4d6", lineHeight: 1.55 }}>
-                      {candidate.detail}
-                    </p>
+                      View interview packet
+                    </summary>
 
                     <div
                       style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: 8,
-                        marginTop: 12,
+                        display: "grid",
+                        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                        gap: 12,
+                        marginTop: 14,
                       }}
                     >
-                      {candidate.notes.map((note) => (
-                        <span
-                          key={note}
-                          style={{
-                            padding: "8px 10px",
-                            borderRadius: 999,
-                            background: "rgba(255,255,255,0.055)",
-                            border: "1px solid rgba(255,255,255,0.09)",
-                            color: "#d7e8ff",
-                            fontSize: 13,
-                          }}
-                        >
-                          {note}
-                        </span>
-                      ))}
+                      <PacketBlock title="Resume" copy={candidate.packet.resume} />
+                      <PacketBlock title="Don's notes" copy={candidate.packet.donThoughts} />
+                      <PacketBlock title="Solace summary" copy={candidate.packet.solaceSummary} />
                     </div>
-                  </div>
 
-                  <StatusBadge status={candidate.status} />
-                </div>
+                    <div style={{ marginTop: 14 }}>
+                      <strong style={{ color: "#fff" }}>Verify during interview</strong>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 8,
+                          marginTop: 10,
+                        }}
+                      >
+                        {candidate.packet.verificationItems.map((item) => (
+                          <span
+                            key={item}
+                            style={{
+                              padding: "8px 10px",
+                              borderRadius: 999,
+                              background: "rgba(255,255,255,0.055)",
+                              border: "1px solid rgba(255,255,255,0.09)",
+                              color: "#d7e8ff",
+                              fontSize: 13,
+                            }}
+                          >
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </details>
 
-                <InterviewPacket candidate={candidate} />
+                  <form
+                    action="/api/nata/decisions"
+                    method="POST"
+                    style={{
+                      marginTop: 16,
+                      padding: 16,
+                      borderRadius: 18,
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                    }}
+                  >
+                    <input type="hidden" name="job_id" value={candidate.jobId} />
+                    <input
+                      type="hidden"
+                      name="application_id"
+                      value={candidate.applicationId}
+                    />
+                    <input type="hidden" name="interview_type" value="dealer" />
+                    <input type="hidden" name="interview_stage" value="2" />
 
-                <DecisionForm
-                  candidate={candidate}
-                  submitInterviewDecision={submitInterviewDecision}
-                />
-              </article>
-            ))}
-          </div>
+                    <h4 style={{ margin: "0 0 12px", color: "#fff", fontSize: 18 }}>
+                      Interview outcome
+                    </h4>
+
+                    <div className="grid-2" style={{ gap: 14 }}>
+                      <Field label="Outcome">
+                        <select name="outcome" required defaultValue="" style={inputStyle}>
+                          <option value="" disabled>
+                            Select outcome
+                          </option>
+                          <option value="hired">Hired</option>
+                          <option value="not_hired">Not hired</option>
+                          <option value="keep_warm">Keep warm</option>
+                          <option value="no_show">No-show</option>
+                          <option value="needs_followup">Needs follow-up</option>
+                        </select>
+                      </Field>
+
+                      <Field label="Manager / interviewer">
+                        <input
+                          name="interviewer_name"
+                          placeholder="Example: Sales Manager"
+                          required
+                          style={inputStyle}
+                        />
+                      </Field>
+                    </div>
+
+                    <div style={{ marginTop: 14 }}>
+                      <Field label="Why?">
+                        <textarea
+                          name="decision_reason"
+                          rows={3}
+                          placeholder="Required. Briefly document the reason for the decision."
+                          required
+                          style={inputStyle}
+                        />
+                      </Field>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 14,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <span style={{ color: "#9fb4d6", fontSize: 13 }}>
+                        Hired closes the public listing. Other outcomes keep the role open.
+                      </span>
+                      <button className="btn btn-primary" type="submit">
+                        Save decision
+                      </button>
+                    </div>
+                  </form>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div
+              style={{
+                marginTop: 16,
+                padding: 28,
+                borderRadius: 24,
+                background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                color: "#cfe2ff",
+              }}
+            >
+              <h3 style={{ margin: 0, color: "#fff", fontSize: 24 }}>
+                No manager interviews are ready yet.
+              </h3>
+              <p style={{ margin: "10px 0 0", lineHeight: 1.6 }}>
+                NATA Today is still screening candidates, completing virtual interviews,
+                scheduling manager interviews, or preparing interview packets. Candidates
+                appear here only when the packet is ready and the interview is scheduled.
+              </p>
+            </div>
+          )}
         </section>
       </section>
     </main>
-  );
-}
-
-function SuccessNotice({ title, copy }: { title: string; copy: string }) {
-  return (
-    <div
-      style={{
-        marginTop: 24,
-        padding: 18,
-        borderRadius: 22,
-        background: "rgba(34,197,94,0.1)",
-        border: "1px solid rgba(34,197,94,0.24)",
-        color: "#d1fae5",
-        display: "grid",
-        gap: 6,
-      }}
-    >
-      <strong style={{ color: "#fff" }}>{title}</strong>
-      <span>{copy}</span>
-    </div>
   );
 }
 
@@ -853,233 +1007,36 @@ function Metric({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function InterviewPacket({ candidate }: { candidate: (typeof reviewCandidates)[number] }) {
-  return (
-    <section
-      style={{
-        display: "grid",
-        gap: 12,
-        padding: 18,
-        borderRadius: 20,
-        background: "rgba(15,23,42,0.72)",
-        border: "1px solid rgba(147,197,253,0.16)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 12,
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        <div>
-          <div className="eyebrow">Dealer interview packet</div>
-          <h4 style={{ margin: "6px 0 0", color: "#fff", fontSize: 20 }}>
-            Resume, Don's notes, and Solace summary
-          </h4>
-        </div>
-        <span
-          style={{
-            padding: "8px 10px",
-            borderRadius: 999,
-            background: "rgba(96,165,250,0.12)",
-            border: "1px solid rgba(96,165,250,0.22)",
-            color: "#bfdbfe",
-            fontSize: 12,
-            fontWeight: 900,
-          }}
-        >
-          Packet ready
-        </span>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-        <PacketCard title="Resume" copy={candidate.packet.resume} />
-        <PacketCard title="Don's thoughts" copy={candidate.packet.donNotes} />
-        <PacketCard title="Solace refinement" copy={candidate.packet.solaceSummary} />
-      </div>
-
-      <div>
-        <strong style={{ color: "#fff", display: "block", marginBottom: 8 }}>
-          Verify during interview
-        </strong>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {candidate.packet.verification.map((item) => (
-            <span
-              key={item}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 999,
-                background: "rgba(255,255,255,0.055)",
-                border: "1px solid rgba(255,255,255,0.09)",
-                color: "#d7e8ff",
-                fontSize: 13,
-              }}
-            >
-              {item}
-            </span>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function PacketCard({ title, copy }: { title: string; copy: string }) {
+function PacketBlock({ title, copy }: { title: string; copy: string }) {
   return (
     <div
       style={{
         padding: 14,
         borderRadius: 16,
-        background: "rgba(255,255,255,0.045)",
-        border: "1px solid rgba(255,255,255,0.09)",
+        background: "rgba(5,10,18,0.5)",
+        border: "1px solid rgba(255,255,255,0.08)",
       }}
     >
-      <strong style={{ color: "#fff", display: "block", marginBottom: 6 }}>{title}</strong>
-      <p style={{ margin: 0, color: "#bfd6f5", fontSize: 13, lineHeight: 1.45 }}>{copy}</p>
+      <strong style={{ color: "#fff", display: "block" }}>{title}</strong>
+      <span
+        style={{
+          color: "#bfd6f5",
+          display: "block",
+          marginTop: 6,
+          fontSize: 13,
+          lineHeight: 1.45,
+        }}
+      >
+        {copy}
+      </span>
     </div>
   );
 }
 
-function DecisionForm({
-  candidate,
-  submitInterviewDecision,
-}: {
-  candidate: (typeof reviewCandidates)[number];
-  submitInterviewDecision: (formData: FormData) => Promise<void>;
-}) {
-  return (
-    <form
-      action={submitInterviewDecision}
-      style={{
-        display: "grid",
-        gap: 14,
-        padding: 18,
-        borderRadius: 20,
-        background: "rgba(255,255,255,0.045)",
-        border: "1px solid rgba(255,255,255,0.1)",
-      }}
-    >
-      <input type="hidden" name="candidateName" value={candidate.name} />
-      <input type="hidden" name="jobId" value={candidate.jobId} />
-      <input type="hidden" name="applicationId" value={candidate.applicationId} />
-
-      <div>
-        <div className="eyebrow">Interview outcome</div>
-        <h4 style={{ margin: "6px 0 0", color: "#fff", fontSize: 20 }}>
-          Approve, reject, or keep warm — with the reason documented.
-        </h4>
-      </div>
-
-      <div className="grid-2" style={{ gap: 14 }}>
-        <Field label="Manager / interviewer name">
-          <input
-            name="interviewer_name"
-            placeholder="Example: Sales Manager"
-            style={inputStyle}
-          />
-        </Field>
-
-        <Field label="Outcome">
-          <select name="outcome" defaultValue="" required style={inputStyle}>
-            <option value="" disabled>
-              Select outcome
-            </option>
-            <option value="hired">Hired</option>
-            <option value="not_hired">Not hired</option>
-            <option value="keep_warm">Keep warm</option>
-            <option value="no_show">No-show</option>
-            <option value="needs_followup">Needs follow-up</option>
-          </select>
-        </Field>
-      </div>
-
-      <Field label="Why?">
-        <textarea
-          name="decision_reason"
-          required
-          rows={4}
-          placeholder="Document the reason for the decision. This is required before the outcome can be saved."
-          style={inputStyle}
-        />
-      </Field>
-
-      <div className="grid-2" style={{ gap: 14 }}>
-        <Field label="Strengths noted">
-          <textarea
-            name="strengths"
-            rows={3}
-            placeholder="One item per line"
-            style={inputStyle}
-          />
-        </Field>
-
-        <Field label="Concerns / verification items">
-          <textarea
-            name="concerns"
-            rows={3}
-            placeholder="One item per line"
-            style={inputStyle}
-          />
-        </Field>
-      </div>
-
-      <Field label="Remaining verification flags">
-        <textarea
-          name="verification_flags"
-          rows={3}
-          placeholder="Example: confirm schedule, confirm compensation alignment, confirm certifications"
-          style={inputStyle}
-        />
-      </Field>
-
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 14,
-          flexWrap: "wrap",
-          alignItems: "center",
-          paddingTop: 4,
-        }}
-      >
-        <p style={{ margin: 0, color: "#9fb4d6", fontSize: 13, lineHeight: 1.45, maxWidth: 660 }}>
-          Only a human-submitted <strong style={{ color: "#fff" }}>Hired</strong> decision should close the public listing. Other outcomes keep the role open and preserve candidate eligibility where appropriate.
-        </p>
-
-        <button className="btn btn-primary" type="submit">
-          Save interview decision
-        </button>
-      </div>
-    </form>
-  );
-}
-
 function StatusBadge({ status }: { status: string }) {
-  const style = status.includes("Ready")
-    ? {
-        background: "rgba(34,197,94,0.14)",
-        border: "1px solid rgba(34,197,94,0.28)",
-        color: "#86efac",
-      }
-    : status.includes("Needs")
-      ? {
-          background: "rgba(251,191,36,0.14)",
-          border: "1px solid rgba(251,191,36,0.28)",
-          color: "#fbbf24",
-        }
-      : {
-          background: "rgba(96,165,250,0.14)",
-          border: "1px solid rgba(96,165,250,0.28)",
-          color: "#93c5fd",
-        };
-
   return (
     <span
       style={{
-        ...style,
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
@@ -1091,6 +1048,9 @@ function StatusBadge({ status }: { status: string }) {
         fontWeight: 950,
         letterSpacing: "0.04em",
         textAlign: "center",
+        background: "rgba(34,197,94,0.14)",
+        border: "1px solid rgba(34,197,94,0.28)",
+        color: "#86efac",
       }}
     >
       {status}
@@ -1107,4 +1067,4 @@ const inputStyle = {
   background: "rgba(5,10,18,0.88)",
   color: "#fff",
   outline: "none",
-};
+} as const;
