@@ -1,61 +1,99 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
 
-type ScreenDecision =
-  | "not_fit"
-  | "virtual_invited"
-  | "needs_review";
+type ScreenDecision = "not_fit" | "virtual_invited" | "needs_review";
 
 function scoreApplication(input: {
-  jobTitle: string;
+  job: any;
+  candidateName: string;
   coverNote: string;
   linkedin: string;
   resumeUrl: string;
 }) {
-  const text = `${input.jobTitle} ${input.coverNote} ${input.linkedin} ${input.resumeUrl}`.toLowerCase();
+  const jobText = [
+    input.job?.title,
+    input.job?.description,
+    input.job?.requirements,
+    input.job?.role_hook,
+    ...(input.job?.responsibilities || []),
+    ...(input.job?.fit_signals || []),
+    input.job?.process_note,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 
-  let score = 50;
+  const candidateText = [
+    input.candidateName,
+    input.coverNote,
+    input.linkedin,
+    input.resumeUrl,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  let score = 45;
   const strengths: string[] = [];
   const gaps: string[] = [];
 
-  if (text.includes("dealership") || text.includes("automotive")) {
-    score += 15;
+  const keywords = Array.from(
+    new Set(
+      jobText
+        .split(/\s+/)
+        .map((word) => word.replace(/[^a-z0-9]/g, ""))
+        .filter((word) => word.length > 5)
+    )
+  ).slice(0, 60);
+
+  const matches = keywords.filter((word) => candidateText.includes(word)).length;
+
+  if (matches >= 10) {
+    score += 20;
+    strengths.push("Strong overlap with role-specific requirements.");
+  } else if (matches >= 5) {
+    score += 12;
+    strengths.push("Some overlap with role-specific requirements.");
+  } else {
+    score -= 8;
+    gaps.push("Limited visible overlap with role-specific requirements.");
+  }
+
+  if (candidateText.includes("automotive") || candidateText.includes("dealership")) {
+    score += 12;
     strengths.push("Automotive or dealership experience indicated.");
   }
 
-  if (text.includes("sales") || text.includes("customer")) {
-    score += 10;
+  if (candidateText.includes("sales") || candidateText.includes("customer")) {
+    score += 8;
     strengths.push("Customer-facing or sales-related signal present.");
   }
 
-  if (text.includes("technician") || text.includes("ase") || text.includes("diagnostic")) {
-    score += 15;
-    strengths.push("Technical/service experience signal present.");
+  if (candidateText.includes("technician") || candidateText.includes("ase") || candidateText.includes("diagnostic")) {
+    score += 12;
+    strengths.push("Technical or certification-related signal present.");
   }
 
-  if (text.includes("available") || text.includes("weekend") || text.includes("full-time")) {
-    score += 8;
+  if (candidateText.includes("available") || candidateText.includes("weekend") || candidateText.includes("full-time")) {
+    score += 6;
     strengths.push("Availability signal present.");
   }
 
-  if (!input.coverNote && !input.resumeUrl && !input.linkedin) {
-    score -= 25;
+  if (!input.resumeUrl) {
+    score -= 15;
+    gaps.push("Resume was not provided.");
+  }
+
+  if (!input.coverNote && !input.linkedin && !input.resumeUrl) {
+    score -= 20;
     gaps.push("Limited supporting information provided.");
   }
 
-  if (!input.resumeUrl) {
-    gaps.push("Resume not provided.");
-  }
-
   const fitScore = Math.max(0, Math.min(100, score));
-
   let decision: ScreenDecision = "needs_review";
 
-  if (fitScore >= 70) {
-    decision = "virtual_invited";
-  } else if (fitScore < 45) {
-    decision = "not_fit";
-  }
+  if (fitScore >= 70) decision = "virtual_invited";
+  if (fitScore < 45) decision = "not_fit";
 
   return {
     fitScore,
@@ -64,16 +102,94 @@ function scoreApplication(input: {
     gaps,
     screeningSummary:
       decision === "virtual_invited"
-        ? "Candidate appears ready for a virtual screening interview based on available application signals."
+        ? "Candidate appears aligned with the job post and is ready for a virtual screening interview."
         : decision === "not_fit"
-          ? "Candidate does not appear to match the current role based on available information."
-          : "Candidate may be viable, but additional review is needed before interview invitation.",
+          ? "Candidate does not appear to match the current role based on available application information."
+          : "Candidate shows partial alignment and should be reviewed before an interview invitation.",
     decisionReason:
       decision === "virtual_invited"
-        ? "Sufficient fit signals to invite candidate to virtual screening."
+        ? "Sufficient application signals matched the stored job post."
         : decision === "not_fit"
-          ? "Insufficient fit signals for this role at this time."
-          : "Application requires human review before next step.",
+          ? "Insufficient fit signals for the current role."
+          : "Borderline fit requiring human review.",
+  };
+}
+
+function buildVirtualInterviewLink(applicationId: string) {
+  const base = process.env.NATA_VIRTUAL_INTERVIEW_URL || process.env.NEXT_PUBLIC_APP_URL || "https://natatoday.vercel.app";
+  if (base.includes("?")) return `${base}&application=${applicationId}`;
+  return `${base}?application=${applicationId}`;
+}
+
+async function sendCandidateEmail(input: {
+  to: string;
+  subject: string;
+  body: string;
+}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.NATA_FROM_EMAIL || "Solace Recruiting <no-reply@natatoday.com>";
+
+  if (!apiKey) {
+    console.log("RESEND_API_KEY not set. Candidate email skipped:", input.subject);
+    return { skipped: true };
+  }
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: input.to,
+      subject: input.subject,
+      text: input.body,
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    console.error("Candidate email failed:", detail);
+    return { skipped: false, error: detail };
+  }
+
+  return { skipped: false };
+}
+
+function buildEmail(input: {
+  candidateName: string;
+  candidateEmail: string;
+  job: any;
+  decision: ScreenDecision;
+  virtualInterviewUrl: string | null;
+}) {
+  const firstName = input.candidateName.split(" ")[0] || "there";
+  const title = input.job?.title || "the role";
+  const dealer = input.job?.publish_mode === "confidential"
+    ? "a confidential dealership"
+    : input.job?.public_dealer_name || "the dealership";
+
+  if (input.decision === "virtual_invited") {
+    return {
+      to: input.candidateEmail,
+      subject: `Next step for ${title}`,
+      body: `Hi ${firstName},\n\nThanks for applying for the ${title} role with ${dealer}.\n\nYour application looks like a potential fit, and we would like to invite you to complete a virtual screening interview.\n\nStart here:\n${input.virtualInterviewUrl}\n\nThank you,\nSolace Recruiting`,
+    };
+  }
+
+  if (input.decision === "not_fit") {
+    return {
+      to: input.candidateEmail,
+      subject: `Update on your ${title} application`,
+      body: `Hi ${firstName},\n\nThank you for applying for the ${title} role. After reviewing the information provided, this role does not appear to be the strongest fit at this time.\n\nWe appreciate your interest and may keep your information in mind for future opportunities that better match your background.\n\nThank you,\nSolace Recruiting`,
+    };
+  }
+
+  return {
+    to: input.candidateEmail,
+    subject: `Application received for ${title}`,
+    body: `Hi ${firstName},\n\nThanks for applying for the ${title} role. Your application has been received and is being reviewed.\n\nIf your background matches the next step, you’ll hear from us with additional instructions.\n\nThank you,\nSolace Recruiting`,
   };
 }
 
@@ -116,7 +232,17 @@ export async function POST(request: NextRequest) {
           dealer_slug,
           location,
           type,
-          salary
+          salary,
+          description,
+          requirements,
+          role_hook,
+          responsibilities,
+          fit_signals,
+          process_note,
+          publish_mode,
+          public_dealer_name,
+          public_location,
+          confidential_note
         )
       `
       )
@@ -135,7 +261,8 @@ export async function POST(request: NextRequest) {
       : application.jobs;
 
     const result = scoreApplication({
-      jobTitle: job?.title || "",
+      job,
+      candidateName: application.name || "",
       coverNote: application.cover_note || "",
       linkedin: application.linkedin || "",
       resumeUrl: application.resume_url || "",
@@ -148,6 +275,11 @@ export async function POST(request: NextRequest) {
           ? "not_fit"
           : "needs_review";
 
+    const virtualInterviewUrl =
+      result.decision === "virtual_invited"
+        ? buildVirtualInterviewLink(applicationId)
+        : null;
+
     const { data: updated, error: updateError } = await supabaseAdmin
       .schema("nata")
       .from("applications")
@@ -157,6 +289,7 @@ export async function POST(request: NextRequest) {
         fit_score: result.fitScore,
         screening_summary: result.screeningSummary,
         decision_reason: result.decisionReason,
+        virtual_interview_url: virtualInterviewUrl,
       })
       .eq("id", applicationId)
       .select("*")
@@ -166,6 +299,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: updateError.message },
         { status: 500 }
+      );
+    }
+
+    if (application.email) {
+      await sendCandidateEmail(
+        buildEmail({
+          candidateName: application.name || "",
+          candidateEmail: application.email,
+          job,
+          decision: result.decision,
+          virtualInterviewUrl,
+        })
       );
     }
 
@@ -180,10 +325,10 @@ export async function POST(request: NextRequest) {
       gaps: result.gaps,
       next_action:
         result.decision === "virtual_invited"
-          ? "Send candidate virtual interview invite."
+          ? "Candidate virtual interview invite sent or queued."
           : result.decision === "not_fit"
-            ? "Send candidate not-fit response."
-            : "Route candidate for human review.",
+            ? "Candidate not-fit response sent or queued."
+            : "Candidate routed for human review.",
     });
   } catch (error) {
     console.error("Application screening error:", error);
