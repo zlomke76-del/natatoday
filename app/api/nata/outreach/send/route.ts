@@ -1,100 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
-import { sendEmail } from "../../../../../lib/email";
-
-const HARD_STOP_STATUSES = new Set([
-  "hired",
-  "placed",
-  "withdrawn",
-  "do_not_contact",
-  "disqualified",
-]);
-
-function getAppUrl() {
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3000";
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { sendEmail } from "@/lib/email";
 
 function clean(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
-function buildOutreachEmail({
-  candidateName,
-  jobTitle,
-  matchReason,
-  recommendedNextStep,
-  roleUrl,
-}: {
-  candidateName: string;
-  jobTitle: string;
-  matchReason: string;
-  recommendedNextStep: string;
-  roleUrl: string;
-}) {
-  const safeName = escapeHtml(candidateName || "there");
-  const safeTitle = escapeHtml(jobTitle || "a new role");
-  const safeReason = escapeHtml(matchReason || "your background appears aligned with this opportunity");
-  const safeNextStep = escapeHtml(recommendedNextStep || "Reply to this email if you would like to be considered.");
-
-  const text = `Hi ${candidateName || "there"},\n\nWe reviewed your profile again while preparing a new ${jobTitle || "role"} opportunity.\n\nBased on your background and prior notes, this role may be a stronger fit than the position you previously considered.\n\nWhy this matched: ${matchReason || "your background appears aligned with this opportunity"}\n\nNext step: ${recommendedNextStep || "Reply to this email if you would like to be considered."}\n\nView role: ${roleUrl}\n\n- NATA Recruiting Team`;
-
-  const html = `
-    <div style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#111827;">
-      <div style="max-width:640px;margin:0 auto;padding:28px 16px;">
-        <div style="background:#ffffff;border:1px solid #dbe4f0;border-radius:22px;overflow:hidden;box-shadow:0 16px 45px rgba(15,23,42,0.08);">
-          <div style="padding:24px 26px;background:#06111f;color:#ffffff;">
-            <div style="font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#60a5fa;">NATA Recruiting Team</div>
-            <h1 style="margin:10px 0 0;font-size:26px;line-height:1.1;">A new role may be a stronger fit</h1>
-          </div>
-
-          <div style="padding:26px;line-height:1.58;font-size:15px;">
-            <p style="margin:0 0 16px;">Hi ${safeName},</p>
-
-            <p style="margin:0 0 16px;">
-              We reviewed your profile again while preparing a new <strong>${safeTitle}</strong> opportunity.
-            </p>
-
-            <p style="margin:0 0 16px;">
-              Based on your background and prior notes, this role may be a stronger fit than the position you previously considered.
-            </p>
-
-            <div style="margin:20px 0;padding:16px;border-radius:16px;background:#eff6ff;border:1px solid #bfdbfe;">
-              <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#1d4ed8;margin-bottom:6px;">Why this matched</div>
-              <div style="color:#1f2937;">${safeReason}</div>
-            </div>
-
-            <div style="margin:20px 0;padding:16px;border-radius:16px;background:#f8fafc;border:1px solid #e5e7eb;">
-              <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:#475569;margin-bottom:6px;">Recommended next step</div>
-              <div style="color:#1f2937;">${safeNextStep}</div>
-            </div>
-
-            <p style="margin:22px 0;">
-              <a href="${roleUrl}" style="display:inline-block;background:#1473ff;color:#ffffff;text-decoration:none;font-weight:800;border-radius:999px;padding:13px 18px;">View role</a>
-            </p>
-
-            <p style="margin:0;color:#475569;">
-              If you are still open to opportunities, our team can move you forward without asking you to restart the full process.
-            </p>
-
-            <p style="margin:24px 0 0;">– NATA Recruiting Team</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-
-  return { html, text };
+function appBaseUrl() {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
+    "http://localhost:3000"
+  ).replace(/\/$/, "");
 }
 
 export async function POST(request: NextRequest) {
@@ -105,17 +22,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json().catch(() => ({}));
-    const outreachId = clean(body.outreach_id || body.id);
+    const body = await request.json();
+    const outreachId = clean(body.outreach_id);
 
     if (!outreachId) {
-      return NextResponse.json({ error: "Missing outreach_id" }, { status: 400 });
+      return NextResponse.json(
+        { error: "outreach_id is required" },
+        { status: 400 }
+      );
     }
 
     const { data: outreach, error: outreachError } = await supabaseAdmin
       .schema("nata")
       .from("candidate_outreach")
-      .select("*")
+      .select(
+        `
+          *,
+          jobs:job_id (
+            id,
+            title,
+            slug,
+            publish_status,
+            is_active
+          )
+        `
+      )
       .eq("id", outreachId)
       .single();
 
@@ -130,102 +61,103 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const job = Array.isArray(outreach.jobs) ? outreach.jobs[0] : outreach.jobs;
+
+    if (!job || job.publish_status !== "published" || job.is_active === false) {
+      return NextResponse.json(
+        { error: "This job is not active. Outreach was not sent." },
+        { status: 400 }
+      );
+    }
+
     if (!outreach.candidate_email) {
-      return NextResponse.json({ error: "Outreach is missing candidate email." }, { status: 400 });
-    }
-
-    const { data: application } = outreach.application_id
-      ? await supabaseAdmin
-          .schema("nata")
-          .from("applications")
-          .select("id,screening_status,candidate_pool_status")
-          .eq("id", outreach.application_id)
-          .maybeSingle()
-      : { data: null };
-
-    const poolStatus = clean(application?.candidate_pool_status || application?.screening_status).toLowerCase();
-
-    if (poolStatus && HARD_STOP_STATUSES.has(poolStatus)) {
-      await supabaseAdmin
-        .schema("nata")
-        .from("candidate_outreach")
-        .update({ outreach_status: "suppressed" })
-        .eq("id", outreachId);
-
       return NextResponse.json(
-        { error: "Candidate is not eligible for outreach.", suppressed: true },
-        { status: 409 }
+        { error: "Candidate email is missing." },
+        { status: 400 }
       );
     }
 
-    const { data: job, error: jobError } = await supabaseAdmin
-      .schema("nata")
-      .from("jobs")
-      .select("id,title,slug,publish_status,is_active")
-      .eq("id", outreach.job_id)
-      .single();
+    const candidateName = clean(outreach.candidate_name, "there");
+    const jobTitle = clean(job.title, "role");
+    const roleUrl = `${appBaseUrl()}/careers/${job.slug}`;
 
-    if (jobError || !job) {
-      return NextResponse.json({ error: "Job not found" }, { status: 404 });
-    }
+    const subject =
+      clean(outreach.message_subject) || "A new role may be a stronger fit";
 
-    if (!job.is_active || job.publish_status !== "published") {
-      await supabaseAdmin
-        .schema("nata")
-        .from("candidate_outreach")
-        .update({ outreach_status: "suppressed" })
-        .eq("id", outreachId);
+    const messageBody =
+      clean(outreach.message_body) ||
+      `We reviewed your profile again while preparing a new ${jobTitle} opportunity. Based on your background and prior notes, this role may be a stronger fit than the position you previously considered.`;
 
-      return NextResponse.json(
-        { error: "Job is no longer active for outreach.", suppressed: true },
-        { status: 409 }
-      );
-    }
+    const html = `
+      <div style="margin:0;padding:0;background:#f5f7fb;">
+        <div style="max-width:640px;margin:0 auto;padding:28px 18px;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+          <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:22px;padding:28px;box-shadow:0 18px 60px rgba(15,23,42,0.08);">
+            <p style="margin:0 0 16px;font-size:16px;line-height:1.55;">Hi ${candidateName},</p>
 
-    const appUrl = getAppUrl();
-    const roleUrl = `${appUrl}/careers/${job.slug}`;
-    const subject = clean(
-      outreach.message_subject,
-      `${job.title || "A new role"} may be a strong fit`
-    );
+            <p style="margin:0 0 16px;font-size:16px;line-height:1.55;">
+              ${messageBody}
+            </p>
 
-    const { html, text } = buildOutreachEmail({
-      candidateName: outreach.candidate_name || "there",
-      jobTitle: job.title || "a new role",
-      matchReason: outreach.match_reason || "",
-      recommendedNextStep:
-        outreach.recommended_next_step || "Reply to this email if you would like to be considered.",
-      roleUrl,
-    });
+            <p style="margin:0 0 18px;font-size:16px;line-height:1.55;">
+              If you're still open to opportunities, our team can move you forward without asking you to restart the full process.
+            </p>
 
-    const sent = await sendEmail({
+            <div style="margin:24px 0;">
+              <a href="${roleUrl}" style="display:inline-block;background:#1473ff;color:#ffffff;text-decoration:none;font-weight:800;border-radius:999px;padding:13px 18px;">
+                View role
+              </a>
+            </div>
+
+            <p style="margin:18px 0 0;font-size:15px;line-height:1.55;color:#4b5563;">
+              — NATA Recruiting Team
+            </p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const text = `Hi ${candidateName},
+
+${messageBody}
+
+If you're still open to opportunities, our team can move you forward without asking you to restart the full process.
+
+View role: ${roleUrl}
+
+- NATA Recruiting Team`;
+
+    await sendEmail({
       to: outreach.candidate_email,
       subject,
       html,
       text,
     });
 
-    const { error: updateError } = await supabaseAdmin
+    const { data: updated, error: updateError } = await supabaseAdmin
       .schema("nata")
       .from("candidate_outreach")
       .update({
         outreach_status: "sent",
-        message_subject: subject,
-        message_body: text,
         sent_at: new Date().toISOString(),
       })
-      .eq("id", outreachId);
+      .eq("id", outreachId)
+      .select("*")
+      .single();
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+      console.error("Outreach sent but status update failed:", updateError);
+      return NextResponse.json(
+        {
+          error:
+            "Email was sent, but outreach status could not be updated. Check the outreach record.",
+        },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({ success: true, email: sent });
+    return NextResponse.json({ outreach: updated });
   } catch (error) {
-    console.error("Outreach send error:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Outreach send failed." },
-      { status: 500 }
-    );
+    console.error("Outreach send failed:", error);
+    return NextResponse.json({ error: "Outreach send failed." }, { status: 500 });
   }
 }
