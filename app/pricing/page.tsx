@@ -50,16 +50,22 @@ export default function PricingIntakePage() {
           }}
         >
           <div>
-            <div className="eyebrow">Dealer enrollment</div>
+            <div className="eyebrow">Monthly dealer enrollment</div>
 
             <h1 style={{ fontSize: "clamp(44px,6vw,72px)", lineHeight: 0.95 }}>
-              Get your dealership pipeline set up.
+              Ongoing recruiting support for your dealership pipeline.
             </h1>
 
             <p className="lede">
-              Tell us what roles your store needs filled. We configure the
-              recruiting, screening, and candidate-prep pipeline around your
-              dealership before your managers waste time on the wrong interviews.
+              NATA Today is a monthly subscription-based recruiting and
+              candidate-prep service for dealerships. Once your store is on the
+              program, your team can submit hiring requests as needs change —
+              technicians, advisors, sales, BDC, parts, or multiple roles.
+            </p>
+
+            <p style={{ marginTop: 14, color: "#9fb4d6", lineHeight: 1.6 }}>
+              Submit hiring needs as they come up. We help keep the pipeline
+              moving toward stronger, better-prepared interviews.
             </p>
 
             <div
@@ -94,7 +100,7 @@ export default function PricingIntakePage() {
                   letterSpacing: "-0.045em",
                 }}
               >
-                A prepared candidate pipeline — not another applicant pile.
+                A monthly pipeline program your store can keep using.
               </h2>
 
               <p
@@ -105,9 +111,11 @@ export default function PricingIntakePage() {
                   fontSize: 15,
                 }}
               >
-                We help pre-screen, organize, and prepare candidates so your
-                team meets people who already have context, role fit, and
-                readiness signals attached.
+                Your dealership stays on the program month to month. When you
+                need technicians, advisors, salespeople, BDC, or parts
+                candidates, you submit the request and we help screen, organize,
+                and prepare candidates before your managers spend time
+                interviewing.
               </p>
             </div>
 
@@ -119,9 +127,18 @@ export default function PricingIntakePage() {
                 marginTop: 16,
               }}
             >
-              <ProofCard title="Pre-screened" copy="Candidates reviewed before handoff." />
-              <ProofCard title="Prepared" copy="Role fit and readiness made visible." />
-              <ProofCard title="Scheduled" copy="Your team meets the right people." />
+              <ProofCard
+                title="Monthly subscription"
+                copy="Ongoing recruiting pipeline support for your store."
+              />
+              <ProofCard
+                title="Submit role requests"
+                copy="Request technicians, sales, BDC, advisors, parts, or multiple roles."
+              />
+              <ProofCard
+                title="Stronger interviews"
+                copy="Candidates arrive screened, organized, and better prepared."
+              />
             </div>
           </div>
 
@@ -156,12 +173,12 @@ export default function PricingIntakePage() {
                 letterSpacing: "-0.04em",
               }}
             >
-              Takes about 60 seconds.
+              Enroll once. Submit needs anytime.
             </h2>
 
             <p style={{ color: "#cfe2ff", lineHeight: 1.55, marginTop: 12 }}>
-              After submission, we review your store needs and show you the
-              right setup path.
+              After your dealership is on the monthly program, your team can
+              request help filling specific roles as hiring pressure changes.
             </p>
 
             <div
@@ -173,6 +190,8 @@ export default function PricingIntakePage() {
                 fontSize: 14,
               }}
             >
+              <span>✓ Monthly subscription-based service</span>
+              <span>✓ Submit hiring requests as needs change</span>
               <span>✓ Technician and sales roles supported</span>
               <span>✓ Dealer group setup available</span>
               <span>✓ Interview-ready handoff focus</span>
@@ -192,7 +211,7 @@ export default function PricingIntakePage() {
           <SectionHeader
             kicker="Step 1"
             title="Store information"
-            copy="Basic dealership details so we can configure the pipeline around the right store or group."
+            copy="Basic dealership details so we can configure the monthly pipeline program around the right store or group."
           />
 
           <div className="grid-2" style={{ gap: 16, marginTop: 18 }}>
@@ -216,7 +235,7 @@ export default function PricingIntakePage() {
           <SectionHeader
             kicker="Step 2"
             title="Hiring focus"
-            copy="Tell us where the pressure is: technicians, advisors, sales, BDC, parts, or multiple roles."
+            copy="Tell us where the pressure is now. Once enrolled, your dealership can continue submitting role requests as needs change."
           />
 
           <div className="grid-2" style={{ gap: 16, marginTop: 18 }}>
@@ -256,7 +275,7 @@ export default function PricingIntakePage() {
             <button className="btn btn-primary">Start enrollment</button>
 
             <p style={{ margin: 0, color: "#9fb4d6", fontSize: 14 }}>
-              No commitment required. We review fit first.
+              Monthly program. No long-term commitment required.
             </p>
           </div>
         </form>
@@ -273,8 +292,9 @@ export default function PricingIntakePage() {
           }}
         >
           <strong style={{ color: "#fff" }}>After submission:</strong> we review
-          your store needs, configure the recommended pipeline, and show you how
-          candidates move from intake to prepared interview.
+          your store needs, configure the recommended monthly pipeline program,
+          and show you how candidates move from request to screening to prepared
+          interview.
         </div>
       </section>
     </main>
