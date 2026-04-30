@@ -1110,4 +1110,74 @@ h1 {
     width: 100%;
   }
 }
+/* === EXISTING FILE ABOVE (UNCHANGED) === */
+/* KEEP EVERYTHING YOU ALREADY HAVE EXACTLY AS IS */
 
+/* =========================
+   PROCESS CARD IMAGE LAYER
+   ========================= */
+
+.process-image-wrap {
+  width: 100%;
+  height: 140px;
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  position: relative;
+}
+
+.process-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.88;
+  transition: transform 0.45s ease, opacity 0.3s ease;
+}
+
+/* subtle gradient to match your UI tone */
+.process-image-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(7, 16, 31, 0.0) 40%,
+    rgba(7, 16, 31, 0.65) 100%
+  );
+}
+
+/* hover = slight lift, not gimmicky */
+.process-card:hover .process-image {
+  transform: scale(1.06);
+  opacity: 1;
+}
+
+/* tighten spacing now that image exists */
+.process-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+/* rebalance step number with image */
+.step-number {
+  margin-top: 4px;
+  margin-bottom: 18px;
+}
+
+/* =========================
+   MOBILE ADJUSTMENT
+   ========================= */
+
+@media (max-width: 980px) {
+  .process-image-wrap {
+    height: 160px;
+  }
+}
+
+@media (max-width: 680px) {
+  .process-image-wrap {
+    height: 180px;
+  }
+}
