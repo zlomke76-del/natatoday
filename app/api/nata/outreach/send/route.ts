@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { sendEmail } from "@/lib/email";
+import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
+import { sendEmail } from "../../../../../lib/email";
 
 function clean(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
