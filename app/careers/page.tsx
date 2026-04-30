@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Nav from "../components/Nav";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { supabaseAdmin } from "../../lib/supabaseAdmin";
 
 type Job = {
   id: string;
