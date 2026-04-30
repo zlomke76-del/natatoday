@@ -2,17 +2,25 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 export default function Nav() {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
 
   const closeMenu = () => setOpen(false);
+  const isCareersFlow = pathname?.startsWith("/careers");
 
   return (
     <header className="nav">
       <div className="nav-inner">
-        <Link href="/" className="brand" aria-label="NATA Today home" onClick={closeMenu}>
+        <Link
+          href={isCareersFlow ? "/careers" : "/"}
+          className="brand"
+          aria-label={isCareersFlow ? "NATA Today careers" : "NATA Today home"}
+          onClick={closeMenu}
+        >
           <span className="brand-logo-wrap" aria-hidden="true">
             <Image
               src="/images/nata_logo_01.png"
@@ -44,21 +52,29 @@ export default function Nav() {
           className={open ? "nav-links nav-links-open" : "nav-links"}
           aria-label="Primary navigation"
         >
-          <Link href="/#system" onClick={closeMenu}>
-            System
-          </Link>
-          <Link href="/#outcomes" onClick={closeMenu}>
-            Outcomes
-          </Link>
-          <Link href="/dealer-demo" onClick={closeMenu}>
-            Dealer Demo
-          </Link>
-          <Link href="/careers" onClick={closeMenu}>
-            Careers
-          </Link>
-          <Link className="nav-cta" href="/candidate-demo" onClick={closeMenu}>
-            View Candidate
-          </Link>
+          {isCareersFlow ? (
+            <Link href="/careers" onClick={closeMenu}>
+              Careers
+            </Link>
+          ) : (
+            <>
+              <Link href="/#system" onClick={closeMenu}>
+                System
+              </Link>
+              <Link href="/#outcomes" onClick={closeMenu}>
+                Outcomes
+              </Link>
+              <Link href="/dealer-demo" onClick={closeMenu}>
+                Dealer Demo
+              </Link>
+              <Link href="/careers" onClick={closeMenu}>
+                Careers
+              </Link>
+              <Link className="nav-cta" href="/candidate-demo" onClick={closeMenu}>
+                View Candidate
+              </Link>
+            </>
+          )}
         </nav>
       </div>
     </header>
