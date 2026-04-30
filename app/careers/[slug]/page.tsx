@@ -1,3 +1,4 @@
+import { unstable_noStore as noStore } from "next/cache";
 import Nav from "../../components/Nav";
 import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 
@@ -21,18 +22,28 @@ type Job = {
 };
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 async function getJob(slug: string): Promise<Job | null> {
+  noStore();
+
   const { data, error } = await supabaseAdmin
     .schema("nata")
     .from("jobs")
-    .select("*")
+    .select(
+      "id,title,slug,location,type,salary,description,requirements,role_hook,responsibilities,fit_signals,process_note,publish_mode,public_dealer_name,public_location,confidential_note"
+    )
     .eq("slug", slug)
     .eq("is_active", true)
     .eq("publish_status", "published")
     .single();
 
-  if (error || !data) return null;
+  if (error || !data) {
+    console.error("Failed to load job:", error);
+    return null;
+  }
+
   return data as Job;
 }
 
@@ -45,6 +56,8 @@ export default async function JobPage({
 }: {
   params: { slug: string };
 }) {
+  noStore();
+
   const job = await getJob(params.slug);
 
   if (!job) {
@@ -72,12 +85,6 @@ export default async function JobPage({
   const location = isConfidential
     ? job.public_location || "Houston, TX Market"
     : job.public_location || job.location || "Location";
-
-  const shouldShowLegacyOverview =
-    !job.role_hook && Boolean(job.description);
-
-  const shouldShowLegacyRequirements =
-    !hasItems(job.fit_signals) && Boolean(job.requirements);
 
   return (
     <main className="shell">
@@ -138,11 +145,11 @@ export default async function JobPage({
               <Card title="How the process works">{job.process_note}</Card>
             ) : null}
 
-            {shouldShowLegacyOverview ? (
+            {!job.role_hook && job.description ? (
               <Card title="Role overview">{job.description}</Card>
             ) : null}
 
-            {shouldShowLegacyRequirements ? (
+            {!hasItems(job.fit_signals) && job.requirements ? (
               <Card title="Requirements">{job.requirements}</Card>
             ) : null}
 
