@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
+import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
 const MUTABLE_STATUSES = new Set(["pending", "approved", "suppressed"]);
 
