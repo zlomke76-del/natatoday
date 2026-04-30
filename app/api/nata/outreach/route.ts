@@ -1,54 +1,60 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+const MUTABLE_STATUSES = new Set(["pending", "approved", "suppressed"]);
 
 function clean(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
-function isAllowedStatus(status: string) {
-  return [
-    "pending",
-    "approved",
-    "sent",
-    "responded",
-    "declined",
-    "ignored",
-    "suppressed",
-  ].includes(status);
-}
-
 export async function GET(request: NextRequest) {
   try {
-    const adminKey = request.headers.get("x-nata-admin-key");
-
-    if (!adminKey || adminKey !== process.env.NATA_ADMIN_KEY) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const { searchParams } = new URL(request.url);
-    const jobId = searchParams.get("job_id");
+
+    const dealerSlug = searchParams.get("dealerSlug");
     const status = searchParams.get("status") || "pending";
 
     let query = supabaseAdmin
       .schema("nata")
       .from("candidate_outreach")
-      .select("*")
+      .select(
+        `
+          *,
+          jobs:job_id (
+            id,
+            title,
+            slug,
+            dealer_slug,
+            publish_status,
+            is_active
+          )
+        `
+      )
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(50);
 
-    if (jobId) query = query.eq("job_id", jobId);
-    if (status !== "all") query = query.eq("outreach_status", status);
+    if (status !== "all") {
+      query = query.eq("outreach_status", status);
+    }
+
+    if (dealerSlug) {
+      query = query.eq("jobs.dealer_slug", dealerSlug);
+    }
 
     const { data, error } = await query;
 
     if (error) {
+      console.error("Outreach load failed:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ outreach: data || [] });
   } catch (error) {
-    console.error("Outreach GET error:", error);
-    return NextResponse.json({ error: "Failed to load outreach." }, { status: 500 });
+    console.error("Outreach GET failed:", error);
+    return NextResponse.json(
+      { error: "Outreach could not be loaded." },
+      { status: 500 }
+    );
   }
 }
 
@@ -60,39 +66,47 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json().catch(() => ({}));
-    const outreachId = clean(body.outreach_id || body.id);
-    const status = clean(body.outreach_status || body.status).toLowerCase();
+    const body = await request.json();
+
+    const outreachId = clean(body.outreach_id);
+    const outreachStatus = clean(body.outreach_status);
 
     if (!outreachId) {
-      return NextResponse.json({ error: "Missing outreach_id" }, { status: 400 });
+      return NextResponse.json(
+        { error: "outreach_id is required" },
+        { status: 400 }
+      );
     }
 
-    if (!isAllowedStatus(status)) {
-      return NextResponse.json({ error: "Invalid outreach_status" }, { status: 400 });
+    if (!MUTABLE_STATUSES.has(outreachStatus)) {
+      return NextResponse.json(
+        {
+          error:
+            "outreach_status must be pending, approved, or suppressed from this endpoint.",
+        },
+        { status: 400 }
+      );
     }
-
-    const update: Record<string, string | null> = {
-      outreach_status: status,
-    };
-
-    if (status === "responded") update.responded_at = new Date().toISOString();
 
     const { data, error } = await supabaseAdmin
       .schema("nata")
       .from("candidate_outreach")
-      .update(update)
+      .update({ outreach_status: outreachStatus })
       .eq("id", outreachId)
       .select("*")
       .single();
 
     if (error) {
+      console.error("Outreach update failed:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ outreach: data });
   } catch (error) {
-    console.error("Outreach PATCH error:", error);
-    return NextResponse.json({ error: "Failed to update outreach." }, { status: 500 });
+    console.error("Outreach PATCH failed:", error);
+    return NextResponse.json(
+      { error: "Outreach could not be updated." },
+      { status: 500 }
+    );
   }
 }
