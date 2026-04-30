@@ -28,6 +28,9 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
+const APPLY_PROCESS_NOTE =
+  "Apply directly through NATA Today. Applications are reviewed before dealership handoff so qualified candidates move forward with context.";
+
 function getBaseUrl() {
   const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.trim();
 
@@ -44,7 +47,6 @@ function getBaseUrl() {
 
 function cdata(value: unknown) {
   const text = typeof value === "string" && value.trim() ? value.trim() : "";
-
   return `<![CDATA[${text.replaceAll("]]>", "]]]]><![CDATA[>")}]]>`;
 }
 
@@ -66,51 +68,54 @@ function stripHtml(value: string) {
   return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function normalizeText(value: string) {
+  return stripHtml(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isMeaningfullySame(a: string, b: string) {
+  const left = normalizeText(a);
+  const right = normalizeText(b);
+
+  if (!left || !right) return false;
+  if (left === right) return true;
+
+  return left.length > 40 && right.length > 40 && (left.includes(right) || right.includes(left));
+}
+
 function normalizeSalaryForFeed(value: string | null) {
   if (!value) return "";
 
   let salary = value.trim();
 
   salary = salary
-    .replace(/\s*\/\s*hour/gi, " / hour")
-    .replace(/\s*\/\s*hr/gi, " / hour")
-    .replace(/\s*per\s*hour/gi, " / hour")
-    .replace(/\s*\/\s*year/gi, " / year")
-    .replace(/\s*per\s*year/gi, " / year")
+    .replace(/[–—]/g, "-")
+    .replace(/\s*\/\s*hr\b/gi, " per hour")
+    .replace(/\s*\/\s*hour\b/gi, " per hour")
+    .replace(/\s*per\s*hour\b/gi, " per hour")
+    .replace(/\s*\/\s*yr\b/gi, " per year")
+    .replace(/\s*\/\s*year\b/gi, " per year")
+    .replace(/\s*per\s*year\b/gi, " per year")
+    .replace(/\bhr\b/gi, "hour")
+    .replace(/\byr\b/gi, "year")
     .replace(/\s+/g, " ")
     .trim();
 
   salary = salary.replace(
-    /\$?(\d{2,3})\s*[-–]\s*\$?(\d{2,3})\s*\/\s*hour/i,
-    "$$$1 - $$$2 / hour"
+    /\$?([\d,]+)\s*-\s*\$?([\d,]+)\s*per\s*hour/i,
+    "$$$1 - $$$2 per hour"
   );
 
   salary = salary.replace(
-    /\$?(\d{4,6})\s*[-–]\s*\$?(\d{4,6})\s*\/\s*year/i,
-    (_match, min, max) =>
-      `$${String(min).replace(/,/g, "")} - $${String(max).replace(
-        /,/g,
-        ""
-      )} / year`
+    /\$?([\d,]+)\s*-\s*\$?([\d,]+)\s*per\s*year/i,
+    "$$$1 - $$$2 per year"
   );
 
-  salary = salary.replace(
-    /\$?(\d{2,3})k\s*[-–]\s*\$?(\d{2,3})k\s*\/\s*year/i,
-    (_match, min, max) =>
-      `$${Number(min) * 1000} - $${Number(max) * 1000} / year`
-  );
-
-  salary = salary.replace(
-    /\$?(\d{2,3})k\s*[-–]\s*\$?(\d{2,3})k/i,
-    (_match, min, max) =>
-      `$${Number(min) * 1000} - $${Number(max) * 1000} / year`
-  );
-
-  salary = salary.replace(/^\$?(\d{2,3})\s*\/\s*hour$/i, "$$$1 / hour");
-
-  salary = salary.replace(/^\$?(\d{4,6})\s*\/\s*year$/i, (_match, amount) =>
-    `$${String(amount).replace(/,/g, "")} / year`
-  );
+  salary = salary.replace(/^\$?(\d+(?:\.\d+)?)\s*per\s*hour$/i, "$$$1 per hour");
+  salary = salary.replace(/^\$?([\d,]+)\s*per\s*year$/i, "$$$1 per year");
 
   return salary;
 }
@@ -164,8 +169,7 @@ function buildCategory(title: string | null) {
   const value = (title || "").toLowerCase();
 
   if (value.includes("technician")) return "Automotive, Service, Technician";
-  if (value.includes("advisor"))
-    return "Automotive, Service Advisor, Customer Service";
+  if (value.includes("advisor")) return "Automotive, Service Advisor, Customer Service";
   if (value.includes("sales")) return "Automotive, Sales, Retail";
   if (value.includes("bdc")) return "Automotive, BDC, Customer Service";
   if (value.includes("parts")) return "Automotive, Parts, Fixed Operations";
@@ -204,22 +208,36 @@ function buildExperience(title: string | null) {
   return "Relevant dealership, customer-facing, or role-specific experience helpful.";
 }
 
+function cleanDescriptionText(value: string) {
+  return stripHtml(value)
+    .replace(/\b20\/hr\b/gi, "$20 per hour")
+    .replace(/\s*\/\s*hour\b/gi, " per hour")
+    .replace(/\s*\/\s*year\b/gi, " per year")
+    .replace(/Compensation is structured within\s+/gi, "Compensation is ")
+    .replace(/depending on experience, consistency, and fit/gi, "depending on experience and fit")
+    .replace(/NATA Today reviews applications before dealership handoff so qualified candidates reach the right interview stage with useful context\.?/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function buildDescriptionHtml(job: FeedJob) {
   const lines: string[] = [];
+  const roleHook = job.role_hook ? cleanDescriptionText(job.role_hook) : "";
+  const description = job.description ? cleanDescriptionText(job.description) : "";
 
-  if (job.role_hook) {
-    lines.push(`<p>${xmlEscape(job.role_hook)}</p>`);
+  if (roleHook) {
+    lines.push(`<p>${xmlEscape(roleHook)}</p>`);
   }
 
-  if (job.description) {
-    lines.push(`<p>${xmlEscape(stripHtml(job.description))}</p>`);
+  if (description && !isMeaningfullySame(roleHook, description)) {
+    lines.push(`<p>${xmlEscape(description)}</p>`);
   }
 
   if (Array.isArray(job.responsibilities) && job.responsibilities.length > 0) {
     lines.push("<h3>What you will do</h3>");
     lines.push("<ul>");
     for (const item of job.responsibilities) {
-      if (item?.trim()) lines.push(`<li>${xmlEscape(item)}</li>`);
+      if (item?.trim()) lines.push(`<li>${xmlEscape(cleanDescriptionText(item))}</li>`);
     }
     lines.push("</ul>");
   }
@@ -228,24 +246,18 @@ function buildDescriptionHtml(job: FeedJob) {
     lines.push("<h3>What makes you a strong fit</h3>");
     lines.push("<ul>");
     for (const item of job.fit_signals) {
-      if (item?.trim()) lines.push(`<li>${xmlEscape(item)}</li>`);
+      if (item?.trim()) lines.push(`<li>${xmlEscape(cleanDescriptionText(item))}</li>`);
     }
     lines.push("</ul>");
   }
 
   if (job.requirements) {
     lines.push("<h3>Requirements</h3>");
-    lines.push(`<p>${xmlEscape(stripHtml(job.requirements))}</p>`);
+    lines.push(`<p>${xmlEscape(cleanDescriptionText(job.requirements))}</p>`);
   }
 
-  if (job.process_note) {
-    lines.push("<h3>How the process works</h3>");
-    lines.push(`<p>${xmlEscape(stripHtml(job.process_note))}</p>`);
-  }
-
-  lines.push(
-    "<p>NATA Today reviews applications before dealership handoff so qualified candidates reach the right interview stage with useful context.</p>"
-  );
+  lines.push("<h3>How the process works</h3>");
+  lines.push(`<p>${xmlEscape(APPLY_PROCESS_NOTE)}</p>`);
 
   return lines.join("\n");
 }
@@ -267,6 +279,7 @@ function buildJobXml(job: FeedJob) {
     <url>${cdata(url)}</url>
     <company>${cdata(company)}</company>
     <sourcename>${cdata("NATA Today")}</sourcename>
+    <source>${cdata("NATA Today Hiring Platform")}</source>
     <city>${cdata(location.city)}</city>
     <state>${cdata(location.state)}</state>
     <country>${cdata(location.country)}</country>
