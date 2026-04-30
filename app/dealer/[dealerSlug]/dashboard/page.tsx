@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import Nav from "../../../components/Nav";
 
 type PageProps = {
@@ -111,6 +110,18 @@ function cleanFormValue(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function getBaseUrl() {
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL.replace(/\/$/, "")}`;
+  }
+
+  return "http://localhost:3000";
+}
+
 export default function DealerDashboardPage({ params }: PageProps) {
   const dealerName = formatDealerName(params.dealerSlug);
   const dealerLocation = getDealerLocation(params.dealerSlug);
@@ -134,13 +145,7 @@ export default function DealerDashboardPage({ params }: PageProps) {
       throw new Error("Missing NATA_ADMIN_KEY. Add it to Vercel before submitting hiring requests.");
     }
 
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : "http://localhost:3000";
-
-    const response = await fetch(`${appUrl}/api/nata/jobs`, {
+    const response = await fetch(`${getBaseUrl()}/api/nata/jobs`, {
       method: "POST",
       cache: "no-store",
       headers: {
@@ -168,6 +173,12 @@ export default function DealerDashboardPage({ params }: PageProps) {
     const result = await response.json().catch(() => null);
 
     if (!response.ok) {
+      console.error("NATA job publish failed", {
+        status: response.status,
+        statusText: response.statusText,
+        error: result?.error,
+      });
+
       throw new Error(result?.error || "Hiring request could not be published.");
     }
 
