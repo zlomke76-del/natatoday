@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
+import { unstable_noStore as noStore } from "next/cache";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = "force-no-store";
 
 type FeedJob = {
   id: string;
   title: string | null;
   slug: string | null;
+  dealer_slug: string | null;
   location: string | null;
   type: string | null;
   salary: string | null;
@@ -20,110 +18,279 @@ type FeedJob = {
   process_note: string | null;
   publish_mode: string | null;
   publish_status: string | null;
-  distribution_status: string | null;
   public_dealer_name: string | null;
   public_location: string | null;
+  distribution_status: string | null;
   created_at: string | null;
-  updated_at?: string | null;
+  updated_at: string | null;
 };
 
-function getBaseUrl() {
-  const explicit =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.NATA_PUBLIC_URL ||
-    process.env.VERCEL_PROJECT_PRODUCTION_URL;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
-  if (explicit) {
-    return explicit.startsWith("http") ? explicit : `https://${explicit}`;
+function getBaseUrl() {
+  const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.trim();
+
+  if (fromEnv) {
+    return fromEnv.replace(/\/+$/, "");
   }
 
   if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
+    return `https://${process.env.VERCEL_URL}`.replace(/\/+$/, "");
   }
 
   return "http://localhost:3000";
 }
 
-function escapeXml(value: unknown) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+function cdata(value: unknown) {
+  const text =
+    typeof value === "string" && value.trim()
+      ? value.trim()
+      : "";
+
+  return `<![CDATA[${text.replaceAll("]]>", "]]]]><![CDATA[>")}]]>`;
 }
 
-function formatDescription(job: FeedJob) {
-  const blocks: string[] = [];
+function xmlEscape(value: unknown) {
+  const text =
+    typeof value === "string" || typeof value === "number"
+      ? String(value)
+      : "";
 
-  if (job.role_hook) blocks.push(job.role_hook);
-  if (job.description) blocks.push(job.description);
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function stripHtml(value: string) {
+  return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function normalizeSalaryForFeed(value: string | null) {
+  if (!value) return "";
+
+  let salary = value.trim();
+
+  salary = salary
+    .replace(/\s*\/\s*hour/gi, " / hour")
+    .replace(/\s*\/\s*hr/gi, " / hour")
+    .replace(/\s*per\s*hour/gi, " / hour")
+    .replace(/\s*\/\s*year/gi, " / year")
+    .replace(/\s*per\s*year/gi, " / year")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  salary = salary.replace(
+    /\$?(\d{2,3})\s*[-–]\s*\$?(\d{2,3})\s*\/\s*hour/i,
+    "$$$1 - $$$2 / hour"
+  );
+
+  salary = salary.replace(
+    /\$?(\d{4,6})\s*[-–]\s*\$?(\d{4,6})\s*\/\s*year/i,
+    (_match, min, max) => `$${String(min).replace(/,/g, "")} - $${String(max).replace(/,/g, "")} / year`
+  );
+
+  salary = salary.replace(
+    /\$?(\d{2,3})k\s*[-–]\s*\$?(\d{2,3})k\s*\/\s*year/i,
+    (_match, min, max) => `$${Number(min) * 1000} - $${Number(max) * 1000} / year`
+  );
+
+  salary = salary.replace(
+    /\$?(\d{2,3})k\s*[-–]\s*\$?(\d{2,3})k/i,
+    (_match, min, max) => `$${Number(min) * 1000} - $${Number(max) * 1000} / year`
+  );
+
+  salary = salary.replace(
+    /^\$?(\d{2,3})\s*\/\s*hour$/i,
+    "$$$1 / hour"
+  );
+
+  salary = salary.replace(
+    /^\$?(\d{4,6})\s*\/\s*year$/i,
+    (_match, amount) => `$${String(amount).replace(/,/g, "")} / year`
+  );
+
+  return salary;
+}
+
+function normalizeJobType(type: string | null) {
+  const value = (type || "").toLowerCase();
+
+  if (value.includes("part")) return "parttime";
+  if (value.includes("contract")) return "contract";
+  if (value.includes("temporary") || value.includes("temp")) return "temporary";
+  if (value.includes("intern")) return "internship";
+
+  return "fulltime";
+}
+
+function parseLocation(job: FeedJob) {
+  const raw = (job.public_location || job.location || "").trim();
+
+  if (!raw) {
+    return {
+      city: "Jersey Village",
+      state: "TX",
+      country: "US",
+      postalcode: "",
+    };
+  }
+
+  const parts = raw.split(",").map((part) => part.trim()).filter(Boolean);
+
+  if (parts.length >= 2) {
+    return {
+      city: parts[0],
+      state: parts[1],
+      country: "US",
+      postalcode: "",
+    };
+  }
+
+  return {
+    city: raw,
+    state: "",
+    country: "US",
+    postalcode: "",
+  };
+}
+
+function buildCategory(title: string | null) {
+  const value = (title || "").toLowerCase();
+
+  if (value.includes("technician")) return "Automotive, Service, Technician";
+  if (value.includes("advisor")) return "Automotive, Service Advisor, Customer Service";
+  if (value.includes("sales")) return "Automotive, Sales, Retail";
+  if (value.includes("bdc")) return "Automotive, BDC, Customer Service";
+  if (value.includes("parts")) return "Automotive, Parts, Fixed Operations";
+  if (value.includes("finance")) return "Automotive, Finance, F&I";
+
+  return "Automotive, Dealership";
+}
+
+function buildExperience(title: string | null) {
+  const value = (title || "").toLowerCase();
+
+  if (value.includes("technician")) return "Automotive service experience preferred. ASE or OEM certification is helpful but not always required.";
+  if (value.includes("advisor")) return "Service lane or customer-facing automotive experience preferred.";
+  if (value.includes("sales")) return "Automotive sales experience preferred but not required.";
+  if (value.includes("bdc")) return "Customer service, phone, appointment-setting, or dealership experience helpful.";
+  if (value.includes("parts")) return "Parts counter or dealership parts experience preferred.";
+  if (value.includes("finance")) return "Automotive finance, F&I, or dealership sales management experience preferred.";
+
+  return "Relevant dealership, customer-facing, or role-specific experience helpful.";
+}
+
+function buildDescriptionHtml(job: FeedJob) {
+  const lines: string[] = [];
+
+  if (job.role_hook) {
+    lines.push(`<p>${xmlEscape(job.role_hook)}</p>`);
+  }
+
+  if (job.description) {
+    lines.push(`<p>${xmlEscape(stripHtml(job.description))}</p>`);
+  }
 
   if (Array.isArray(job.responsibilities) && job.responsibilities.length > 0) {
-    blocks.push(
-      `Responsibilities:\n${job.responsibilities
-        .filter(Boolean)
-        .map((item) => `- ${item}`)
-        .join("\n")}`
-    );
+    lines.push("<h3>What you will do</h3>");
+    lines.push("<ul>");
+    for (const item of job.responsibilities) {
+      if (item?.trim()) lines.push(`<li>${xmlEscape(item)}</li>`);
+    }
+    lines.push("</ul>");
   }
 
   if (Array.isArray(job.fit_signals) && job.fit_signals.length > 0) {
-    blocks.push(
-      `Strong fit signals:\n${job.fit_signals
-        .filter(Boolean)
-        .map((item) => `- ${item}`)
-        .join("\n")}`
-    );
+    lines.push("<h3>What makes you a strong fit</h3>");
+    lines.push("<ul>");
+    for (const item of job.fit_signals) {
+      if (item?.trim()) lines.push(`<li>${xmlEscape(item)}</li>`);
+    }
+    lines.push("</ul>");
   }
 
-  if (job.requirements) blocks.push(`Requirements:\n${job.requirements}`);
-  if (job.process_note) blocks.push(job.process_note);
+  if (job.requirements) {
+    lines.push("<h3>Requirements</h3>");
+    lines.push(`<p>${xmlEscape(stripHtml(job.requirements))}</p>`);
+  }
 
-  blocks.push(
-    "Apply through NATA Today so your application can be reviewed and routed through the structured hiring process."
+  if (job.process_note) {
+    lines.push("<h3>How the process works</h3>");
+    lines.push(`<p>${xmlEscape(stripHtml(job.process_note))}</p>`);
+  }
+
+  lines.push(
+    "<p>NATA Today reviews applications before dealership handoff so qualified candidates reach the right interview stage with useful context.</p>"
   );
 
-  return blocks.join("\n\n");
+  return lines.join("\n");
 }
 
-function renderJobXml(job: FeedJob, baseUrl: string) {
-  const dealerName =
-    job.publish_mode === "confidential"
-      ? "Confidential Dealership"
-      : job.public_dealer_name || "NATA Today";
-
-  const location =
-    job.publish_mode === "confidential"
-      ? job.public_location || job.location || "Houston, TX Market"
-      : job.public_location || job.location || "Houston, TX Market";
-
-  const applyUrl = `${baseUrl}/careers/${encodeURIComponent(job.slug || job.id)}`;
-  const postedAt = job.created_at || new Date().toISOString();
-  const updatedAt = job.updated_at || job.created_at || new Date().toISOString();
+function buildJobXml(job: FeedJob) {
+  const baseUrl = getBaseUrl();
+  const slug = job.slug || job.id;
+  const url = `${baseUrl}/careers/${encodeURIComponent(slug)}`;
+  const location = parseLocation(job);
+  const company = job.public_dealer_name || "NATA Today";
+  const date = job.updated_at || job.created_at || new Date().toISOString();
+  const salary = normalizeSalaryForFeed(job.salary);
 
   return `
   <job>
-    <id>${escapeXml(job.id)}</id>
-    <title>${escapeXml(job.title)}</title>
-    <company>${escapeXml(dealerName)}</company>
-    <location>${escapeXml(location)}</location>
-    <jobtype>${escapeXml(job.type || "Full-time")}</jobtype>
-    <salary>${escapeXml(job.salary || "")}</salary>
-    <description><![CDATA[${formatDescription(job)}]]></description>
-    <apply_url>${escapeXml(applyUrl)}</apply_url>
-    <date>${escapeXml(postedAt)}</date>
-    <updated>${escapeXml(updatedAt)}</updated>
-    <source>${escapeXml("NATA Today")}</source>
+    <title>${cdata(job.title || "Dealership Opportunity")}</title>
+    <date>${cdata(date)}</date>
+    <referencenumber>${cdata(job.id)}</referencenumber>
+    <url>${cdata(url)}</url>
+    <company>${cdata(company)}</company>
+    <sourcename>${cdata("NATA Today")}</sourcename>
+    <city>${cdata(location.city)}</city>
+    <state>${cdata(location.state)}</state>
+    <country>${cdata(location.country)}</country>
+    <postalcode>${cdata(location.postalcode)}</postalcode>
+    <email>${cdata(process.env.NATA_JOBS_CONTACT_EMAIL || "team@natatoday.ai")}</email>
+    <description>${cdata(buildDescriptionHtml(job))}</description>
+    <salary>${cdata(salary)}</salary>
+    <jobtype>${cdata(normalizeJobType(job.type))}</jobtype>
+    <category>${cdata(buildCategory(job.title))}</category>
+    <experience>${cdata(buildExperience(job.title))}</experience>
+    <education>${cdata("High school diploma or equivalent preferred")}</education>
   </job>`;
 }
 
 export async function GET() {
+  noStore();
+
   const { data, error } = await supabaseAdmin
     .schema("nata")
     .from("jobs")
     .select(
-      "id,title,slug,location,type,salary,description,requirements,role_hook,responsibilities,fit_signals,process_note,publish_mode,publish_status,distribution_status,public_dealer_name,public_location,created_at,updated_at"
+      [
+        "id",
+        "title",
+        "slug",
+        "dealer_slug",
+        "location",
+        "type",
+        "salary",
+        "description",
+        "requirements",
+        "role_hook",
+        "responsibilities",
+        "fit_signals",
+        "process_note",
+        "publish_mode",
+        "publish_status",
+        "public_dealer_name",
+        "public_location",
+        "distribution_status",
+        "created_at",
+        "updated_at",
+      ].join(",")
     )
     .eq("is_active", true)
     .eq("publish_status", "published")
@@ -132,22 +299,25 @@ export async function GET() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("Failed to build NATA job feed:", error);
-    return NextResponse.json(
-      { error: "Job feed could not be generated" },
-      { status: 500 }
-    );
+    console.error("Failed to generate NATA job feed:", error);
+
+    return new NextResponse("Feed unavailable", {
+      status: 500,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
+      },
+    });
   }
 
-  const baseUrl = getBaseUrl().replace(/\/$/, "");
   const jobs = (data || []) as FeedJob[];
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <source>
-  <publisher>NATA Today</publisher>
-  <publisherurl>${escapeXml(baseUrl)}</publisherurl>
-  <lastBuildDate>${escapeXml(new Date().toISOString())}</lastBuildDate>
-${jobs.map((job) => renderJobXml(job, baseUrl)).join("\n")}
+  <publisher>${cdata("NATA Today")}</publisher>
+  <publisherurl>${cdata(getBaseUrl())}</publisherurl>
+  <lastBuildDate>${cdata(new Date().toISOString())}</lastBuildDate>
+${jobs.map(buildJobXml).join("\n")}
 </source>`;
 
   return new NextResponse(xml, {
