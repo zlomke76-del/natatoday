@@ -13,7 +13,7 @@ type Job = {
   requirements: string | null;
   dealer_slug: string | null;
   created_at: string | null;
-  publish_mode: "public" | "confidential" | string | null;
+  publish_mode: string | null;
   public_dealer_name: string | null;
   public_location: string | null;
   confidential_note: string | null;
@@ -21,12 +21,15 @@ type Job = {
   publish_status: string | null;
 };
 
-function getDealerDisplay(job: Job) {
-  if (job.publish_mode === "confidential") return "Confidential Dealership";
+function getDealerName(job: Job) {
+  if (job.publish_mode === "confidential") {
+    return "Confidential Dealership";
+  }
+
   return job.public_dealer_name || "Jersey Village Chrysler Jeep Dodge Ram";
 }
 
-function getLocationDisplay(job: Job) {
+function getDisplayLocation(job: Job) {
   if (job.publish_mode === "confidential") {
     return job.public_location || "Houston, TX Market";
   }
@@ -69,11 +72,11 @@ export default async function CareersPage() {
       >
         <div className="eyebrow">Dealership Careers</div>
 
-        <h1>Open roles from dealerships hiring through Solace.</h1>
+        <h1>Open dealership roles published by Solace.</h1>
 
         <p className="lede">
-          These are active dealership hiring requests published by Solace on
-          behalf of dealer partners. Some stores are shown publicly. Others are
+          These are active hiring requests published by Solace on behalf of
+          dealership partners. Some dealerships are listed publicly. Others are
           handled confidentially when discretion is required.
         </p>
 
@@ -95,9 +98,9 @@ export default async function CareersPage() {
             </div>
           ) : (
             jobs.map((job) => {
-              const dealerDisplay = getDealerDisplay(job);
-              const locationDisplay = getLocationDisplay(job);
               const isConfidential = job.publish_mode === "confidential";
+              const dealerName = getDealerName(job);
+              const displayLocation = getDisplayLocation(job);
 
               return (
                 <Link
@@ -147,7 +150,9 @@ export default async function CareersPage() {
                             textTransform: "uppercase",
                           }}
                         >
-                          {isConfidential ? "Confidential search" : "Public dealership role"}
+                          {isConfidential
+                            ? "Confidential search"
+                            : "Public dealership role"}
                         </span>
 
                         <span style={{ color: "#9fb4d6", fontSize: 13 }}>
@@ -158,7 +163,7 @@ export default async function CareersPage() {
                       <h2 style={{ margin: 0 }}>{job.title}</h2>
 
                       <p style={{ margin: "10px 0 0", color: "#cfe2ff" }}>
-                        {dealerDisplay} · {locationDisplay}
+                        {dealerName} · {displayLocation}
                         {job.type ? ` · ${job.type}` : ""}
                       </p>
 
