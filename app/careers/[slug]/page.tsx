@@ -98,7 +98,6 @@ export default async function JobPage({
           <Link href="/careers" style={backLinkStyle}>
             ← Back to careers
           </Link>
-          <div style={trustPillStyle}>Solace-screened opportunity</div>
         </div>
 
         <div style={headerGridStyle}>
@@ -112,11 +111,6 @@ export default async function JobPage({
             {job.salary ? <p style={salaryStyle}>{job.salary}</p> : null}
           </div>
 
-          <div style={quickProofStyle}>
-            <ProofItem title="Real opportunity" copy="Submitted by a participating dealer." />
-            <ProofItem title="Pre-screened fit" copy="Applications are reviewed before handoff." />
-            <ProofItem title="Privacy protected" copy="Shared only when there is a potential fit." />
-          </div>
         </div>
 
         <div style={contentGridStyle}>
@@ -178,10 +172,9 @@ export default async function JobPage({
               <div>
                 <h3 style={applyTitleStyle}>Apply for this role</h3>
                 <p style={applyCopyStyle}>
-                  We review every application before dealership handoff. If you’re a strong fit, you’ll hear from us with next steps.
+                  Submit your information and resume. If there’s a strong fit, you’ll hear from us with next steps.
                 </p>
               </div>
-              <div style={badgeStyle}>Fast review</div>
             </div>
 
             <form method="POST" action="/api/nata/apply" encType="multipart/form-data">
@@ -272,18 +265,6 @@ function Card({
       <div>
         <h3 style={cardTitleStyle}>{title}</h3>
         <div style={cardBodyStyle}>{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function ProofItem({ title, copy }: { title: string; copy: string }) {
-  return (
-    <div style={proofItemStyle}>
-      <div style={proofDotStyle}>✦</div>
-      <div>
-        <strong style={{ display: "block", color: "#f8fbff", fontSize: 13 }}>{title}</strong>
-        <span style={{ color: "#9fb2ce", fontSize: 12, lineHeight: 1.35 }}>{copy}</span>
       </div>
     </div>
   );
@@ -388,7 +369,6 @@ const topBarStyle: React.CSSProperties = {
   zIndex: 1,
   display: "flex",
   alignItems: "center",
-  justifyContent: "space-between",
   gap: 16,
   marginBottom: 26,
 };
@@ -399,21 +379,12 @@ const backLinkStyle: React.CSSProperties = {
   fontWeight: 800,
 };
 
-const trustPillStyle: React.CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(255,255,255,0.06)",
-  borderRadius: 999,
-  padding: "9px 13px",
-  color: "#d7e6ff",
-  fontSize: 12,
-  fontWeight: 900,
-};
 
 const headerGridStyle: React.CSSProperties = {
   position: "relative",
   zIndex: 1,
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) 420px",
+  gridTemplateColumns: "minmax(0, 860px)",
   gap: 32,
   alignItems: "end",
 };
@@ -439,32 +410,8 @@ const salaryStyle: React.CSSProperties = {
   fontWeight: 800,
 };
 
-const quickProofStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 10,
-  gridTemplateColumns: "1fr",
-};
 
-const proofItemStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 10,
-  alignItems: "flex-start",
-  border: "1px solid rgba(255,255,255,0.12)",
-  borderRadius: 18,
-  padding: 13,
-  background: "rgba(255,255,255,0.045)",
-};
 
-const proofDotStyle: React.CSSProperties = {
-  width: 28,
-  height: 28,
-  borderRadius: 999,
-  display: "grid",
-  placeItems: "center",
-  color: "#58a6ff",
-  background: "rgba(20,115,255,0.16)",
-  flex: "0 0 auto",
-};
 
 const contentGridStyle: React.CSSProperties = {
   position: "relative",
@@ -555,15 +502,6 @@ const applyCopyStyle: React.CSSProperties = {
   lineHeight: 1.5,
 };
 
-const badgeStyle: React.CSSProperties = {
-  flex: "0 0 auto",
-  borderRadius: 999,
-  background: "#e8f1ff",
-  color: "#1261d9",
-  fontSize: 12,
-  fontWeight: 950,
-  padding: "8px 10px",
-};
 
 const formGridStyle: React.CSSProperties = {
   display: "grid",
