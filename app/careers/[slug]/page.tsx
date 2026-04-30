@@ -10,6 +10,10 @@ type Job = {
   salary: string | null;
   description: string | null;
   requirements: string | null;
+  role_hook?: string | null;
+  responsibilities?: string[] | null;
+  fit_signals?: string[] | null;
+  process_note?: string | null;
   display_dealer?: string;
   display_location?: string;
   is_confidential?: boolean;
@@ -67,7 +71,8 @@ export default async function JobPage({
         <h1>{job.title}</h1>
 
         <p style={{ color: "#cfe2ff", marginTop: 10 }}>
-          {location} {job.type ? `· ${job.type}` : ""}
+          {dealerName} · {location}
+          {job.type ? ` · ${job.type}` : ""}
           {job.salary ? ` · ${job.salary}` : ""}
         </p>
 
@@ -81,36 +86,55 @@ export default async function JobPage({
         >
           {/* LEFT SIDE */}
           <div style={{ display: "grid", gap: 18 }}>
-            <Card title="Why this role exists">
-              This dealership is actively building its team and needs someone who can step into a real workflow — not wait around. This role is part of a structured hiring process where candidates are reviewed before the interview so your time isn’t wasted.
-            </Card>
+            
+            {job.role_hook && (
+              <Card title="Why this role exists">
+                {job.role_hook}
+              </Card>
+            )}
 
-            <Card title="What you'll do">
-              <ul>
-                <li>Support day-to-day dealership operations within your role</li>
-                <li>Maintain communication and follow-through with customers and team</li>
-                <li>Operate within a structured and organized workflow</li>
-                <li>Contribute to a performance-driven environment</li>
-              </ul>
-            </Card>
+            {job.responsibilities && job.responsibilities.length > 0 && (
+              <Card title="What you'll do">
+                <ul>
+                  {job.responsibilities.map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+              </Card>
+            )}
 
-            <Card title="What makes you a strong fit">
-              <ul>
-                <li>Strong communication and availability</li>
-                <li>Relevant experience preferred but not always required</li>
-                <li>Consistency and reliability</li>
-                <li>Comfort in a fast-paced dealership environment</li>
-              </ul>
-            </Card>
+            {job.fit_signals && job.fit_signals.length > 0 && (
+              <Card title="What makes you a strong fit">
+                <ul>
+                  {job.fit_signals.map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+              </Card>
+            )}
 
-            <Card title="How this works">
-              Applications are reviewed by Solace before dealership handoff. If you’re a strong fit, the dealership meets you with context — not a cold interview.
-            </Card>
+            {job.process_note && (
+              <Card title="How this works">
+                {job.process_note}
+              </Card>
+            )}
+
+            {job.description && (
+              <Card title="About the role">
+                {job.description}
+              </Card>
+            )}
+
+            {job.requirements && (
+              <Card title="Requirements">
+                {job.requirements}
+              </Card>
+            )}
 
             {isConfidential && (
               <Card title="Confidential search">
                 {job.confidential_note ||
-                  "This role is being handled confidentially on behalf of a dealership. Candidate information is reviewed before any dealership handoff."}
+                  "This role is being handled confidentially on behalf of a dealership."}
               </Card>
             )}
           </div>
@@ -142,37 +166,14 @@ export default async function JobPage({
               <div style={{ marginTop: 12 }}>
                 <label>
                   Short note
-                  <textarea
-                    name="cover_note"
-                    rows={3}
-                    style={inputStyle}
-                  />
+                  <textarea name="cover_note" rows={3} style={inputStyle} />
                 </label>
               </div>
 
               <div style={{ marginTop: 14 }}>
                 <label>
                   Profile photo (recommended)
-                  <input
-                    type="file"
-                    name="profile_photo"
-                    accept="image/*"
-                    style={{ marginTop: 6 }}
-                  />
-                  <span style={{ fontSize: 12, color: "#666" }}>
-                    Helps the team recognize and remember candidates
-                  </span>
-                </label>
-              </div>
-
-              <div style={{ marginTop: 14 }}>
-                <label>
-                  Resume
-                  <input
-                    type="file"
-                    name="resume"
-                    style={{ marginTop: 6 }}
-                  />
+                  <input type="file" name="profile_photo" accept="image/*" style={{ marginTop: 6 }} />
                 </label>
               </div>
 
