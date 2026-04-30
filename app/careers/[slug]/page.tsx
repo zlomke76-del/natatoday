@@ -20,6 +20,8 @@ type Job = {
   confidential_note: string | null;
 };
 
+export const dynamic = "force-dynamic";
+
 async function getJob(slug: string): Promise<Job | null> {
   const { data, error } = await supabaseAdmin
     .schema("nata")
@@ -31,7 +33,11 @@ async function getJob(slug: string): Promise<Job | null> {
     .single();
 
   if (error || !data) return null;
-  return data;
+  return data as Job;
+}
+
+function hasItems(value: string[] | null): value is string[] {
+  return Array.isArray(value) && value.length > 0;
 }
 
 export default async function JobPage({
@@ -45,7 +51,13 @@ export default async function JobPage({
     return (
       <main className="shell">
         <Nav />
-        <section style={{ width: "min(1180px, calc(100% - 40px))", margin: "0 auto", padding: "80px 0" }}>
+        <section
+          style={{
+            width: "min(1180px, calc(100% - 40px))",
+            margin: "0 auto",
+            padding: "80px 0",
+          }}
+        >
           <h1>Role not found</h1>
         </section>
       </main>
@@ -60,6 +72,12 @@ export default async function JobPage({
   const location = isConfidential
     ? job.public_location || "Houston, TX Market"
     : job.public_location || job.location || "Location";
+
+  const shouldShowLegacyOverview =
+    !job.role_hook && Boolean(job.description);
+
+  const shouldShowLegacyRequirements =
+    !hasItems(job.fit_signals) && Boolean(job.requirements);
 
   return (
     <main className="shell">
@@ -96,7 +114,7 @@ export default async function JobPage({
               <Card title="Why this role is open">{job.role_hook}</Card>
             ) : null}
 
-            {job.responsibilities && job.responsibilities.length > 0 ? (
+            {hasItems(job.responsibilities) ? (
               <Card title="What you'll do">
                 <ul style={{ margin: 0, paddingLeft: 20 }}>
                   {job.responsibilities.map((item) => (
@@ -106,7 +124,7 @@ export default async function JobPage({
               </Card>
             ) : null}
 
-            {job.fit_signals && job.fit_signals.length > 0 ? (
+            {hasItems(job.fit_signals) ? (
               <Card title="What makes you a strong fit">
                 <ul style={{ margin: 0, paddingLeft: 20 }}>
                   {job.fit_signals.map((item) => (
@@ -120,11 +138,11 @@ export default async function JobPage({
               <Card title="How the process works">{job.process_note}</Card>
             ) : null}
 
-            {job.description ? (
+            {shouldShowLegacyOverview ? (
               <Card title="Role overview">{job.description}</Card>
             ) : null}
 
-            {job.requirements ? (
+            {shouldShowLegacyRequirements ? (
               <Card title="Requirements">{job.requirements}</Card>
             ) : null}
 
@@ -148,12 +166,23 @@ export default async function JobPage({
           >
             <h3 style={{ marginTop: 0, fontSize: 26 }}>Apply for this role</h3>
 
-            <p style={{ fontSize: 13, color: "#555", marginBottom: 16, lineHeight: 1.45 }}>
-              We review every application before dealership handoff. If you’re a strong fit,
-              you’ll hear from us with next steps.
+            <p
+              style={{
+                fontSize: 13,
+                color: "#555",
+                marginBottom: 16,
+                lineHeight: 1.45,
+              }}
+            >
+              We review every application before dealership handoff. If you’re a
+              strong fit, you’ll hear from us with next steps.
             </p>
 
-            <form method="POST" action="/api/nata/apply" encType="multipart/form-data">
+            <form
+              method="POST"
+              action="/api/nata/apply"
+              encType="multipart/form-data"
+            >
               <input type="hidden" name="job_id" value={job.id} />
 
               <Input label="Full name" name="name" required />
@@ -170,14 +199,22 @@ export default async function JobPage({
 
               <div style={{ marginTop: 14 }}>
                 <label>
-                  Profile photo <span style={{ color: "#666" }}>(recommended)</span>
+                  Profile photo{" "}
+                  <span style={{ color: "#666" }}>(recommended)</span>
                   <input
                     type="file"
                     name="profile_photo"
                     accept="image/*"
                     style={{ marginTop: 6, display: "block" }}
                   />
-                  <span style={{ display: "block", fontSize: 12, color: "#666", marginTop: 6 }}>
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: 12,
+                      color: "#666",
+                      marginTop: 6,
+                    }}
+                  >
                     Helps the team recognize and remember candidates.
                   </span>
                 </label>
@@ -206,7 +243,13 @@ export default async function JobPage({
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div
       style={{
@@ -250,4 +293,3 @@ const inputStyle = {
   border: "1px solid #ccc",
   marginTop: 6,
 };
-
