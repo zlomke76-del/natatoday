@@ -13,6 +13,106 @@ function clean(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
+function formatWholeNumber(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function normalizeMoneyToken(value: string) {
+  const cleaned = value.toLowerCase().replace(/[$,\s]/g, "").trim();
+
+  if (!cleaned) return "";
+
+  const isK = cleaned.endsWith("k");
+  const numeric = Number(cleaned.replace(/k$/, ""));
+
+  if (!Number.isFinite(numeric) || numeric <= 0) return "";
+
+  const amount = isK ? numeric * 1000 : numeric;
+  return `$${formatWholeNumber(amount)}`;
+}
+
+function normalizeSalary(input: string) {
+  if (!input) return "";
+
+  const original = input.trim();
+  const normalized = original
+    .replace(/[–—]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+  const lower = normalized.toLowerCase();
+
+  const hasHourlySignal =
+    /\b(hr|hour|hourly)\b/.test(lower) || /\/\s*h(r|our)?\b/.test(lower);
+  const hasYearlySignal =
+    /\b(yr|year|annual|annually|salary)\b/.test(lower) || /\/\s*y(r|ear)?\b/.test(lower);
+
+  const compact = lower.replace(/\s+/g, "");
+
+  const hourlyRange = compact.match(/^\$?(\d+(?:\.\d+)?)\s*-\s*\$?(\d+(?:\.\d+)?)(?:\/)?(?:hr|hour|hourly)$/);
+  if (hourlyRange) {
+    return `$${hourlyRange[1]}–$${hourlyRange[2]} / hour`;
+  }
+
+  const hourlySingle = compact.match(/^\$?(\d+(?:\.\d+)?)(?:\/)?(?:hr|hour|hourly)$/);
+  if (hourlySingle) {
+    return `$${hourlySingle[1]} / hour`;
+  }
+
+  const yearlyRangeK = compact.match(/^\$?(\d+(?:\.\d+)?)k\s*-\s*\$?(\d+(?:\.\d+)?)k(?:\/)?(?:yr|year|annual|annually)?$/);
+  if (yearlyRangeK) {
+    return `${normalizeMoneyToken(`${yearlyRangeK[1]}k`)}–${normalizeMoneyToken(`${yearlyRangeK[2]}k`)} / year`;
+  }
+
+  const yearlySingleK = compact.match(/^\$?(\d+(?:\.\d+)?)k(?:\/)?(?:yr|year|annual|annually)?$/);
+  if (yearlySingleK) {
+    return `${normalizeMoneyToken(`${yearlySingleK[1]}k`)} / year`;
+  }
+
+  const rawRange = normalized.match(/^\$?([\d,]+(?:\.\d+)?)\s*-\s*\$?([\d,]+(?:\.\d+)?)(.*)$/i);
+  if (rawRange) {
+    const first = Number(rawRange[1].replace(/,/g, ""));
+    const second = Number(rawRange[2].replace(/,/g, ""));
+    const suffix = rawRange[3]?.toLowerCase() || "";
+
+    if (Number.isFinite(first) && Number.isFinite(second)) {
+      if (hasHourlySignal || suffix.includes("hr") || suffix.includes("hour")) {
+        return `$${rawRange[1].replace(/^\$/, "")}–$${rawRange[2].replace(/^\$/, "")} / hour`;
+      }
+
+      if (hasYearlySignal || first >= 1000 || second >= 1000) {
+        return `$${formatWholeNumber(first)}–$${formatWholeNumber(second)} / year`;
+      }
+    }
+  }
+
+  const rawSingle = normalized.match(/^\$?([\d,]+(?:\.\d+)?)(.*)$/i);
+  if (rawSingle) {
+    const amount = Number(rawSingle[1].replace(/,/g, ""));
+    const suffix = rawSingle[2]?.toLowerCase() || "";
+
+    if (Number.isFinite(amount)) {
+      if (hasHourlySignal || suffix.includes("hr") || suffix.includes("hour")) {
+        return `$${rawSingle[1].replace(/^\$/, "")} / hour`;
+      }
+
+      if (hasYearlySignal || amount >= 1000) {
+        return `$${formatWholeNumber(amount)} / year`;
+      }
+    }
+  }
+
+  return normalized
+    .replace(/\$?([0-9]+(?:\.[0-9]+)?)\s*\/\s*hr\b/gi, "$$$1 / hour")
+    .replace(/\bhr\b/gi, "hour")
+    .replace(/\s*\/\s*hour\b/gi, " / hour")
+    .replace(/\s*\/\s*yr\b/gi, " / year")
+    .replace(/\byr\b/gi, "year")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeJob(job: any) {
   const isConfidential = job.publish_mode === "confidential";
 
@@ -45,7 +145,7 @@ function buildJobContent(input: JobContentInput) {
       ? "A dealership in the market"
       : input.dealerName;
   const location = input.location || "the local market";
-  const salary = input.salary;
+  const salary = normalizeSalary(input.salary);
   const notes = input.notes;
   const priority = input.priority;
   const lower = title.toLowerCase();
@@ -158,7 +258,7 @@ function buildJobContent(input: JobContentInput) {
       description: `${dealer} is hiring a ${title} to support parts counter activity, internal service needs, and customer requests in a dealership environment. ${compensationLine} ${urgencyLine}${noteLine}`,
       requirements:
         "Parts counter experience, dealership familiarity, organization, communication, and follow-through are strong advantages.",
-      role_hook: `${dealer} needs a ${title} who can support technicians, customers, and internal workflow with accuracy and consistency.`,
+      role_hook: `${dealer} needs a ${title} who can support technicians, customers, and internal workflow with accuracy and consistency.` ,
       responsibilities: [
         "Support parts counter and internal service department needs",
         "Help identify, locate, and organize parts requests",
@@ -256,7 +356,7 @@ export async function POST(request: NextRequest) {
     "Jersey Village Chrysler Jeep Dodge Ram"
   );
   const location = clean(body.location || body.public_location, "Jersey Village, TX");
-  const salary = clean(body.salary || body.payRange || body.pay_range);
+  const salary = normalizeSalary(clean(body.salary || body.payRange || body.pay_range));
   const type = clean(body.type, "Full-time");
   const notes = clean(body.notes || body.request_notes);
   const priority = clean(body.priority, "Standard");
