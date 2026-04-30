@@ -27,45 +27,64 @@ const paySuggestions: Record<string, string> = {
   "Finance Manager": "$95,000–$180,000 / year",
 };
 
-const demoRequests = [
+const openRequests = [
   {
     role: "Service Technician",
     priority: "Urgent",
     pay: "$32–$45 / hour",
-    status: "Job post generating",
+    status: "In progress",
     candidates: 7,
     ready: 2,
+    nextStep: "Reviewing certified technician candidates",
   },
   {
     role: "Sales Consultant",
     priority: "Standard",
     pay: "$55,000–$95,000 / year",
-    status: "Candidates under review",
+    status: "Interview pipeline",
     candidates: 12,
     ready: 4,
+    nextStep: "Preparing shortlist for manager review",
   },
 ];
 
-const governedCandidates = [
+const filledRequests = [
+  {
+    role: "BDC Representative",
+    filledBy: "Alyssa Grant",
+    filledDate: "March 28",
+    outcome: "Placed",
+    notes: "Strong communication fit and schedule alignment.",
+  },
+  {
+    role: "Parts Advisor",
+    filledBy: "Marcus Reed",
+    filledDate: "April 12",
+    outcome: "Placed",
+    notes: "Relevant parts counter experience and dealership references.",
+  },
+];
+
+const reviewCandidates = [
   {
     name: "Maria Lopez",
     role: "Sales Consultant",
-    signal: "READY",
-    detail: "Communication fit, availability, and sales background verified.",
-    notes: ["Interview ready", "Retail experience present", "Availability confirmed"],
+    status: "Ready for interview",
+    detail: "Strong communication fit, sales background, and availability confirmed.",
+    notes: ["Interview ready", "Retail sales experience", "Availability confirmed"],
   },
   {
     name: "James Carter",
     role: "Service Technician",
-    signal: "CONDITIONAL",
-    detail: "Experience is strong, but certification evidence needs confirmation.",
-    notes: ["8 years experience", "Certification unclear", "Dealer review required"],
+    status: "Needs manager review",
+    detail: "Strong technician experience. Certification documentation needs final confirmation.",
+    notes: ["8 years experience", "Certification pending", "Good fixed-ops fit"],
   },
   {
     name: "Tyler Ng",
     role: "Service Technician",
-    signal: "MORE_STATE_NEEDED",
-    detail: "Candidate cannot be advanced until missing training and availability data are collected.",
+    status: "More information needed",
+    detail: "Entry-level candidate. Training path and availability need confirmation before advancing.",
     notes: ["Entry-level pathway", "Training incomplete", "Availability missing"],
   },
 ];
@@ -103,9 +122,8 @@ export default function DealerDashboardPage({ params }: PageProps) {
             </h1>
 
             <p className="lede">
-              Submit hiring requests, review active role pipelines, and see
-              Solace-governed candidate readiness before your team spends time
-              interviewing.
+              Submit hiring requests, track open roles, review candidates, and
+              see which positions have been filled by your recruiting pipeline.
             </p>
           </div>
 
@@ -118,7 +136,9 @@ export default function DealerDashboardPage({ params }: PageProps) {
               minWidth: 240,
             }}
           >
-            <strong style={{ color: "#fff", display: "block" }}>{dealerName}</strong>
+            <strong style={{ color: "#fff", display: "block" }}>
+              {dealerName}
+            </strong>
             <span style={{ color: "#9fb4d6", display: "block", marginTop: 6 }}>
               Monthly pipeline program active
             </span>
@@ -160,8 +180,9 @@ export default function DealerDashboardPage({ params }: PageProps) {
             </h2>
 
             <p style={{ color: "#bfd6f5", lineHeight: 1.6, marginTop: 12 }}>
-              The dealership is already known. This request creates the job
-              post, prepares distribution, and opens the Solace review pipeline.
+              Submit the role, pay range, urgency, and notes. Your recruiting
+              pipeline team will prepare the post, begin intake, and organize
+              candidates for review.
             </p>
 
             <form style={{ marginTop: 24 }}>
@@ -180,7 +201,11 @@ export default function DealerDashboardPage({ params }: PageProps) {
                 </Field>
 
                 <Field label="Priority">
-                  <select name="priority" defaultValue="Standard" style={inputStyle}>
+                  <select
+                    name="priority"
+                    defaultValue="Standard"
+                    style={inputStyle}
+                  >
                     {priorityOptions.map((priority) => (
                       <option key={priority} value={priority}>
                         {priority}
@@ -214,7 +239,7 @@ export default function DealerDashboardPage({ params }: PageProps) {
                   fontSize: 14,
                 }}
               >
-                <strong style={{ color: "#fff" }}>Suggested ranges:</strong>
+                <strong style={{ color: "#fff" }}>Suggested pay ranges:</strong>
                 <div
                   style={{
                     display: "grid",
@@ -252,11 +277,11 @@ export default function DealerDashboardPage({ params }: PageProps) {
                 }}
               >
                 <button className="btn btn-primary" type="button">
-                  Create hiring request
+                  Submit request
                 </button>
 
                 <span style={{ color: "#9fb4d6", fontSize: 14 }}>
-                  Creates job post draft + governed review workflow.
+                  Your team will see this request and begin working the pipeline.
                 </span>
               </div>
             </form>
@@ -271,7 +296,7 @@ export default function DealerDashboardPage({ params }: PageProps) {
             }}
           >
             <div className="eyebrow" style={{ marginBottom: 12 }}>
-              Solace Governance
+              Review standards
             </div>
 
             <h2
@@ -283,30 +308,34 @@ export default function DealerDashboardPage({ params }: PageProps) {
                 letterSpacing: "-0.04em",
               }}
             >
-              AI assists. Solace governs.
+              Candidates are reviewed before handoff.
             </h2>
 
             <p style={{ color: "#cfe2ff", lineHeight: 1.6 }}>
-              Candidate review is not just a score. Solace checks whether the
-              available state supports the label before a candidate is advanced.
+              Your managers should not have to sort every applicant. Candidates
+              are organized by fit, availability, role readiness, and supporting
+              information before they reach your review queue.
             </p>
 
             <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
-              <GovernancePill title="READY" copy="State supports interview handoff." />
-              <GovernancePill
-                title="CONDITIONAL"
-                copy="Promising candidate, but review needed."
+              <ReviewPill
+                title="Ready for interview"
+                copy="Candidate appears prepared for manager review."
               />
-              <GovernancePill
-                title="MORE_STATE_NEEDED"
-                copy="Missing evidence blocks advancement."
+              <ReviewPill
+                title="Needs manager review"
+                copy="Promising candidate with one or more items to confirm."
+              />
+              <ReviewPill
+                title="More information needed"
+                copy="Candidate is not advanced until missing details are collected."
               />
             </div>
           </aside>
         </div>
 
-        <section style={{ marginTop: 36 }}>
-          <div className="eyebrow">Active role requests</div>
+        <section style={{ marginTop: 40 }}>
+          <div className="eyebrow">Open requests</div>
 
           <div
             style={{
@@ -316,7 +345,7 @@ export default function DealerDashboardPage({ params }: PageProps) {
               marginTop: 16,
             }}
           >
-            {demoRequests.map((request) => (
+            {openRequests.map((request) => (
               <article
                 key={request.role}
                 style={{
@@ -375,11 +404,11 @@ export default function DealerDashboardPage({ params }: PageProps) {
                 >
                   <Metric label="Candidates" value={request.candidates} />
                   <Metric label="Ready" value={request.ready} />
-                  <Metric label="Status" value="Active" />
+                  <Metric label="Status" value={request.status} />
                 </div>
 
                 <p style={{ color: "#9fb4d6", margin: "16px 0 0" }}>
-                  {request.status}
+                  {request.nextStep}
                 </p>
               </article>
             ))}
@@ -387,16 +416,72 @@ export default function DealerDashboardPage({ params }: PageProps) {
         </section>
 
         <section style={{ marginTop: 40 }}>
-          <div className="eyebrow">Governed candidate flow</div>
+          <div className="eyebrow">Filled requests</div>
 
           <div
             style={{
               display: "grid",
-              gap: 14,
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: 16,
               marginTop: 16,
             }}
           >
-            {governedCandidates.map((candidate) => (
+            {filledRequests.map((request) => (
+              <article
+                key={`${request.role}-${request.filledBy}`}
+                style={{
+                  padding: 22,
+                  borderRadius: 24,
+                  background: "rgba(34,197,94,0.08)",
+                  border: "1px solid rgba(34,197,94,0.18)",
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    padding: "7px 10px",
+                    borderRadius: 999,
+                    background: "rgba(34,197,94,0.14)",
+                    color: "#86efac",
+                    fontSize: 12,
+                    fontWeight: 950,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {request.outcome}
+                </span>
+
+                <h3
+                  style={{
+                    margin: "16px 0 0",
+                    color: "#fff",
+                    fontSize: 24,
+                    lineHeight: 1,
+                    letterSpacing: "-0.035em",
+                  }}
+                >
+                  {request.role}
+                </h3>
+
+                <p style={{ margin: "10px 0 0", color: "#cfe2ff" }}>
+                  Filled by <strong style={{ color: "#fff" }}>{request.filledBy}</strong>{" "}
+                  on {request.filledDate}
+                </p>
+
+                <p style={{ color: "#9fb4d6", lineHeight: 1.55 }}>
+                  {request.notes}
+                </p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section style={{ marginTop: 40 }}>
+          <div className="eyebrow">Candidate review desk</div>
+
+          <div style={{ display: "grid", gap: 14, marginTop: 16 }}>
+            {reviewCandidates.map((candidate) => (
               <article
                 key={candidate.name}
                 style={{
@@ -456,7 +541,7 @@ export default function DealerDashboardPage({ params }: PageProps) {
                   </div>
                 </div>
 
-                <StatusBadge status={candidate.signal} />
+                <StatusBadge status={candidate.status} />
               </article>
             ))}
           </div>
@@ -481,7 +566,7 @@ function Field({
   );
 }
 
-function GovernancePill({ title, copy }: { title: string; copy: string }) {
+function ReviewPill({ title, copy }: { title: string; copy: string }) {
   return (
     <div
       style={{
@@ -528,14 +613,13 @@ function Metric({ label, value }: { label: string; value: string | number }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const style =
-    status === "READY"
-      ? {
-          background: "rgba(34,197,94,0.14)",
-          border: "1px solid rgba(34,197,94,0.28)",
-          color: "#86efac",
-        }
-      : status === "CONDITIONAL"
+  const style = status.includes("Ready")
+    ? {
+        background: "rgba(34,197,94,0.14)",
+        border: "1px solid rgba(34,197,94,0.28)",
+        color: "#86efac",
+      }
+    : status.includes("Needs")
       ? {
           background: "rgba(251,191,36,0.14)",
           border: "1px solid rgba(251,191,36,0.28)",
@@ -554,12 +638,14 @@ function StatusBadge({ status }: { status: string }) {
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        minWidth: 148,
+        minWidth: 174,
         minHeight: 42,
+        padding: "0 14px",
         borderRadius: 999,
         fontSize: 12,
         fontWeight: 950,
-        letterSpacing: "0.08em",
+        letterSpacing: "0.04em",
+        textAlign: "center",
       }}
     >
       {status}
