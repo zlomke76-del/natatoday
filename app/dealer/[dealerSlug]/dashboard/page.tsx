@@ -1,9 +1,14 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import Nav from "../../../components/Nav";
 
 type PageProps = {
   params: {
     dealerSlug: string;
+  };
+  searchParams?: {
+    request?: string;
+    role?: string;
   };
 };
 
@@ -111,20 +116,26 @@ function cleanFormValue(value: FormDataEntryValue | null) {
 }
 
 function getBaseUrl() {
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
+  const explicitUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+
+  if (explicitUrl) {
+    return explicitUrl.replace(/\/$/, "");
   }
 
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL.replace(/\/$/, "")}`;
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+
+  if (vercelUrl) {
+    return `https://${vercelUrl}`.replace(/\/$/, "");
   }
 
   return "http://localhost:3000";
 }
 
-export default function DealerDashboardPage({ params }: PageProps) {
+export default function DealerDashboardPage({ params, searchParams }: PageProps) {
   const dealerName = formatDealerName(params.dealerSlug);
   const dealerLocation = getDealerLocation(params.dealerSlug);
+  const requestSubmitted = searchParams?.request === "submitted";
+  const submittedRole = searchParams?.role ? decodeURIComponent(searchParams.role) : "Hiring request";
 
   async function submitHiringRequest(formData: FormData) {
     "use server";
@@ -173,17 +184,12 @@ export default function DealerDashboardPage({ params }: PageProps) {
     const result = await response.json().catch(() => null);
 
     if (!response.ok) {
-      console.error("NATA job publish failed", {
-        status: response.status,
-        statusText: response.statusText,
-        error: result?.error,
-      });
-
       throw new Error(result?.error || "Hiring request could not be published.");
     }
 
-    const jobSlug = result?.job?.slug;
-    redirect(jobSlug ? `/careers/${jobSlug}` : "/careers");
+    redirect(
+      `/dealer/${params.dealerSlug}/dashboard?request=submitted&role=${encodeURIComponent(title)}`
+    );
   }
 
   return (
@@ -208,8 +214,9 @@ export default function DealerDashboardPage({ params }: PageProps) {
             </h1>
 
             <p className="lede">
-              Submit hiring requests, publish polished job postings, track open roles,
-              review candidates, and see which positions have been filled by your recruiting pipeline.
+              Submit hiring requests, track open roles, review qualified candidates,
+              and see which positions have been filled by your recruiting pipeline.
+              Our team handles the posting, screening, and candidate routing work.
             </p>
           </div>
 
@@ -228,6 +235,27 @@ export default function DealerDashboardPage({ params }: PageProps) {
             </span>
           </div>
         </div>
+
+        {requestSubmitted ? (
+          <div
+            style={{
+              marginTop: 24,
+              padding: 18,
+              borderRadius: 22,
+              background: "rgba(34,197,94,0.1)",
+              border: "1px solid rgba(34,197,94,0.24)",
+              color: "#d1fae5",
+              display: "grid",
+              gap: 6,
+            }}
+          >
+            <strong style={{ color: "#fff" }}>{submittedRole} request received.</strong>
+            <span>
+              NATA Today will handle the job posting, candidate intake, screening, and routing.
+              Qualified candidates will appear in your review pipeline when ready.
+            </span>
+          </div>
+        ) : null}
 
         <div
           style={{
@@ -264,8 +292,8 @@ export default function DealerDashboardPage({ params }: PageProps) {
             </h2>
 
             <p style={{ color: "#bfd6f5", lineHeight: 1.6, marginTop: 12 }}>
-              Submit the role, pay range, urgency, visibility preference, and notes. Solace formats
-              the job post, publishes it, and opens the review pipeline for candidates.
+              Submit the role, pay range, urgency, visibility preference, and notes.
+              NATA Today formats the post, handles publication, and opens the candidate review pipeline.
             </p>
 
             <form action={submitHiringRequest} style={{ marginTop: 24 }}>
@@ -363,11 +391,11 @@ export default function DealerDashboardPage({ params }: PageProps) {
                 }}
               >
                 <button className="btn btn-primary" type="submit">
-                  Publish hiring request
+                  Send request to NATA team
                 </button>
 
                 <span style={{ color: "#9fb4d6", fontSize: 14 }}>
-                  Creates a live Solace-published job post from this request.
+                  Your team does not need to build or review the public post.
                 </span>
               </div>
             </form>
