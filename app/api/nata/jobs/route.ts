@@ -28,29 +28,45 @@ function normalizeJob(job: any) {
   };
 }
 
-function buildJobContent(input: {
+type JobContentInput = {
   title: string;
   dealerName: string;
   location: string;
   salary: string;
   notes: string;
   publishMode: string;
-}) {
+  priority: string;
+};
+
+function buildJobContent(input: JobContentInput) {
   const title = input.title;
   const dealer =
     input.publishMode === "confidential"
       ? "A dealership in the market"
       : input.dealerName;
   const location = input.location || "the local market";
-
+  const salary = input.salary;
+  const notes = input.notes;
+  const priority = input.priority;
   const lower = title.toLowerCase();
+
+  const urgencyLine =
+    priority.toLowerCase().includes("urgent") || priority.toLowerCase().includes("immediate")
+      ? "This role is actively being filled. Qualified candidates are reviewed quickly."
+      : "Qualified candidates are reviewed before dealership handoff so the first conversation starts with useful context.";
+
+  const compensationLine = salary
+    ? `Compensation is structured within ${salary} depending on experience, consistency, and fit.`
+    : "Compensation details will be discussed with qualified candidates during the review process.";
+
+  const noteLine = notes ? ` The dealership also noted: ${notes}` : "";
 
   if (lower.includes("technician")) {
     return {
-      description: `${dealer} is looking for an experienced ${title} who wants steady work, a strong vehicle mix, and a service department where ability matters.`,
+      description: `${dealer} is hiring an experienced ${title} for a busy service department with steady workflow, a strong vehicle mix, and real opportunity for someone who takes pride in quality work. ${compensationLine} ${urgencyLine}${noteLine}`,
       requirements:
         "ASE or OEM certification preferred. Strong diagnostic ability, dealership experience, consistent availability, and clear communication are strong advantages.",
-      role_hook: `${dealer} needs a ${title} who can step into a real service workflow and help keep vehicles moving through the shop with quality and consistency.`,
+      role_hook: `${dealer} needs a ${title} who can step into a real service workflow in ${location} and help keep vehicles moving through the shop with quality and consistency.`,
       responsibilities: [
         "Diagnose and repair customer vehicles",
         "Perform maintenance, inspections, and service repairs",
@@ -70,7 +86,7 @@ function buildJobContent(input: {
 
   if (lower.includes("advisor")) {
     return {
-      description: `${dealer} is looking for a ${title} who can handle volume, communicate clearly, and help customers move through the service process with confidence.`,
+      description: `${dealer} is hiring a ${title} who can handle service-lane volume, communicate clearly, and help customers move through the repair process with confidence. ${compensationLine} ${urgencyLine}${noteLine}`,
       requirements:
         "Service lane experience preferred. Strong customer communication, follow-up discipline, and dealership process familiarity are important.",
       role_hook: `${dealer} needs a ${title} who can bring organization, communication, and follow-through to a busy service lane in ${location}.`,
@@ -93,10 +109,10 @@ function buildJobContent(input: {
 
   if (lower.includes("sales")) {
     return {
-      description: `${dealer} is building its sales pipeline for candidates who can work with customers, follow up consistently, and operate in a real dealership environment.`,
+      description: `${dealer} is actively hiring a ${title} to support a real dealership sales floor with customer traffic, inventory opportunity, and a team that values follow-through. ${compensationLine} ${urgencyLine}${noteLine}`,
       requirements:
         "Automotive sales experience preferred but not required. Strong communication, availability, consistency, and customer follow-up are important.",
-      role_hook: `${dealer} is looking for a ${title} who can turn conversations into opportunities and help customers move confidently through the buying process.`,
+      role_hook: `${dealer} is looking for a ${title} who can turn conversations into opportunities and help customers move confidently through the buying process in ${location}.`,
       responsibilities: [
         "Work with customers through the vehicle shopping and sales process",
         "Follow up consistently with leads, appointments, and opportunities",
@@ -114,10 +130,56 @@ function buildJobContent(input: {
     };
   }
 
+  if (lower.includes("bdc")) {
+    return {
+      description: `${dealer} is hiring a ${title} to support customer follow-up, appointment setting, and lead communication in a fast-moving dealership environment. ${compensationLine} ${urgencyLine}${noteLine}`,
+      requirements:
+        "Strong phone skills, follow-up discipline, schedule consistency, and customer communication experience are important.",
+      role_hook: `${dealer} needs a ${title} who can keep opportunities moving, communicate clearly, and help turn customer interest into scheduled conversations.`,
+      responsibilities: [
+        "Respond to customer inquiries and follow-up opportunities",
+        "Set appointments and support communication between customers and the store",
+        "Maintain consistent follow-up and accurate notes",
+        "Help keep the dealership pipeline organized and moving",
+      ],
+      fit_signals: [
+        "Strong phone and written communication",
+        "Appointment-setting or customer service experience helpful",
+        "Consistency and follow-up discipline",
+        "Automotive or dealership experience helpful but not required",
+      ],
+      process_note:
+        "Apply through Solace. We review your fit, availability, and readiness before dealership handoff so the interview starts with useful context.",
+    };
+  }
+
+  if (lower.includes("parts")) {
+    return {
+      description: `${dealer} is hiring a ${title} to support parts counter activity, internal service needs, and customer requests in a dealership environment. ${compensationLine} ${urgencyLine}${noteLine}`,
+      requirements:
+        "Parts counter experience, dealership familiarity, organization, communication, and follow-through are strong advantages.",
+      role_hook: `${dealer} needs a ${title} who can support technicians, customers, and internal workflow with accuracy and consistency.`,
+      responsibilities: [
+        "Support parts counter and internal service department needs",
+        "Help identify, locate, and organize parts requests",
+        "Communicate clearly with service, technicians, and customers",
+        "Maintain accurate workflow and follow-through",
+      ],
+      fit_signals: [
+        "Parts counter or dealership parts experience preferred",
+        "Strong organization and attention to detail",
+        "Comfort supporting technicians and service workflow",
+        "Consistent availability and communication",
+      ],
+      process_note:
+        "Apply through Solace. We review your fit, availability, and readiness before dealership handoff so the interview starts with useful context.",
+    };
+  }
+
   return {
     description:
-      input.notes ||
-      `${dealer} is hiring for a ${title} role in ${location}. This position is part of an active dealership hiring request managed through Solace.`,
+      notes ||
+      `${dealer} is hiring for a ${title} role in ${location}. This position is part of an active dealership hiring request managed through Solace. ${compensationLine} ${urgencyLine}`,
     requirements:
       "Relevant experience, strong communication, consistent availability, and dealership or customer-facing experience are helpful.",
     role_hook: `${dealer} is looking for a ${title} who can step into a real operating environment and contribute with consistency, communication, and follow-through.`,
@@ -183,7 +245,7 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
 
-  const title = clean(body.title);
+  const title = clean(body.title || body.role);
   if (!title) {
     return NextResponse.json({ error: "Job title is required" }, { status: 400 });
   }
@@ -194,14 +256,16 @@ export async function POST(request: NextRequest) {
     "Jersey Village Chrysler Jeep Dodge Ram"
   );
   const location = clean(body.location || body.public_location, "Jersey Village, TX");
-  const salary = clean(body.salary);
+  const salary = clean(body.salary || body.payRange || body.pay_range);
   const type = clean(body.type, "Full-time");
   const notes = clean(body.notes || body.request_notes);
+  const priority = clean(body.priority, "Standard");
   const publishMode = clean(body.publish_mode, "public");
 
+  const slugBase = slugify(`${dealerSlug}-${title}`);
   const baseSlug = body.slug
     ? slugify(String(body.slug))
-    : slugify(`${dealerSlug}-${title}`);
+    : `${slugBase}-${Date.now()}`;
 
   const generated = buildJobContent({
     title,
@@ -210,6 +274,7 @@ export async function POST(request: NextRequest) {
     salary,
     notes,
     publishMode,
+    priority,
   });
 
   const jobPayload = {
@@ -250,7 +315,7 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabaseAdmin
     .schema("nata")
     .from("jobs")
-    .upsert(jobPayload, { onConflict: "slug" })
+    .insert(jobPayload)
     .select("*")
     .single();
 
