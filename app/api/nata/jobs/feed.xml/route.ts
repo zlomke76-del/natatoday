@@ -328,7 +328,7 @@ export async function GET() {
     });
   }
 
-  const jobs = (data || []) as FeedJob[];
+  const jobs = ((data || []) as unknown) as FeedJob[];
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <source>
