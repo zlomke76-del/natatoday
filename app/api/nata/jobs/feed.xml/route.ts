@@ -22,7 +22,6 @@ type FeedJob = {
   public_location: string | null;
   distribution_status: string | null;
   created_at: string | null;
-  updated_at: string | null;
 };
 
 export const dynamic = "force-dynamic";
@@ -44,10 +43,7 @@ function getBaseUrl() {
 }
 
 function cdata(value: unknown) {
-  const text =
-    typeof value === "string" && value.trim()
-      ? value.trim()
-      : "";
+  const text = typeof value === "string" && value.trim() ? value.trim() : "";
 
   return `<![CDATA[${text.replaceAll("]]>", "]]]]><![CDATA[>")}]]>`;
 }
@@ -91,27 +87,29 @@ function normalizeSalaryForFeed(value: string | null) {
 
   salary = salary.replace(
     /\$?(\d{4,6})\s*[-–]\s*\$?(\d{4,6})\s*\/\s*year/i,
-    (_match, min, max) => `$${String(min).replace(/,/g, "")} - $${String(max).replace(/,/g, "")} / year`
+    (_match, min, max) =>
+      `$${String(min).replace(/,/g, "")} - $${String(max).replace(
+        /,/g,
+        ""
+      )} / year`
   );
 
   salary = salary.replace(
     /\$?(\d{2,3})k\s*[-–]\s*\$?(\d{2,3})k\s*\/\s*year/i,
-    (_match, min, max) => `$${Number(min) * 1000} - $${Number(max) * 1000} / year`
+    (_match, min, max) =>
+      `$${Number(min) * 1000} - $${Number(max) * 1000} / year`
   );
 
   salary = salary.replace(
     /\$?(\d{2,3})k\s*[-–]\s*\$?(\d{2,3})k/i,
-    (_match, min, max) => `$${Number(min) * 1000} - $${Number(max) * 1000} / year`
+    (_match, min, max) =>
+      `$${Number(min) * 1000} - $${Number(max) * 1000} / year`
   );
 
-  salary = salary.replace(
-    /^\$?(\d{2,3})\s*\/\s*hour$/i,
-    "$$$1 / hour"
-  );
+  salary = salary.replace(/^\$?(\d{2,3})\s*\/\s*hour$/i, "$$$1 / hour");
 
-  salary = salary.replace(
-    /^\$?(\d{4,6})\s*\/\s*year$/i,
-    (_match, amount) => `$${String(amount).replace(/,/g, "")} / year`
+  salary = salary.replace(/^\$?(\d{4,6})\s*\/\s*year$/i, (_match, amount) =>
+    `$${String(amount).replace(/,/g, "")} / year`
   );
 
   return salary;
@@ -140,7 +138,10 @@ function parseLocation(job: FeedJob) {
     };
   }
 
-  const parts = raw.split(",").map((part) => part.trim()).filter(Boolean);
+  const parts = raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
 
   if (parts.length >= 2) {
     return {
@@ -163,7 +164,8 @@ function buildCategory(title: string | null) {
   const value = (title || "").toLowerCase();
 
   if (value.includes("technician")) return "Automotive, Service, Technician";
-  if (value.includes("advisor")) return "Automotive, Service Advisor, Customer Service";
+  if (value.includes("advisor"))
+    return "Automotive, Service Advisor, Customer Service";
   if (value.includes("sales")) return "Automotive, Sales, Retail";
   if (value.includes("bdc")) return "Automotive, BDC, Customer Service";
   if (value.includes("parts")) return "Automotive, Parts, Fixed Operations";
@@ -175,12 +177,29 @@ function buildCategory(title: string | null) {
 function buildExperience(title: string | null) {
   const value = (title || "").toLowerCase();
 
-  if (value.includes("technician")) return "Automotive service experience preferred. ASE or OEM certification is helpful but not always required.";
-  if (value.includes("advisor")) return "Service lane or customer-facing automotive experience preferred.";
-  if (value.includes("sales")) return "Automotive sales experience preferred but not required.";
-  if (value.includes("bdc")) return "Customer service, phone, appointment-setting, or dealership experience helpful.";
-  if (value.includes("parts")) return "Parts counter or dealership parts experience preferred.";
-  if (value.includes("finance")) return "Automotive finance, F&I, or dealership sales management experience preferred.";
+  if (value.includes("technician")) {
+    return "Automotive service experience preferred. ASE or OEM certification is helpful but not always required.";
+  }
+
+  if (value.includes("advisor")) {
+    return "Service lane or customer-facing automotive experience preferred.";
+  }
+
+  if (value.includes("sales")) {
+    return "Automotive sales experience preferred but not required.";
+  }
+
+  if (value.includes("bdc")) {
+    return "Customer service, phone, appointment-setting, or dealership experience helpful.";
+  }
+
+  if (value.includes("parts")) {
+    return "Parts counter or dealership parts experience preferred.";
+  }
+
+  if (value.includes("finance")) {
+    return "Automotive finance, F&I, or dealership sales management experience preferred.";
+  }
 
   return "Relevant dealership, customer-facing, or role-specific experience helpful.";
 }
@@ -237,7 +256,7 @@ function buildJobXml(job: FeedJob) {
   const url = `${baseUrl}/careers/${encodeURIComponent(slug)}`;
   const location = parseLocation(job);
   const company = job.public_dealer_name || "NATA Today";
-  const date = job.updated_at || job.created_at || new Date().toISOString();
+  const date = job.created_at || new Date().toISOString();
   const salary = normalizeSalaryForFeed(job.salary);
 
   return `
@@ -289,7 +308,6 @@ export async function GET() {
         "public_location",
         "distribution_status",
         "created_at",
-        "updated_at",
       ].join(",")
     )
     .eq("is_active", true)
