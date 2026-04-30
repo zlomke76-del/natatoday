@@ -56,6 +56,13 @@ const metrics = [
 ];
 
 export default function Home() {
+  const imageMap: Record<string, string> = {
+    "01": "/images/manager_01.png",
+    "02": "/images/salesperson_01.png",
+    "03": "/images/technician_01.png",
+    "04": "/images/salespeople_01.png",
+  };
+
   return (
     <main className="shell">
       <Nav />
@@ -116,6 +123,16 @@ export default function Home() {
           <div className="process-grid">
             {steps.map((step) => (
               <article className="process-card" key={step.number}>
+                
+                {/* IMAGE HEADER */}
+                <div className="process-image-wrap">
+                  <img
+                    src={imageMap[step.number]}
+                    alt={step.title}
+                    className="process-image"
+                  />
+                </div>
+
                 <div className="step-number">{step.number}</div>
                 <h3>{step.title}</h3>
                 <p>{step.copy}</p>
