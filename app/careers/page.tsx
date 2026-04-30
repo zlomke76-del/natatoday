@@ -13,21 +13,40 @@ type Job = {
   requirements: string | null;
   dealer_slug: string | null;
   created_at: string | null;
+  publish_mode: "public" | "confidential" | string | null;
+  public_dealer_name: string | null;
+  public_location: string | null;
+  confidential_note: string | null;
+  published_by: string | null;
+  publish_status: string | null;
 };
+
+function getDealerDisplay(job: Job) {
+  if (job.publish_mode === "confidential") return "Confidential Dealership";
+  return job.public_dealer_name || "Jersey Village Chrysler Jeep Dodge Ram";
+}
+
+function getLocationDisplay(job: Job) {
+  if (job.publish_mode === "confidential") {
+    return job.public_location || "Houston, TX Market";
+  }
+
+  return job.public_location || job.location || "Dealership location";
+}
 
 async function getJobs(): Promise<Job[]> {
   const { data, error } = await supabaseAdmin
     .schema("nata")
     .from("jobs")
     .select(
-      "id,title,slug,location,type,salary,description,requirements,dealer_slug,created_at"
+      "id,title,slug,location,type,salary,description,requirements,dealer_slug,created_at,publish_mode,public_dealer_name,public_location,confidential_note,published_by,publish_status"
     )
-    .eq("dealer_slug", "jersey-village-cdjr")
     .eq("is_active", true)
+    .eq("publish_status", "published")
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("Failed to load JV careers jobs:", error);
+    console.error("Failed to load published dealership jobs:", error);
     return [];
   }
 
@@ -48,13 +67,14 @@ export default async function CareersPage() {
           padding: "72px 0 96px",
         }}
       >
-        <div className="eyebrow">Careers</div>
+        <div className="eyebrow">Dealership Careers</div>
 
-        <h1>Build the next dealership workforce.</h1>
+        <h1>Open roles from dealerships hiring through Solace.</h1>
 
         <p className="lede">
-          Open roles for Jersey Village Chrysler Jeep Dodge Ram are posted here
-          as active hiring requests move into the recruiting pipeline.
+          These are active dealership hiring requests published by Solace on
+          behalf of dealer partners. Some stores are shown publicly. Others are
+          handled confidentially when discretion is required.
         </p>
 
         <div style={{ display: "grid", gap: 18, marginTop: 40 }}>
@@ -69,72 +89,149 @@ export default async function CareersPage() {
             >
               <h2 style={{ margin: 0 }}>No open roles yet.</h2>
               <p style={{ color: "#cfe2ff", lineHeight: 1.6 }}>
-                Check back soon. Open dealership roles will appear here when
-                active requests are published.
+                Open dealership roles will appear here when active requests are
+                published.
               </p>
             </div>
           ) : (
-            jobs.map((job) => (
-              <Link
-                key={job.id}
-                href={`/careers/${job.slug}`}
-                style={{
-                  display: "block",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  borderRadius: 28,
-                  padding: 28,
-                  background: "rgba(255,255,255,0.06)",
-                }}
-              >
-                <div
+            jobs.map((job) => {
+              const dealerDisplay = getDealerDisplay(job);
+              const locationDisplay = getLocationDisplay(job);
+              const isConfidential = job.publish_mode === "confidential";
+
+              return (
+                <Link
+                  key={job.id}
+                  href={`/careers/${job.slug}`}
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: 18,
-                    flexWrap: "wrap",
-                    alignItems: "flex-start",
+                    display: "block",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: 28,
+                    padding: 28,
+                    background: "rgba(255,255,255,0.06)",
                   }}
                 >
-                  <div>
-                    <h2 style={{ margin: 0 }}>{job.title}</h2>
-
-                    <p style={{ margin: "10px 0 0", color: "#cfe2ff" }}>
-                      {job.location}
-                      {job.type ? ` · ${job.type}` : ""}
-                    </p>
-
-                    {job.description ? (
-                      <p
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 18,
+                      flexWrap: "wrap",
+                      alignItems: "flex-start",
+                    }}
+                  >
+                    <div style={{ maxWidth: 780 }}>
+                      <div
                         style={{
-                          margin: "14px 0 0",
-                          color: "#9fb4d6",
-                          lineHeight: 1.6,
-                          maxWidth: 760,
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 10,
+                          alignItems: "center",
+                          marginBottom: 12,
                         }}
                       >
-                        {job.description}
-                      </p>
-                    ) : null}
-                  </div>
+                        <span
+                          style={{
+                            padding: "7px 10px",
+                            borderRadius: 999,
+                            background: isConfidential
+                              ? "rgba(251,191,36,0.14)"
+                              : "rgba(20,115,255,0.14)",
+                            border: isConfidential
+                              ? "1px solid rgba(251,191,36,0.28)"
+                              : "1px solid rgba(20,115,255,0.24)",
+                            color: isConfidential ? "#fbbf24" : "#d7e8ff",
+                            fontSize: 12,
+                            fontWeight: 950,
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {isConfidential ? "Confidential search" : "Public dealership role"}
+                        </span>
 
-                  {job.salary ? (
+                        <span style={{ color: "#9fb4d6", fontSize: 13 }}>
+                          Published by {job.published_by || "Solace"}
+                        </span>
+                      </div>
+
+                      <h2 style={{ margin: 0 }}>{job.title}</h2>
+
+                      <p style={{ margin: "10px 0 0", color: "#cfe2ff" }}>
+                        {dealerDisplay} · {locationDisplay}
+                        {job.type ? ` · ${job.type}` : ""}
+                      </p>
+
+                      {job.description ? (
+                        <p
+                          style={{
+                            margin: "14px 0 0",
+                            color: "#9fb4d6",
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          {job.description}
+                        </p>
+                      ) : null}
+
+                      {isConfidential ? (
+                        <p
+                          style={{
+                            margin: "14px 0 0",
+                            color: "#f8d98b",
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          {job.confidential_note ||
+                            "This role is being handled confidentially on behalf of a dealership. Candidate information is reviewed before any dealership handoff."}
+                        </p>
+                      ) : null}
+                    </div>
+
                     <div
                       style={{
-                        padding: "10px 14px",
-                        borderRadius: 999,
-                        background: "rgba(20,115,255,0.14)",
-                        border: "1px solid rgba(20,115,255,0.24)",
-                        color: "#d7e8ff",
-                        fontWeight: 900,
-                        whiteSpace: "nowrap",
+                        display: "grid",
+                        gap: 12,
+                        justifyItems: "end",
                       }}
                     >
-                      {job.salary}
+                      {job.salary ? (
+                        <div
+                          style={{
+                            padding: "10px 14px",
+                            borderRadius: 999,
+                            background: "rgba(20,115,255,0.14)",
+                            border: "1px solid rgba(20,115,255,0.24)",
+                            color: "#d7e8ff",
+                            fontWeight: 900,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {job.salary}
+                        </div>
+                      ) : null}
+
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          minHeight: 42,
+                          padding: "0 18px",
+                          borderRadius: 999,
+                          background: "linear-gradient(135deg, #1473ff, #0757c9)",
+                          color: "#fff",
+                          fontWeight: 900,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        Apply for this role
+                      </span>
                     </div>
-                  ) : null}
-                </div>
-              </Link>
-            ))
+                  </div>
+                </Link>
+              );
+            })
           )}
         </div>
       </section>
