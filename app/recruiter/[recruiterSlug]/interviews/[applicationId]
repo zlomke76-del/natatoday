@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 type StudioProps = {
   params: {
+    recruiterSlug: string;
     applicationId: string;
   };
 };
@@ -14,8 +15,8 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
   const [notes, setNotes] = useState("");
   const [dealerInterviewAt, setDealerInterviewAt] = useState("");
   const [status, setStatus] = useState("Creating interview room…");
-  const [packetReady, setPacketReady] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [committed, setCommitted] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -36,7 +37,7 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
 
         if (active) {
           setRoomUrl(data.roomUrl);
-          setStatus("Room ready. Complete the virtual interview, then save notes.");
+          setStatus("Room ready. Complete the virtual interview, add notes, then commit the dealer handoff.");
         }
       } catch (error) {
         setStatus(error instanceof Error ? error.message : "Room creation failed");
@@ -50,45 +51,17 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
     };
   }, [params.applicationId]);
 
-  async function saveNotesAndGeneratePacket() {
+  async function completeInterviewAndSchedule() {
     setSaving(true);
-    setStatus("Saving notes and generating packet…");
+    setStatus("Completing interview, generating packet, and scheduling dealer handoff…");
 
     try {
-      const response = await fetch("/api/nata/interviews/notes", {
+      const response = await fetch("/api/nata/interviews/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           applicationId: params.applicationId,
           notes,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data?.error || "Notes could not be saved");
-      }
-
-      setPacketReady(true);
-      setStatus("Packet generated. Schedule the dealer interview to move the candidate to the dealer board.");
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Notes save failed");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function scheduleDealerInterview() {
-    setSaving(true);
-    setStatus("Scheduling dealer interview…");
-
-    try {
-      const response = await fetch("/api/nata/interviews/dealer-schedule", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          applicationId: params.applicationId,
           dealerInterviewAt,
         }),
       });
@@ -96,16 +69,19 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data?.error || "Dealer interview could not be scheduled");
+        throw new Error(data?.error || "Interview could not be completed");
       }
 
-      setStatus("Dealer interview scheduled. Candidate is now eligible for the manager board.");
+      setCommitted(true);
+      setStatus("Committed. Packet is ready, dealer interview is scheduled, and the candidate is now eligible for the dealer board.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Scheduling failed");
+      setStatus(error instanceof Error ? error.message : "Interview completion failed");
     } finally {
       setSaving(false);
     }
   }
+
+  const canCommit = notes.trim().length > 0 && dealerInterviewAt.trim().length > 0 && !saving && !committed;
 
   return (
     <main
@@ -138,7 +114,10 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
           overflowY: "auto",
         }}
       >
-        <Link href="/recruiter/dashboard" style={{ color: "#93c5fd", textDecoration: "none" }}>
+        <Link
+          href={`/recruiter/${params.recruiterSlug}/dashboard`}
+          style={{ color: "#93c5fd", textDecoration: "none" }}
+        >
           ← Back to recruiter dashboard
         </Link>
 
@@ -156,11 +135,11 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
           </div>
 
           <h1 style={{ margin: "10px 0 0", fontSize: 34, lineHeight: 1 }}>
-            Interview, document, and prepare handoff.
+            Interview, document, and commit handoff.
           </h1>
 
           <p style={{ color: "#bfd6f5", lineHeight: 1.6 }}>
-            Save Don/NATA notes after the virtual interview. Solace generates the manager packet. Then schedule the dealer interview to move the candidate to the manager board.
+            Add Don/NATA notes and choose the dealer interview time. The system will generate the packet and schedule the manager handoff in one controlled commit.
           </p>
         </div>
 
@@ -169,9 +148,11 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
             marginTop: 18,
             padding: 14,
             borderRadius: 16,
-            background: "rgba(37,99,235,0.12)",
-            border: "1px solid rgba(96,165,250,0.24)",
-            color: "#dbeafe",
+            background: committed ? "rgba(22,163,74,0.14)" : "rgba(37,99,235,0.12)",
+            border: committed
+              ? "1px solid rgba(74,222,128,0.28)"
+              : "1px solid rgba(96,165,250,0.24)",
+            color: committed ? "#dcfce7" : "#dbeafe",
             lineHeight: 1.45,
             fontSize: 14,
           }}
@@ -187,17 +168,9 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
             rows={11}
             placeholder="Capture strengths, concerns, availability, compensation alignment, communication quality, and recommendation."
             style={inputStyle}
+            disabled={saving || committed}
           />
         </label>
-
-        <button
-          type="button"
-          onClick={saveNotesAndGeneratePacket}
-          disabled={saving || !notes.trim()}
-          style={primaryButton}
-        >
-          Save notes + generate packet
-        </button>
 
         <div
           style={{
@@ -206,9 +179,9 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
             borderTop: "1px solid rgba(255,255,255,0.1)",
           }}
         >
-          <h2 style={{ margin: 0, fontSize: 22 }}>Schedule dealer interview</h2>
+          <h2 style={{ margin: 0, fontSize: 22 }}>Dealer interview handoff</h2>
           <p style={{ color: "#9fb4d6", lineHeight: 1.5, fontSize: 14 }}>
-            This is what pushes the candidate to the dealer manager board. Packet must be ready first.
+            This is the commit point. Packet generation, packet readiness, dealer interview time, and dealer-board eligibility are written together.
           </p>
 
           <label style={{ display: "grid", gap: 8, marginTop: 14 }}>
@@ -218,19 +191,21 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
               value={dealerInterviewAt}
               onChange={(event) => setDealerInterviewAt(event.target.value)}
               style={inputStyle}
+              disabled={saving || committed}
             />
           </label>
 
           <button
             type="button"
-            onClick={scheduleDealerInterview}
-            disabled={saving || !packetReady || !dealerInterviewAt}
+            onClick={completeInterviewAndSchedule}
+            disabled={!canCommit}
             style={{
               ...primaryButton,
-              opacity: packetReady && dealerInterviewAt ? 1 : 0.55,
+              opacity: canCommit ? 1 : 0.55,
+              cursor: canCommit ? "pointer" : "not-allowed",
             }}
           >
-            Schedule dealer interview
+            {committed ? "Dealer handoff committed" : saving ? "Committing handoff…" : "Complete interview + schedule dealer"}
           </button>
         </div>
       </aside>
@@ -257,5 +232,4 @@ const primaryButton = {
   background: "#1473ff",
   color: "#fff",
   fontWeight: 950,
-  cursor: "pointer",
 } as const;
