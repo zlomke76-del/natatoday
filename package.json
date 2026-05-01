@@ -14,7 +14,8 @@
     "next": "14.2.32",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "resend": "^4.1.2"
+    "resend": "^4.1.2",
+    "stripe": "^17.7.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
