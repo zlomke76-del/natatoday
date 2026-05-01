@@ -124,6 +124,82 @@ function formatSlotLabel(startsAt: Date, timeZone: string) {
   }).format(startsAt);
 }
 
+function formatTimeOnly(value: Date, timeZone: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+    timeZoneName: "short",
+  }).format(value);
+}
+
+function formatSlotWindow(startsAt: Date, endsAt: Date, timeZone: string) {
+  return `${formatSlotLabel(startsAt, timeZone)} – ${formatTimeOnly(endsAt, timeZone)}`;
+}
+function safeRoomName(applicationId: string, startsAt: Date) {
+  const stamp = startsAt
+    .toISOString()
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(0, 14);
+
+  return `nata-${applicationId.slice(0, 8)}-${stamp}`.toLowerCase();
+}
+
+async function createVirtualMeetingRoom(applicationId: string, startsAt: Date, endsAt: Date) {
+  const apiKey = process.env.DAILY_API_KEY || "";
+  const fallbackBase =
+    process.env.NATA_VIRTUAL_MEETING_BASE_URL ||
+    process.env.NEXT_PUBLIC_DAILY_BASE_URL ||
+    "";
+
+  const roomName = safeRoomName(applicationId, startsAt);
+
+  if (apiKey) {
+    const response = await fetch("https://api.daily.co/v1/rooms", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: roomName,
+        privacy: "public",
+        properties: {
+          enable_chat: true,
+          enable_screenshare: true,
+          start_video_off: false,
+          start_audio_off: false,
+          exp: Math.floor(endsAt.getTime() / 1000) + 60 * 60,
+        },
+      }),
+    });
+
+    if (response.ok) {
+      const room = await response.json();
+      return {
+        meetingUrl: String(room.url || ""),
+        meetingRoomName: String(room.name || roomName),
+      };
+    }
+
+    const errorText = await response.text().catch(() => "");
+    console.error("Daily room creation failed:", response.status, errorText);
+  }
+
+  if (fallbackBase) {
+    return {
+      meetingUrl: `${fallbackBase.replace(/\/$/, "")}/${roomName}`,
+      meetingRoomName: roomName,
+    };
+  }
+
+  return {
+    meetingUrl: `${appUrl()}/candidate/schedule/${applicationId}?booked=1`,
+    meetingRoomName: roomName,
+  };
+}
+
+
 function overlaps(start: Date, end: Date, ranges: { startsAt: Date; endsAt: Date }[]) {
   return ranges.some((range) => start < range.endsAt && end > range.startsAt);
 }
@@ -270,7 +346,7 @@ function buildSlots({
 
       if (cursor > earliest && !overlaps(cursor, slotEnd, ranges)) {
         slots.push({
-          label: formatSlotLabel(cursor, timezone),
+          label: formatSlotWindow(cursor, slotEnd, timezone),
           value: cursor.toISOString(),
           startsAt: cursor.toISOString(),
           endsAt: slotEnd.toISOString(),
@@ -357,6 +433,7 @@ export default async function CandidateSchedulePage({
 
     const startsAt = new Date(selectedStart);
     const endsAt = new Date(startsAt.getTime() + SLOT_MINUTES * 60 * 1000);
+    const virtualMeeting = await createVirtualMeetingRoom(applicationId, startsAt, endsAt);
     const bookingToken =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
@@ -412,6 +489,8 @@ export default async function CandidateSchedulePage({
         ends_at: endsAt.toISOString(),
         timezone: recruiterTimezone,
         status: "scheduled",
+        meeting_url: virtualMeeting.meetingUrl,
+        meeting_room_name: virtualMeeting.meetingRoomName,
         booking_token: bookingToken,
         candidate_email: currentApplication.email || null,
         candidate_phone: currentApplication.phone || null,
@@ -427,7 +506,9 @@ export default async function CandidateSchedulePage({
         screening_status: "virtual_scheduled",
         virtual_interview_status: "scheduled",
         virtual_interview_at: startsAt.toISOString(),
-        virtual_interview_url: `${appUrl()}/candidate/schedule/${applicationId}?booked=1`,
+        virtual_interview_room_url: virtualMeeting.meetingUrl,
+        virtual_interview_room_name: virtualMeeting.meetingRoomName,
+        virtual_interview_url: virtualMeeting.meetingUrl,
       })
       .eq("id", applicationId);
 
@@ -441,7 +522,10 @@ export default async function CandidateSchedulePage({
         roleTitle: label(currentJob?.title || currentApplication.role, "this role"),
         dealerName: label(currentJob?.public_dealer_name || currentJob?.dealer_slug, "the dealership"),
         recruiterName: label(currentRecruiter?.name, "your recruiter"),
-        scheduledLabel: formatSlotLabel(startsAt, recruiterTimezone),
+        scheduledStartLabel: formatSlotLabel(startsAt, recruiterTimezone),
+        scheduledEndLabel: formatTimeOnly(endsAt, recruiterTimezone),
+        scheduledWindowLabel: formatSlotWindow(startsAt, endsAt, recruiterTimezone),
+        meetingUrl: virtualMeeting.meetingUrl,
       });
     } catch (notificationError) {
       console.error("Booking confirmation notification failed:", notificationError);
@@ -461,9 +545,21 @@ export default async function CandidateSchedulePage({
           <div style={successPanel}>
             <h1 style={title}>Interview confirmed.</h1>
             <p style={muted}>
-              Your 15-minute virtual interview has been scheduled. You should also
-              receive a confirmation by email and text if your contact information is available.
+              Your 15-minute virtual interview has been scheduled with a specific start and end time.
+              You should also receive a confirmation by email and text if your contact information is available.
             </p>
+            {application.virtual_interview_at ? (
+              <p style={{ ...muted, marginTop: 12 }}>
+                Scheduled start: <strong style={{ color: "#fff" }}>{formatSlotLabel(new Date(application.virtual_interview_at), recruiterTimezone)}</strong>
+              </p>
+            ) : null}
+            {application.virtual_interview_room_url ? (
+              <p style={{ marginTop: 18 }}>
+                <a href={application.virtual_interview_room_url} className="btn btn-primary">
+                  Join virtual interview
+                </a>
+              </p>
+            ) : null}
           </div>
         ) : (
           <>
