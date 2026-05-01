@@ -5,20 +5,38 @@ const plans = [
     key: "starter",
     name: "Starter Pipeline",
     price: "$995/mo",
-    copy: "For one dealership location with light-to-moderate hiring needs.",
+    copy: "Light-to-moderate hiring support for one dealership location.",
   },
   {
     key: "active",
     name: "Active Pipeline",
     price: "$1,295/mo",
-    copy: "For one dealership location actively hiring across sales or fixed ops.",
+    copy: "Ongoing hiring support for one dealership location across sales or fixed ops.",
   },
   {
     key: "full",
     name: "Full Pipeline Coverage",
     price: "$1,595/mo",
-    copy: "For one high-volume dealership location with ongoing hiring pressure.",
+    copy: "High-volume hiring coverage for one dealership location with continuous hiring pressure.",
   },
+];
+
+const states = [
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
+  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
+  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
+  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
+  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
+];
+
+const dealerRoles = [
+  "Dealer Principal",
+  "General Manager",
+  "Service Director",
+  "Fixed Ops Director",
+  "Sales Manager",
+  "HR / Recruiting",
+  "Other",
 ];
 
 function Field({
@@ -98,7 +116,7 @@ export default function PricingIntakeEnrollmentPage({
           <div style={success}>
             <strong>Enrollment received.</strong>
             <span>
-              Your subscription signal was received. Next step: complete the hiring setup for your dealership pipeline.
+              Your subscription signal was received. Next step: complete hiring setup for your dealership pipeline.
             </span>
           </div>
         ) : null}
@@ -110,47 +128,31 @@ export default function PricingIntakeEnrollmentPage({
           </div>
         ) : null}
 
-        <div style={heroGrid}>
-          <section style={panel}>
-            <div className="eyebrow">Dealer enrollment</div>
-            <h1 style={title}>Start your dealership pipeline in under two minutes.</h1>
-            <p className="lede" style={{ maxWidth: 780 }}>
-              Start the subscription first. NATA Today will collect the deeper hiring setup after enrollment so your team is not forced through implementation work before checkout.
-            </p>
+        <section style={heroPanel}>
+          <div className="eyebrow">Dealer enrollment</div>
+          <h1 style={title}>Start your dealership pipeline in under two minutes.</h1>
+          <p className="lede" style={{ maxWidth: 820 }}>
+            Start the subscription first. NATA Today collects deeper hiring setup after enrollment so your team is not forced through implementation work before checkout.
+          </p>
 
-            <div style={steps}>
-              <Step
-                n="01"
-                title="Start subscription"
-                copy="Dealership, contact, location count, and plan selection."
-              />
-              <Step
-                n="02"
-                title="Checkout securely"
-                copy="Stripe handles the subscription for the dealership location count selected."
-              />
-              <Step
-                n="03"
-                title="Complete setup"
-                copy="After payment, NATA collects roles, urgency, certifications, and routing details."
-              />
-            </div>
-          </section>
-
-          <aside style={side}>
-            <span style={bluePill}>Simple start</span>
-            <h2 style={sideTitle}>No heavy onboarding before payment.</h2>
-            <p style={muted}>
-              The first step should only answer: who is enrolling, which dealership location is being activated, and which plan should start.
-            </p>
-            <div style={noticeBox}>
-              <strong>Pricing is per dealership location.</strong>
-              <span>
-                Dealer groups can enroll one rooftop now or activate multiple locations by selecting the number of dealership locations below.
-              </span>
-            </div>
-          </aside>
-        </div>
+          <div style={steps}>
+            <Step
+              n="01"
+              title="Start subscription"
+              copy="Dealership, contact, location count, and plan selection."
+            />
+            <Step
+              n="02"
+              title="Checkout securely"
+              copy="Stripe handles the subscription for the dealership location count selected."
+            />
+            <Step
+              n="03"
+              title="Complete setup"
+              copy="After payment, NATA collects roles, urgency, certifications, and routing details."
+            />
+          </div>
+        </section>
 
         <form action="/api/stripe/checkout" method="post" style={form}>
           <div style={formHeader}>
@@ -158,9 +160,9 @@ export default function PricingIntakeEnrollmentPage({
               <div className="eyebrow" style={{ marginBottom: 10 }}>
                 Subscription start
               </div>
-              <h2 style={formTitle}>Start with the first dealership.</h2>
+              <h2 style={formTitle}>Start with your dealership.</h2>
               <p style={muted}>
-                Required now: dealership, contact, email, phone, state, plan, and per-location billing acknowledgment.
+                Required now: dealership, contact, location count, and plan. Detailed hiring setup happens after checkout.
               </p>
             </div>
             <div style={callout}>
@@ -175,13 +177,7 @@ export default function PricingIntakeEnrollmentPage({
               <Field label="Dealership name" name="dealershipName" placeholder="Jersey Village CDJR" />
               <Field label="Website" name="website" placeholder="https://yourdealership.com" required={false} />
               <Field label="City" name="city" placeholder="Houston" />
-              <SelectField
-                label="State"
-                name="state"
-                options={[
-                  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
-                ]}
-              />
+              <SelectField label="State" name="state" options={states} />
             </div>
           </div>
 
@@ -191,19 +187,7 @@ export default function PricingIntakeEnrollmentPage({
               <Field label="Contact name" name="primaryContact" placeholder="Name" />
               <Field label="Email" name="email" type="email" placeholder="name@dealership.com" />
               <Field label="Phone" name="phone" type="tel" placeholder="(555) 555-5555" />
-              <SelectField
-                label="Your role"
-                name="dealerRole"
-                options={[
-                  "Dealer Principal",
-                  "General Manager",
-                  "Service Director",
-                  "Fixed Ops Director",
-                  "Sales Manager",
-                  "HR / Recruiting",
-                  "Other",
-                ]}
-              />
+              <SelectField label="Your role" name="dealerRole" options={dealerRoles} />
             </div>
           </div>
 
@@ -227,31 +211,30 @@ export default function PricingIntakeEnrollmentPage({
                 <span style={labelStyle}>Multi-store group?</span>
                 <select name="multiStoreGroup" required style={input} defaultValue="no">
                   <option value="no">No, this is one dealership</option>
-                  <option value="yes_later">Yes, start with this store first</option>
+                  <option value="yes_later">Yes, start with one store first</option>
                   <option value="yes_multiple_now">Yes, activate multiple locations now</option>
                 </select>
               </label>
             </div>
+          </div>
 
-            <label style={acknowledgment}>
-              <input
-                name="perLocationAcknowledgment"
-                value="accepted"
-                type="checkbox"
-                required
-                style={{ accentColor: "#1473ff", marginTop: 3 }}
-              />
-              <span>
-                I understand NATA Today pricing is per dealership location / rooftop, not one subscription for an entire dealer group.
-              </span>
-            </label>
+          <div style={pricingModel}>
+            <div style={pricingModelText}>
+              <span style={kicker}>Pricing model</span>
+              <strong>Pricing is per dealership location.</strong>
+              <p style={muted}>
+                Select the monthly plan that should apply to each dealership location being activated now.
+                Dealer groups can start with one rooftop or activate multiple locations by increasing the location count above.
+              </p>
+            </div>
+            <div style={pricingModelBadge}>
+              <span>Billing unit</span>
+              <strong>1 rooftop = 1 subscription unit</strong>
+            </div>
           </div>
 
           <div style={band}>
             <span style={kicker}>Plan selection</span>
-            <p style={{ ...muted, marginBottom: 16 }}>
-              Select the monthly plan for each dealership location being activated now.
-            </p>
 
             <div style={planGrid}>
               {plans.map((planOption) => (
@@ -266,6 +249,7 @@ export default function PricingIntakeEnrollmentPage({
                   <div>
                     <strong>{planOption.name}</strong>
                     <div style={priceStyle}>{planOption.price}</div>
+                    <div style={unitText}>Per dealership location</div>
                     <p style={muted}>{planOption.copy}</p>
                   </div>
                 </label>
@@ -303,14 +287,7 @@ const wrap: React.CSSProperties = {
   padding: "54px 0 90px",
 };
 
-const heroGrid: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) minmax(320px, .48fr)",
-  gap: 28,
-  alignItems: "stretch",
-};
-
-const panel: React.CSSProperties = {
+const heroPanel: React.CSSProperties = {
   padding: 34,
   borderRadius: 30,
   border: "1px solid rgba(255,255,255,.12)",
@@ -351,41 +328,6 @@ const muted: React.CSSProperties = {
   color: "#9fb1cc",
   lineHeight: 1.55,
   margin: "8px 0 0",
-};
-
-const side: React.CSSProperties = {
-  padding: 28,
-  borderRadius: 30,
-  border: "1px solid rgba(255,255,255,.12)",
-  background: "rgba(255,255,255,.06)",
-};
-
-const bluePill: React.CSSProperties = {
-  display: "inline-flex",
-  padding: "8px 12px",
-  borderRadius: 999,
-  background: "rgba(20,115,255,.22)",
-  color: "#dbeafe",
-  fontSize: 12,
-  fontWeight: 900,
-};
-
-const sideTitle: React.CSSProperties = {
-  margin: "18px 0 0",
-  fontSize: 34,
-  lineHeight: 1,
-  letterSpacing: "-.05em",
-};
-
-const noticeBox: React.CSSProperties = {
-  display: "grid",
-  gap: 6,
-  marginTop: 22,
-  padding: 16,
-  borderRadius: 18,
-  border: "1px solid rgba(251,191,36,.28)",
-  background: "rgba(251,191,36,.09)",
-  color: "#f8fafc",
 };
 
 const form: React.CSSProperties = {
@@ -460,16 +402,31 @@ const input: React.CSSProperties = {
   outline: "none",
 };
 
-const acknowledgment: React.CSSProperties = {
-  display: "flex",
-  gap: 10,
+const pricingModel: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr minmax(220px, .34fr)",
+  gap: 18,
+  alignItems: "stretch",
+  padding: 22,
+  borderRadius: 24,
+  border: "1px solid rgba(251,191,36,.26)",
+  background: "linear-gradient(145deg, rgba(251,191,36,.095), rgba(255,255,255,.04))",
   marginTop: 16,
-  padding: 14,
-  borderRadius: 16,
+};
+
+const pricingModelText: React.CSSProperties = {
+  minWidth: 0,
+};
+
+const pricingModelBadge: React.CSSProperties = {
+  display: "grid",
+  alignContent: "center",
+  gap: 7,
+  padding: 18,
+  borderRadius: 18,
   border: "1px solid rgba(255,255,255,.12)",
-  background: "rgba(255,255,255,.055)",
-  color: "#dbeafe",
-  lineHeight: 1.45,
+  background: "rgba(7,16,31,.55)",
+  color: "#e8f2ff",
 };
 
 const planGrid: React.CSSProperties = {
@@ -491,6 +448,13 @@ const priceStyle: React.CSSProperties = {
   marginTop: 10,
   fontSize: 26,
   fontWeight: 950,
+};
+
+const unitText: React.CSSProperties = {
+  marginTop: 4,
+  color: "#fbbf24",
+  fontSize: 12,
+  fontWeight: 900,
 };
 
 const textarea: React.CSSProperties = {
