@@ -190,6 +190,38 @@ function getFallbackCoaching(roleTitle: string) {
   return ["Add role-specific proof, measurable outcomes, and dealership-relevant experience." ];
 }
 
+function getResumeUrl(application: AnyRow) {
+  return label(
+    application.resume_url ||
+      application.resume_public_url ||
+      application.resume_path,
+    ""
+  );
+}
+
+function getProfilePhotoUrl(application: AnyRow) {
+  return label(
+    application.profile_photo_url ||
+      application.photo_url ||
+      application.candidate_photo_url,
+    ""
+  );
+}
+
+function getCandidateInitials(application: AnyRow) {
+  const raw = label(application.name || application.email, "Candidate");
+  const parts = raw
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+
+  return raw.slice(0, 2).toUpperCase();
+}
+
 function getNextAction(app: AnyRow, roleTitle: string) {
   const fit = getFitDecision(typeof app.fit_score === "number" ? app.fit_score : null, roleTitle);
 
@@ -448,15 +480,40 @@ export default async function RecruiterDashboard({
               const coachingItems = splitList(application.verification_items).length ? splitList(application.verification_items) : getFallbackCoaching(roleTitle);
               const nextAction = getNextAction(application, roleTitle);
               const canOpenStudio = fit.canOpenStudio || application.status === "virtual_invited" || application.screening_status === "virtual_invited";
+              const resumeUrl = getResumeUrl(application);
+              const profilePhotoUrl = getProfilePhotoUrl(application);
 
               return (
                 <article key={application.id} style={candidateCard}>
-                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 18, alignItems: "start" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "104px minmax(0, 1fr) auto", gap: 18, alignItems: "start" }}>
+                    <div style={candidateMedia}>
+                      {profilePhotoUrl ? (
+                        <img
+                          src={profilePhotoUrl}
+                          alt={`${application.name || "Candidate"} profile`}
+                          style={candidatePhoto}
+                        />
+                      ) : (
+                        <div style={candidatePhotoFallback}>{getCandidateInitials(application)}</div>
+                      )}
+
+                      {resumeUrl ? (
+                        <a href={resumeUrl} target="_blank" rel="noreferrer" style={resumeButton}>
+                          View resume
+                        </a>
+                      ) : (
+                        <span style={resumeMissing}>No resume</span>
+                      )}
+                    </div>
+
                     <div>
                       <h2 style={{ margin: 0, fontSize: 24 }}>{application.name || application.email || "Candidate"}</h2>
                       <p style={{ margin: "8px 0 0", color: "#cfe2ff" }}>{roleTitle} · {label(job?.public_dealer_name || job?.dealer_slug, "Dealer pending")}</p>
                       <p style={{ margin: "10px 0 0", color: "#9fb1cc" }}>
                         Status: {application.status || "new"} · Virtual: {application.virtual_interview_status || "not_scheduled"} · Packet: {application.interview_packet_ready ? "ready" : "not ready"} · Dealer: {formatDate(application.dealer_interview_at)}
+                      </p>
+                      <p style={{ margin: "10px 0 0", color: "#9fb1cc", fontSize: 13 }}>
+                        Email: {application.email || "Not provided"} · Phone: {application.phone || "Not provided"}
                       </p>
                     </div>
                     <span style={{ ...scoreBadge, ...getBadgeStyle(fit.tone) }}>
@@ -538,6 +595,11 @@ const metricCard: React.CSSProperties = { padding: 20, borderRadius: 20, border:
 const dealerRow: React.CSSProperties = { padding: 22, borderRadius: 22, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", display: "grid", gridTemplateColumns: "1.4fr repeat(5, .7fr)", gap: 14, alignItems: "center" };
 const workCard: React.CSSProperties = { padding: 24, borderRadius: 22, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)" };
 const candidateCard: React.CSSProperties = { padding: 24, borderRadius: 24, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)" };
+const candidateMedia: React.CSSProperties = { display: "grid", gap: 10, justifyItems: "center" };
+const candidatePhoto: React.CSSProperties = { width: 92, height: 92, borderRadius: 22, objectFit: "cover", border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.06)" };
+const candidatePhotoFallback: React.CSSProperties = { width: 92, height: 92, borderRadius: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,0.18)", background: "rgba(20,115,255,0.18)", color: "#dbeafe", fontSize: 26, fontWeight: 950 };
+const resumeButton: React.CSSProperties = { width: "100%", minHeight: 34, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 999, background: "rgba(20,115,255,0.16)", border: "1px solid rgba(96,165,250,0.26)", color: "#bfdbfe", fontSize: 12, fontWeight: 900, textDecoration: "none" };
+const resumeMissing: React.CSSProperties = { width: "100%", minHeight: 34, display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 999, background: "rgba(248,113,113,0.10)", border: "1px solid rgba(248,113,113,0.22)", color: "#fca5a5", fontSize: 12, fontWeight: 900 };
 const supportGrid: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 16 };
 const supportBox: React.CSSProperties = { padding: 15, borderRadius: 18, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(3,10,20,0.34)" };
 const supportText: React.CSSProperties = { margin: "8px 0 0", color: "#bfd6f5", lineHeight: 1.5, fontSize: 13, whiteSpace: "pre-line" };
