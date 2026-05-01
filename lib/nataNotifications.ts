@@ -18,7 +18,10 @@ type BookingConfirmationPayload = {
   roleTitle: string;
   dealerName: string;
   recruiterName: string;
-  scheduledLabel: string;
+  scheduledStartLabel: string;
+  scheduledEndLabel: string;
+  scheduledWindowLabel: string;
+  meetingUrl: string;
 };
 
 function appUrl() {
@@ -184,7 +187,22 @@ export async function sendBookingConfirmation(payload: BookingConfirmationPayloa
         <strong>${payload.roleTitle}</strong> role with <strong>${payload.dealerName}</strong>
         is confirmed for:
       </p>
-      <p style="font-size:18px;font-weight:700;">${payload.scheduledLabel}</p>
+      <p style="font-size:18px;font-weight:700;">${payload.scheduledWindowLabel}</p>
+      <p style="color:#4b5563;">
+        Start: <strong>${payload.scheduledStartLabel}</strong><br />
+        End: <strong>${payload.scheduledEndLabel}</strong>
+      </p>
+      <p style="margin: 22px 0;">
+        <a href="${payload.meetingUrl}"
+          style="display:inline-block;background:#1473ff;color:#ffffff;text-decoration:none;
+          padding:12px 18px;border-radius:999px;font-weight:700;">
+          Join virtual interview
+        </a>
+      </p>
+      <p style="color:#4b5563;">
+        Meeting link:<br />
+        <a href="${payload.meetingUrl}">${payload.meetingUrl}</a>
+      </p>
       <p style="color:#4b5563;">
         Please be ready to discuss your experience, availability, follow-up discipline,
         and why this dealership role fits your background.
@@ -193,7 +211,7 @@ export async function sendBookingConfirmation(payload: BookingConfirmationPayloa
     </div>
   `;
 
-  const smsBody = `NATA Today: Your ${payload.roleTitle} interview is confirmed for ${payload.scheduledLabel}.`;
+  const smsBody = `NATA Today: Your ${payload.roleTitle} interview is confirmed for ${payload.scheduledWindowLabel}. Join here: ${payload.meetingUrl}`;
 
   const results = await Promise.allSettled([
     sendEmail({ to: payload.candidateEmail, subject, html: emailHtml }),
