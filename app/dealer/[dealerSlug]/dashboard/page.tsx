@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
 import Nav from "../../../components/Nav";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
+import { hasDealerAccess } from "../../../../lib/dealerAccess";
 
 type PageProps = {
   params: {
@@ -424,6 +425,39 @@ export default async function DealerDashboardPage({
   searchParams,
 }: PageProps) {
   const dealerName = formatDealerName(params.dealerSlug);
+
+  if (!hasDealerAccess(params.dealerSlug)) {
+    return (
+      <main className="shell">
+        <Nav />
+        <section className="wrap" style={{ padding: "70px 0 110px" }}>
+          <div
+            style={{
+              maxWidth: 760,
+              padding: 34,
+              borderRadius: 30,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background:
+                "linear-gradient(145deg, rgba(20,115,255,0.13), rgba(255,255,255,0.045))",
+            }}
+          >
+            <div className="eyebrow">Secure Dealer Access</div>
+            <h1 style={{ fontSize: "clamp(44px,6vw,72px)", lineHeight: 0.95 }}>
+              Access required.
+            </h1>
+            <p className="lede">
+              This dealer workspace is protected. Complete enrollment through Stripe
+              or use the secure access link issued after checkout.
+            </p>
+            <p style={{ color: "#9fb4d6", lineHeight: 1.6, marginTop: 18 }}>
+              If your subscription is already active, contact NATA Today and we can
+              resend the secure access link for this dealership.
+            </p>
+          </div>
+        </section>
+      </main>
+    );
+  }
   const dealerLocation = getDealerLocation(params.dealerSlug);
   const requestSubmitted = searchParams?.request === "submitted";
   const decisionSaved = searchParams?.decision === "saved";
