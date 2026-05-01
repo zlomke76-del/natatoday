@@ -1,43 +1,31 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 
-type ActionNoticeProps = {
-  show: boolean;
+export default function ActionNotice({
+  title,
+  copy,
+}: {
   title: string;
   copy: string;
-};
-
-export default function ActionNotice({ show, title, copy }: ActionNoticeProps) {
-  const pathname = usePathname();
+}) {
+  const [visible, setVisible] = useState(true);
   const router = useRouter();
-  const [visible, setVisible] = useState(show);
+  const pathname = usePathname();
 
   useEffect(() => {
-    setVisible(show);
-
-    if (!show) {
-      return;
-    }
-
-    const hideTimer = window.setTimeout(() => {
+    const timer = setTimeout(() => {
       setVisible(false);
-    }, 3200);
 
-    const cleanTimer = window.setTimeout(() => {
-      router.replace(pathname, { scroll: false });
-    }, 3800);
+      // clean URL (removes ?request=... etc)
+      router.replace(pathname);
+    }, 3000);
 
-    return () => {
-      window.clearTimeout(hideTimer);
-      window.clearTimeout(cleanTimer);
-    };
-  }, [show, pathname, router]);
+    return () => clearTimeout(timer);
+  }, [router, pathname]);
 
-  if (!visible) {
-    return null;
-  }
+  if (!visible) return null;
 
   return (
     <div
@@ -50,12 +38,8 @@ export default function ActionNotice({ show, title, copy }: ActionNoticeProps) {
         color: "#d1fae5",
         display: "grid",
         gap: 6,
-        opacity: visible ? 1 : 0,
-        transform: visible ? "translateY(0)" : "translateY(-6px)",
-        transition: "opacity 220ms ease, transform 220ms ease",
+        transition: "opacity 0.3s ease",
       }}
-      role="status"
-      aria-live="polite"
     >
       <strong style={{ color: "#fff" }}>{title}</strong>
       <span>{copy}</span>
