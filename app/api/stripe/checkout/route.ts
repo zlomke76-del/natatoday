@@ -3,176 +3,167 @@ import Stripe from "stripe";
 
 export const dynamic = "force-dynamic";
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY || "";
-const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
+type PlanKey = "starter" | "active" | "full";
 
-const PRICE_BY_PLAN: Record<string, string | undefined> = {
-  starter: process.env.STRIPE_STARTER_PRICE_ID,
-  active: process.env.STRIPE_ACTIVE_PRICE_ID || process.env.STRIPE_MONTHLY_PRICE_ID,
-  full: process.env.STRIPE_FULL_PRICE_ID,
+const PLAN_PRICE_ENV: Record<PlanKey, string> = {
+  starter: "STRIPE_STARTER_PRICE_ID",
+  active: "STRIPE_ACTIVE_PRICE_ID",
+  full: "STRIPE_FULL_PRICE_ID",
 };
 
-const LABEL_BY_PLAN: Record<string, string> = {
-  starter: "Starter Pipeline",
-  active: "Active Pipeline",
-  full: "Full Pipeline Coverage",
-};
-
-function getBaseUrl(request: NextRequest) {
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (configured) return configured.replace(/\/$/, "");
-
-  const origin = request.headers.get("origin");
-  if (origin) return origin.replace(/\/$/, "");
-
-  return "https://www.natatoday.ai";
+function getString(formData: FormData, key: string) {
+  const value = formData.get(key);
+  return typeof value === "string" ? value.trim() : "";
 }
 
-function clean(value: FormDataEntryValue | null, fallback = "") {
-  return typeof value === "string" && value.trim() ? value.trim() : fallback;
-}
-
-function cleanList(value: FormDataEntryValue | null) {
-  const text = clean(value);
-  return text
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .join(", ");
-}
-
-async function readCheckoutInput(request: NextRequest) {
-  const contentType = request.headers.get("content-type") || "";
-
-  if (contentType.includes("application/json")) {
-    const body = await request.json();
-    const roles = Array.isArray(body.rolesNeeded)
-      ? body.rolesNeeded.join(", ")
-      : typeof body.rolesNeeded === "string"
-        ? body.rolesNeeded
-        : "";
-
-    const certifications = Array.isArray(body.certificationNeeds)
-      ? body.certificationNeeds.join(", ")
-      : typeof body.certificationNeeds === "string"
-        ? body.certificationNeeds
-        : "";
-
-    return {
-      plan: typeof body.plan === "string" ? body.plan.trim() : "active",
-      dealershipName: typeof body.dealershipName === "string" ? body.dealershipName.trim() : "",
-      website: typeof body.website === "string" ? body.website.trim() : "",
-      city: typeof body.city === "string" ? body.city.trim() : "",
-      state: typeof body.state === "string" ? body.state.trim() : "",
-      primaryContact: typeof body.primaryContact === "string" ? body.primaryContact.trim() : "",
-      email: typeof body.email === "string" ? body.email.trim() : "",
-      phone: typeof body.phone === "string" ? body.phone.trim() : "",
-      dealerRole: typeof body.dealerRole === "string" ? body.dealerRole.trim() : "",
-      dealerGroupSize: typeof body.dealerGroupSize === "string" ? body.dealerGroupSize.trim() : "",
-      monthlyHiringTarget: typeof body.monthlyHiringTarget === "string" ? body.monthlyHiringTarget.trim() : "",
-      urgency: typeof body.urgency === "string" ? body.urgency.trim() : "standard",
-      rolesNeeded: roles,
-      certificationNeeds: certifications,
-      notes: typeof body.notes === "string" ? body.notes.trim() : "",
-    };
+function normalizePlan(value: string): PlanKey {
+  if (value === "starter" || value === "active" || value === "full") {
+    return value;
   }
 
-  const form = await request.formData();
+  return "active";
+}
 
-  return {
-    plan: clean(form.get("plan"), "active"),
-    dealershipName: clean(form.get("dealershipName")),
-    website: clean(form.get("website")),
-    city: clean(form.get("city")),
-    state: clean(form.get("state")),
-    primaryContact: clean(form.get("primaryContact")),
-    email: clean(form.get("email")),
-    phone: clean(form.get("phone")),
-    dealerRole: clean(form.get("dealerRole")),
-    dealerGroupSize: clean(form.get("dealerGroupSize")),
-    monthlyHiringTarget: clean(form.get("monthlyHiringTarget")),
-    urgency: clean(form.get("urgency"), "standard"),
-    rolesNeeded: cleanList(form.get("rolesNeeded")),
-    certificationNeeds: cleanList(form.get("certificationNeeds")),
-    notes: clean(form.get("notes")),
-  };
+function normalizeQuantity(value: string) {
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return 1;
+  }
+
+  return Math.min(parsed, 99);
+}
+
+function appUrl() {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}` ||
+    "http://localhost:3000"
+  );
 }
 
 export async function POST(request: NextRequest) {
   try {
-    if (!stripe) {
+    if (!process.env.STRIPE_SECRET_KEY) {
       return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY" }, { status: 500 });
     }
 
-    const input = await readCheckoutInput(request);
-    const plan = PRICE_BY_PLAN[input.plan] ? input.plan : "active";
-    const priceId = PRICE_BY_PLAN[plan];
+    const formData = await request.formData();
+
+    const dealershipName = getString(formData, "dealershipName");
+    const website = getString(formData, "website");
+    const city = getString(formData, "city");
+    const state = getString(formData, "state");
+    const primaryContact = getString(formData, "primaryContact");
+    const email = getString(formData, "email");
+    const phone = getString(formData, "phone");
+    const dealerRole = getString(formData, "dealerRole");
+    const multiStoreGroup = getString(formData, "multiStoreGroup");
+    const notes = getString(formData, "notes");
+    const acknowledgment = getString(formData, "perLocationAcknowledgment");
+    const plan = normalizePlan(getString(formData, "plan"));
+    const dealershipLocationCount = normalizeQuantity(getString(formData, "dealershipLocationCount"));
+
+    if (!dealershipName || !city || !state || !primaryContact || !email || !phone) {
+      return NextResponse.json(
+        { error: "Missing required enrollment fields" },
+        { status: 400 }
+      );
+    }
+
+    if (acknowledgment !== "accepted") {
+      return NextResponse.json(
+        { error: "Per-location billing acknowledgment is required" },
+        { status: 400 }
+      );
+    }
+
+    const priceId = process.env[PLAN_PRICE_ENV[plan]];
 
     if (!priceId) {
-      return NextResponse.json({ error: `Missing Stripe price ID for plan: ${plan}` }, { status: 500 });
+      return NextResponse.json(
+        { error: `Missing ${PLAN_PRICE_ENV[plan]}` },
+        { status: 500 }
+      );
     }
 
-    if (!input.dealershipName || !input.email) {
-      return NextResponse.json({ error: "Dealership name and email are required" }, { status: 400 });
-    }
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+      apiVersion: "2024-06-20",
+    });
 
-    const baseUrl = getBaseUrl(request);
-    const intakeSummary = [
-      `Dealer: ${input.dealershipName}`,
-      `Contact: ${input.primaryContact}`,
-      `Location: ${input.city}, ${input.state}`,
-      `Roles: ${input.rolesNeeded}`,
-      `Certifications: ${input.certificationNeeds}`,
-      `Volume: ${input.monthlyHiringTarget}`,
-      `Urgency: ${input.urgency}`,
-      `Notes: ${input.notes}`,
-    ]
-      .filter((line) => !line.endsWith(": "))
-      .join(" | ")
-      .slice(0, 495);
-
-    const metadata = {
-      product: "nata_today_dealer_pipeline",
-      plan,
-      plan_name: LABEL_BY_PLAN[plan] || plan,
-      dealer_name: input.dealershipName.slice(0, 120),
-      website: input.website.slice(0, 120),
-      city: input.city.slice(0, 80),
-      state: input.state.slice(0, 40),
-      contact_name: input.primaryContact.slice(0, 120),
-      contact_email: input.email.slice(0, 120),
-      contact_phone: input.phone.slice(0, 60),
-      dealer_role: input.dealerRole.slice(0, 80),
-      group_size: input.dealerGroupSize.slice(0, 80),
-      monthly_hiring_target: input.monthlyHiringTarget.slice(0, 80),
-      urgency: input.urgency.slice(0, 40),
-      roles_needed: input.rolesNeeded.slice(0, 450),
-      certification_needs: input.certificationNeeds.slice(0, 450),
-      intake_summary: intakeSummary,
-    };
+    const baseUrl = appUrl();
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      customer_email: input.email || undefined,
-      line_items: [{ price: priceId, quantity: 1 }],
+      customer_email: email,
       allow_promotion_codes: true,
-      billing_address_collection: "auto",
-      phone_number_collection: { enabled: true },
-      metadata,
-      subscription_data: { metadata },
+      client_reference_id: dealershipName,
+      line_items: [
+        {
+          price: priceId,
+          quantity: dealershipLocationCount,
+        },
+      ],
       success_url: `${baseUrl}/pricing-page-intake-enrollmment?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/pricing-page-intake-enrollmment?checkout=canceled`,
+      subscription_data: {
+        metadata: {
+          billing_unit: "dealership_location",
+          plan,
+          dealership_location_count: String(dealershipLocationCount),
+          dealership_name: dealershipName.slice(0, 120),
+          primary_rooftop_name: dealershipName.slice(0, 120),
+          city: city.slice(0, 80),
+          state: state.slice(0, 30),
+          website: website.slice(0, 180),
+          primary_contact: primaryContact.slice(0, 120),
+          contact_email: email.slice(0, 180),
+          contact_phone: phone.slice(0, 60),
+          dealer_role: dealerRole.slice(0, 80),
+          multi_store_group: multiStoreGroup.slice(0, 80),
+          per_location_acknowledgment: acknowledgment,
+          setup_stage: "post_payment_hiring_setup_required",
+          notes: notes.slice(0, 450),
+        },
+      },
+      metadata: {
+        billing_unit: "dealership_location",
+        plan,
+        dealership_location_count: String(dealershipLocationCount),
+        dealership_name: dealershipName.slice(0, 120),
+        primary_rooftop_name: dealershipName.slice(0, 120),
+        city: city.slice(0, 80),
+        state: state.slice(0, 30),
+        website: website.slice(0, 180),
+        primary_contact: primaryContact.slice(0, 120),
+        contact_email: email.slice(0, 180),
+        contact_phone: phone.slice(0, 60),
+        dealer_role: dealerRole.slice(0, 80),
+        multi_store_group: multiStoreGroup.slice(0, 80),
+        per_location_acknowledgment: acknowledgment,
+        setup_stage: "post_payment_hiring_setup_required",
+        notes: notes.slice(0, 450),
+      },
     });
 
     if (!session.url) {
-      return NextResponse.json({ error: "Stripe checkout session did not return a URL" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Stripe checkout session did not return a URL" },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.redirect(session.url, { status: 303 });
+    return NextResponse.redirect(session.url, 303);
   } catch (error) {
-    console.error("Stripe checkout failed:", error);
+    console.error("Failed to create Stripe checkout session:", error);
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Stripe checkout failed" },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to create Stripe checkout session",
+      },
       { status: 500 }
     );
   }
