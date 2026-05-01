@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+type Recommendation = "advance" | "hold" | "pass" | "";
+
 type GuidedNotes = {
   motivation?: string;
   experience?: string;
@@ -8,13 +10,14 @@ type GuidedNotes = {
   availability?: string;
   compensation?: string;
   communication?: string;
-  recommendation?: string;
+  recommendation?: Recommendation | string;
 };
 
 type ScribeRequest = {
   applicationId?: string;
   notes?: string;
   guidedNotes?: GuidedNotes;
+  transcript?: string;
   dealerInterviewAt?: string;
 };
 
@@ -24,6 +27,7 @@ export async function POST(req: NextRequest) {
       applicationId,
       notes,
       guidedNotes = {},
+      transcript = "",
       dealerInterviewAt,
     }: ScribeRequest = await req.json();
 
@@ -34,35 +38,53 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!notes || notes.trim().length < 20) {
+    const sourceText = [notes, transcript]
+      .map((value) => clean(value))
+      .filter(Boolean)
+      .join("\n\n");
+
+    if (sourceText.length < 20) {
       return NextResponse.json(
-        { error: "Interview notes are required before scribe generation" },
+        { error: "Interview notes or transcript are required before scribe generation" },
         { status: 400 }
       );
     }
 
-    const cleanedNotes = notes.trim();
+    const filledGuidedNotes = buildGuidedNotes(sourceText, guidedNotes);
 
     const scribeDraft = {
-      candidateStrengths: listFromText(guidedNotes.strengths) ?? extractStrengths(cleanedNotes),
-      concernsOrRisks: listFromText(guidedNotes.concerns) ?? extractConcerns(cleanedNotes),
+      candidateStrengths: listFromText(filledGuidedNotes.strengths) || [
+        "Strengths require recruiter confirmation.",
+      ],
+      concernsOrRisks: listFromText(filledGuidedNotes.concerns) || [
+        "No major concerns documented yet.",
+      ],
       availability:
-        clean(guidedNotes.availability) || extractAvailability(cleanedNotes),
+        filledGuidedNotes.availability ||
+        "Availability not clearly documented.",
       compensationAlignment:
-        clean(guidedNotes.compensation) || extractCompensation(cleanedNotes),
+        filledGuidedNotes.compensation ||
+        "Compensation alignment not clearly documented.",
       communicationQuality:
-        clean(guidedNotes.communication) || extractCommunication(cleanedNotes),
-      roleFit: buildRoleFit(cleanedNotes, guidedNotes),
-      recommendedNextStep: buildRecommendation(guidedNotes.recommendation, dealerInterviewAt),
-      dealerFacingSummary: buildDealerSummary(cleanedNotes, guidedNotes),
-      internalOnlyNotes: cleanedNotes,
+        filledGuidedNotes.communication ||
+        "Communication quality requires recruiter confirmation.",
+      roleFit: buildRoleFit(filledGuidedNotes),
+      recommendedNextStep: buildRecommendation(
+        filledGuidedNotes.recommendation,
+        dealerInterviewAt
+      ),
+      dealerFacingSummary: buildDealerSummary(filledGuidedNotes),
+      internalOnlyNotes: sourceText,
       governance: {
         status: "draft_requires_human_review",
         rule: "Scribe output is not committed until recruiter review and handoff approval.",
       },
     };
 
-    return NextResponse.json({ scribeDraft });
+    return NextResponse.json({
+      guidedNotes: filledGuidedNotes,
+      scribeDraft,
+    });
   } catch (error) {
     console.error("POST /api/nata/interviews/scribe failed", error);
 
@@ -71,6 +93,112 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function buildGuidedNotes(sourceText: string, provided: GuidedNotes): Required<GuidedNotes> {
+  return {
+    motivation:
+      clean(provided.motivation) ||
+      extractBySignals(sourceText, ["motivat", "why", "interested", "looking", "career", "opportunity"]) ||
+      "",
+    experience:
+      clean(provided.experience) ||
+      extractBySignals(sourceText, ["experience", "worked", "years", "background", "sold", "sales", "customer"]) ||
+      "",
+    strengths:
+      clean(provided.strengths) ||
+      extractBySignals(sourceText, ["strength", "strong", "good", "great", "clear", "confident", "follow up"]) ||
+      "",
+    concerns:
+      clean(provided.concerns) ||
+      extractBySignals(sourceText, ["concern", "risk", "hesitant", "weak", "issue", "gap", "no show"]) ||
+      "No major concerns documented yet.",
+    availability:
+      clean(provided.availability) ||
+      extractBySignals(sourceText, ["available", "availability", "start", "schedule", "weekend", "weekday", "morning", "afternoon"]) ||
+      "",
+    compensation:
+      clean(provided.compensation) ||
+      extractBySignals(sourceText, ["pay", "salary", "compensation", "commission", "draw", "hourly", "income"]) ||
+      "",
+    communication:
+      clean(provided.communication) ||
+      extractBySignals(sourceText, ["communicat", "clear", "confident", "well spoken", "professional", "energy"]) ||
+      "",
+    recommendation: normalizeRecommendation(provided.recommendation),
+  };
+}
+
+function buildRoleFit(guidedNotes: Required<GuidedNotes>): string {
+  const signals = [
+    guidedNotes.experience,
+    guidedNotes.strengths,
+    guidedNotes.communication,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (signals.length > 20) {
+    return "Role fit is supported by documented experience, strengths, and recruiter-observed communication quality.";
+  }
+
+  return "Role fit requires recruiter confirmation.";
+}
+
+function buildDealerSummary(guidedNotes: Required<GuidedNotes>): string {
+  const parts = [
+    guidedNotes.motivation ? `Motivation: ${guidedNotes.motivation}` : "",
+    guidedNotes.experience ? `Experience: ${guidedNotes.experience}` : "",
+    guidedNotes.strengths ? `Strengths: ${guidedNotes.strengths}` : "",
+    guidedNotes.availability ? `Availability: ${guidedNotes.availability}` : "",
+    guidedNotes.compensation ? `Compensation alignment: ${guidedNotes.compensation}` : "",
+    guidedNotes.communication ? `Communication: ${guidedNotes.communication}` : "",
+  ].filter(Boolean);
+
+  if (parts.length > 0) {
+    return parts.join(" ");
+  }
+
+  return "Candidate completed the virtual interview. Recruiter review is required before dealer exposure.";
+}
+
+function buildRecommendation(
+  recommendation: unknown,
+  dealerInterviewAt?: string
+): string {
+  const value = normalizeRecommendation(recommendation);
+
+  if (value === "advance") {
+    return dealerInterviewAt
+      ? "Advance to dealer interview."
+      : "Advance after dealer interview time is selected.";
+  }
+
+  if (value === "hold") {
+    return "Hold for additional recruiter review before dealer exposure.";
+  }
+
+  if (value === "pass") {
+    return "Do not advance to dealer interview.";
+  }
+
+  return dealerInterviewAt
+    ? "Proceed to dealer interview if recruiter approves."
+    : "Recommendation requires recruiter selection before commit.";
+}
+
+function extractBySignals(text: string, signals: string[]): string {
+  const sentences = text
+    .split(/[.!?\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const matches = sentences.filter((sentence) => {
+    const lower = sentence.toLowerCase();
+    return signals.some((signal) => lower.includes(signal));
+  });
+
+  return matches.slice(0, 2).join(". ");
 }
 
 function clean(value: unknown): string {
@@ -90,153 +218,10 @@ function listFromText(value: unknown): string[] | null {
   return list.length > 0 ? list : [raw];
 }
 
-function buildRecommendation(
-  recommendation: unknown,
-  dealerInterviewAt?: string
-): string {
-  const value = clean(recommendation);
-
-  if (value === "advance") {
-    return dealerInterviewAt
-      ? "Advance to dealer interview."
-      : "Advance after dealer interview time is selected.";
+function normalizeRecommendation(value: unknown): Recommendation {
+  if (value === "advance" || value === "hold" || value === "pass") {
+    return value;
   }
 
-  if (value === "hold") {
-    return "Hold for additional recruiter review before dealer exposure.";
-  }
-
-  if (value === "pass") {
-    return "Do not advance to dealer interview.";
-  }
-
-  return dealerInterviewAt
-    ? "Proceed to dealer interview if recruiter approves."
-    : "Proceed only after dealer interview time is selected.";
-}
-
-function buildDealerSummary(notes: string, guidedNotes: GuidedNotes): string {
-  const motivation = clean(guidedNotes.motivation);
-  const experience = clean(guidedNotes.experience);
-  const strengths = clean(guidedNotes.strengths);
-  const availability = clean(guidedNotes.availability);
-  const compensation = clean(guidedNotes.compensation);
-
-  const parts = [
-    motivation ? `Motivation: ${motivation}` : "",
-    experience ? `Experience: ${experience}` : "",
-    strengths ? `Strengths: ${strengths}` : "",
-    availability ? `Availability: ${availability}` : "",
-    compensation ? `Compensation alignment: ${compensation}` : "",
-  ].filter(Boolean);
-
-  if (parts.length > 0) {
-    return parts.join(" ");
-  }
-
-  return `Candidate completed the virtual interview. Recruiter notes indicate the candidate is suitable for review pending final handoff approval. ${notes
-    .split(/[.!?]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 2)
-    .join(". ")}.`;
-}
-
-function buildRoleFit(notes: string, guidedNotes: GuidedNotes): string {
-  const experience = clean(guidedNotes.experience);
-  const strengths = clean(guidedNotes.strengths);
-
-  if (experience || strengths) {
-    return "Role fit supported by documented experience and recruiter-observed strengths.";
-  }
-
-  return extractRoleFit(notes);
-}
-
-function extractStrengths(notes: string) {
-  return sentenceFallback(notes, [
-    "Candidate showed relevant communication ability and interview readiness.",
-  ]);
-}
-
-function extractConcerns(notes: string) {
-  const lower = notes.toLowerCase();
-
-  if (
-    lower.includes("concern") ||
-    lower.includes("risk") ||
-    lower.includes("hesitant") ||
-    lower.includes("weak")
-  ) {
-    return sentenceFallback(notes, [
-      "Potential concerns were identified in the recruiter notes.",
-    ]);
-  }
-
-  return ["No major concerns documented yet."];
-}
-
-function extractAvailability(notes: string) {
-  const lower = notes.toLowerCase();
-
-  if (lower.includes("available") || lower.includes("availability")) {
-    return "Availability discussed during interview. Review notes for exact timing.";
-  }
-
-  return "Availability not clearly documented.";
-}
-
-function extractCompensation(notes: string) {
-  const lower = notes.toLowerCase();
-
-  if (
-    lower.includes("pay") ||
-    lower.includes("salary") ||
-    lower.includes("compensation") ||
-    lower.includes("commission")
-  ) {
-    return "Compensation expectations discussed. Review notes before dealer handoff.";
-  }
-
-  return "Compensation alignment not clearly documented.";
-}
-
-function extractCommunication(notes: string) {
-  const lower = notes.toLowerCase();
-
-  if (
-    lower.includes("communicat") ||
-    lower.includes("well spoken") ||
-    lower.includes("clear") ||
-    lower.includes("confident")
-  ) {
-    return "Communication quality appears positive based on recruiter notes.";
-  }
-
-  return "Communication quality requires recruiter confirmation.";
-}
-
-function extractRoleFit(notes: string) {
-  const lower = notes.toLowerCase();
-
-  if (
-    lower.includes("sales") ||
-    lower.includes("customer") ||
-    lower.includes("follow up") ||
-    lower.includes("dealership")
-  ) {
-    return "Candidate appears aligned with dealership-facing role requirements.";
-  }
-
-  return "Role fit requires recruiter confirmation.";
-}
-
-function sentenceFallback(notes: string, fallback: string[]) {
-  const sentences = notes
-    .split(/[.!?]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 3);
-
-  return sentences.length > 0 ? sentences : fallback;
+  return "";
 }
