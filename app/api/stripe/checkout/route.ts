@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
           quantity: dealershipLocationCount,
         },
       ],
-      success_url: `${baseUrl}/pricing-page-intake-enrollmment?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${baseUrl}/dealer/access?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/pricing-page-intake-enrollmment?checkout=canceled`,
       subscription_data: {
         metadata,
