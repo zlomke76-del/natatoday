@@ -60,7 +60,7 @@ type SpeechRecognitionInstance = {
   stop: () => void;
   abort: () => void;
   onresult: ((event: SpeechRecognitionEvent) => void) | null;
- .onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
   onend: (() => void) | null;
 };
 
