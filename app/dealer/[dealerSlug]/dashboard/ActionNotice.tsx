@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export default function ActionNotice({
   title,
@@ -15,15 +15,13 @@ export default function ActionNotice({
   const pathname = usePathname();
 
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       setVisible(false);
-
-      // clean URL (removes ?request=... etc)
-      router.replace(pathname);
+      router.replace(pathname, { scroll: false });
     }, 3000);
 
-    return () => clearTimeout(timer);
-  }, [router, pathname]);
+    return () => window.clearTimeout(timer);
+  }, [pathname, router]);
 
   if (!visible) return null;
 
@@ -38,7 +36,6 @@ export default function ActionNotice({
         color: "#d1fae5",
         display: "grid",
         gap: 6,
-        transition: "opacity 0.3s ease",
       }}
     >
       <strong style={{ color: "#fff" }}>{title}</strong>
