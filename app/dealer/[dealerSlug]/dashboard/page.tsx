@@ -460,6 +460,7 @@ export default async function DealerDashboardPage({
   }
   const dealerLocation = getDealerLocation(params.dealerSlug);
   const requestSubmitted = searchParams?.request === "submitted";
+  const requestClosed = searchParams?.request === "closed";
   const decisionSaved = searchParams?.decision === "saved";
   const submittedRole = searchParams?.role
     ? decodeURIComponent(searchParams.role)
@@ -526,6 +527,50 @@ export default async function DealerDashboardPage({
     redirect(
       `/dealer/${params.dealerSlug}/dashboard?request=submitted&role=${encodeURIComponent(
         title
+      )}`
+    );
+  }
+
+  async function closeHiringRequest(formData: FormData) {
+    "use server";
+
+    const jobId = cleanFormValue(formData.get("job_id"));
+    const jobTitle = cleanFormValue(formData.get("job_title")) || "Hiring request";
+    const closedReason =
+      cleanFormValue(formData.get("closed_reason")) || "walk_in_candidate";
+    const filledNote = cleanFormValue(formData.get("filled_note"));
+
+    if (!jobId) {
+      throw new Error("Job id is required before a request can be removed.");
+    }
+
+    const note =
+      filledNote ||
+      (closedReason === "walk_in_candidate"
+        ? "Dealer removed request because the position was filled by a walk-in candidate."
+        : "Dealer removed request from active board.");
+
+    const { error } = await supabaseAdmin
+      .schema("nata")
+      .from("jobs")
+      .update({
+        publish_status: "filled",
+        is_active: false,
+        filled_at: new Date().toISOString(),
+        filled_note: note,
+        closed_reason: closedReason,
+      })
+      .eq("id", jobId)
+      .eq("dealer_slug", params.dealerSlug);
+
+    if (error) {
+      console.error("Failed to remove dealer hiring request:", error);
+      throw new Error("Hiring request could not be removed from the board.");
+    }
+
+    redirect(
+      `/dealer/${params.dealerSlug}/dashboard?request=closed&role=${encodeURIComponent(
+        jobTitle
       )}`
     );
   }
@@ -658,6 +703,14 @@ export default async function DealerDashboardPage({
             tone="success"
             title={`${submittedRole} request received.`}
             copy="NATA Today will handle the job posting, candidate intake, screening, routing, and packet preparation. Candidates will appear on your manager board only when the interview is scheduled and the packet is ready."
+          />
+        ) : null}
+
+        {requestClosed ? (
+          <Notice
+            tone="success"
+            title={`${submittedRole} removed from active requests.`}
+            copy="The request has been removed from the open board and documented as filled or closed by the dealership."
           />
         ) : null}
 
@@ -947,6 +1000,75 @@ export default async function DealerDashboardPage({
                         ? "Manager-ready candidates are shown below."
                         : "NATA Today is screening and preparing candidates before handoff."}
                     </p>
+
+                    <form
+                      action={closeHiringRequest}
+                      style={{
+                        marginTop: 18,
+                        paddingTop: 16,
+                        borderTop: "1px solid rgba(255,255,255,0.09)",
+                        display: "grid",
+                        gap: 10,
+                      }}
+                    >
+                      <input type="hidden" name="job_id" value={String(job.id)} />
+                      <input
+                        type="hidden"
+                        name="job_title"
+                        value={String(job.title || "Hiring request")}
+                      />
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "minmax(0, 0.72fr) minmax(0, 1fr)",
+                          gap: 10,
+                          alignItems: "start",
+                        }}
+                      >
+                        <Field label="Remove reason">
+                          <select
+                            name="closed_reason"
+                            defaultValue="walk_in_candidate"
+                            style={inputStyle}
+                          >
+                            <option value="walk_in_candidate">Filled by walk-in candidate</option>
+                            <option value="internal_hire">Filled internally</option>
+                            <option value="role_paused">Role paused</option>
+                            <option value="no_longer_needed">No longer needed</option>
+                          </select>
+                        </Field>
+
+                        <Field label="Optional note">
+                          <input
+                            name="filled_note"
+                            placeholder="Example: Walk-in candidate accepted offer today."
+                            style={inputStyle}
+                          />
+                        </Field>
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <span style={{ color: "#9fb4d6", fontSize: 13 }}>
+                          Removes this request from the open board and records the closure.
+                        </span>
+                        <button
+                          className="btn btn-secondary"
+                          type="submit"
+                          style={{ border: "1px solid rgba(255,255,255,0.18)" }}
+                        >
+                          Remove request
+                        </button>
+                      </div>
+                    </form>
                   </article>
                 );
               })}
