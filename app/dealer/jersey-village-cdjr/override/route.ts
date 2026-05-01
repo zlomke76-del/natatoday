@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { setDealerAccessCookie } from "../../../../../lib/dealerAccess";
-
+import { setDealerAccessCookie } from "../../../../lib/dealerAccess";
 export const dynamic = "force-dynamic";
 
 const DEALER_SLUG = "jersey-village-cdjr";
