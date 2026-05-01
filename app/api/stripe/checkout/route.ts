@@ -37,9 +37,9 @@ function normalizeQuantity(value: string) {
 function appUrl() {
   return (
     process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}` ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
     "http://localhost:3000"
-  );
+  ).replace(/\/$/, "");
 }
 
 export async function POST(request: NextRequest) {
@@ -60,20 +60,12 @@ export async function POST(request: NextRequest) {
     const dealerRole = getString(formData, "dealerRole");
     const multiStoreGroup = getString(formData, "multiStoreGroup");
     const notes = getString(formData, "notes");
-    const acknowledgment = getString(formData, "perLocationAcknowledgment");
     const plan = normalizePlan(getString(formData, "plan"));
     const dealershipLocationCount = normalizeQuantity(getString(formData, "dealershipLocationCount"));
 
     if (!dealershipName || !city || !state || !primaryContact || !email || !phone) {
       return NextResponse.json(
         { error: "Missing required enrollment fields" },
-        { status: 400 }
-      );
-    }
-
-    if (acknowledgment !== "accepted") {
-      return NextResponse.json(
-        { error: "Per-location billing acknowledgment is required" },
         { status: 400 }
       );
     }
@@ -88,8 +80,25 @@ export async function POST(request: NextRequest) {
     }
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
     const baseUrl = appUrl();
+
+    const metadata = {
+      billing_unit: "dealership_location",
+      plan,
+      dealership_location_count: String(dealershipLocationCount),
+      dealership_name: dealershipName.slice(0, 120),
+      primary_rooftop_name: dealershipName.slice(0, 120),
+      city: city.slice(0, 80),
+      state: state.slice(0, 30),
+      website: website.slice(0, 180),
+      primary_contact: primaryContact.slice(0, 120),
+      contact_email: email.slice(0, 180),
+      contact_phone: phone.slice(0, 60),
+      dealer_role: dealerRole.slice(0, 80),
+      multi_store_group: multiStoreGroup.slice(0, 80),
+      setup_stage: "post_payment_hiring_setup_required",
+      notes: notes.slice(0, 450),
+    };
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
@@ -105,43 +114,9 @@ export async function POST(request: NextRequest) {
       success_url: `${baseUrl}/pricing-page-intake-enrollmment?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/pricing-page-intake-enrollmment?checkout=canceled`,
       subscription_data: {
-        metadata: {
-          billing_unit: "dealership_location",
-          plan,
-          dealership_location_count: String(dealershipLocationCount),
-          dealership_name: dealershipName.slice(0, 120),
-          primary_rooftop_name: dealershipName.slice(0, 120),
-          city: city.slice(0, 80),
-          state: state.slice(0, 30),
-          website: website.slice(0, 180),
-          primary_contact: primaryContact.slice(0, 120),
-          contact_email: email.slice(0, 180),
-          contact_phone: phone.slice(0, 60),
-          dealer_role: dealerRole.slice(0, 80),
-          multi_store_group: multiStoreGroup.slice(0, 80),
-          per_location_acknowledgment: acknowledgment,
-          setup_stage: "post_payment_hiring_setup_required",
-          notes: notes.slice(0, 450),
-        },
+        metadata,
       },
-      metadata: {
-        billing_unit: "dealership_location",
-        plan,
-        dealership_location_count: String(dealershipLocationCount),
-        dealership_name: dealershipName.slice(0, 120),
-        primary_rooftop_name: dealershipName.slice(0, 120),
-        city: city.slice(0, 80),
-        state: state.slice(0, 30),
-        website: website.slice(0, 180),
-        primary_contact: primaryContact.slice(0, 120),
-        contact_email: email.slice(0, 180),
-        contact_phone: phone.slice(0, 60),
-        dealer_role: dealerRole.slice(0, 80),
-        multi_store_group: multiStoreGroup.slice(0, 80),
-        per_location_acknowledgment: acknowledgment,
-        setup_stage: "post_payment_hiring_setup_required",
-        notes: notes.slice(0, 450),
-      },
+      metadata,
     });
 
     if (!session.url) {
