@@ -265,4 +265,6 @@ Built and operated under:
 ```txt
 NATA Today / Moral Clarity AI
 ```
+## Internal Operations
 
+- [Recruiter & Agent Playbook](./docs/ops/RECRUITER_PLAYBOOK.md)
