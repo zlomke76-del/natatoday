@@ -31,6 +31,8 @@ type GuidedNotes = {
   recommendation: Recommendation;
 };
 
+type GuidedField = Exclude<keyof GuidedNotes, "recommendation">;
+
 type ScribeDraft = {
   candidateStrengths: string[];
   concernsOrRisks: string[];
@@ -60,7 +62,7 @@ type SpeechRecognitionInstance = {
   stop: () => void;
   abort: () => void;
   onresult: ((event: SpeechRecognitionEvent) => void) | null;
-onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
   onend: (() => void) | null;
 };
 
@@ -96,6 +98,27 @@ const emptyScribeDraft: ScribeDraft = {
   internalOnlyNotes: "",
 };
 
+const guidedFieldLabels: Record<keyof GuidedNotes, string> = {
+  motivation: "Motivation",
+  experience: "Experience",
+  strengths: "Strengths",
+  concerns: "Concerns",
+  availability: "Availability",
+  compensation: "Compensation",
+  communication: "Communication",
+  recommendation: "Recommendation",
+};
+
+const guidedFieldOrder: GuidedField[] = [
+  "motivation",
+  "experience",
+  "strengths",
+  "concerns",
+  "availability",
+  "compensation",
+  "communication",
+];
+
 export default function RecruiterInterviewStudio({ params }: StudioProps) {
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
@@ -105,6 +128,7 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
   const [interimTranscript, setInterimTranscript] = useState("");
   const [listening, setListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(true);
+  const [expandedField, setExpandedField] = useState<GuidedField | null>(null);
 
   const [guidedNotes, setGuidedNotes] = useState<GuidedNotes>(emptyGuidedNotes);
   const [dealerInterviewAt, setDealerInterviewAt] = useState("");
@@ -142,7 +166,7 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
           setRoomUrl(data.roomUrl);
           setInterviewState("ready");
           setStatus(
-            "Room ready. Join the interview, listen if needed, then commit the dealer handoff."
+            "Room ready. Capture the interview, let Solace fill the record, then commit the dealer handoff."
           );
         }
       } catch (error) {
@@ -173,8 +197,8 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
       ["Compensation alignment", guidedNotes.compensation],
       ["Communication quality", guidedNotes.communication],
       ["Recommendation", guidedNotes.recommendation],
-      ["Recruiter freeform notes", notes],
-      ["Live transcript reviewed by recruiter", liveTranscript],
+      ["Recruiter notes", notes],
+      ["Transcript reviewed by recruiter", liveTranscript],
     ];
 
     return sections
@@ -186,6 +210,8 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
   const validation = useMemo(() => {
     const roomReady = Boolean(roomUrl);
     const interviewStarted = interviewState === "in_progress" || committed;
+    const motivationCaptured = guidedNotes.motivation.trim().length > 0;
+    const experienceVerified = guidedNotes.experience.trim().length > 0;
     const availabilityConfirmed = guidedNotes.availability.trim().length > 0;
     const compensationConfirmed = guidedNotes.compensation.trim().length > 0;
     const recommendationSelected = guidedNotes.recommendation.length > 0;
@@ -193,15 +219,32 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
     const dealerTimeSelected = dealerInterviewAt.trim().length > 0;
     const scribeReviewSatisfied = !scribeDraft || scribeReviewed;
 
-    return {
+    const checks = [
       roomReady,
       interviewStarted,
-      notesPresent,
+      motivationCaptured,
+      experienceVerified,
       availabilityConfirmed,
       compensationConfirmed,
       recommendationSelected,
+      notesPresent,
       dealerTimeSelected,
       scribeReviewSatisfied,
+    ];
+
+    return {
+      roomReady,
+      interviewStarted,
+      motivationCaptured,
+      experienceVerified,
+      availabilityConfirmed,
+      compensationConfirmed,
+      recommendationSelected,
+      notesPresent,
+      dealerTimeSelected,
+      scribeReviewSatisfied,
+      score: checks.filter(Boolean).length,
+      total: checks.length,
       ready:
         roomReady &&
         interviewStarted &&
@@ -225,6 +268,12 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
     scribeReviewed,
     saving,
   ]);
+
+  const readinessLabel = validation.ready
+    ? "Ready to commit"
+    : validation.score >= 7
+      ? "Review needed"
+      : "Not ready";
 
   function startListening() {
     const Recognition =
@@ -278,14 +327,14 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
     recognitionRef.current = recognition;
     recognition.start();
     setListening(true);
-    setStatus("Listening. Transcript is draft-only until Don reviews and commits.");
+    setStatus("Listening. Transcript remains draft-only until reviewed.");
   }
 
   function stopListening() {
     recognitionRef.current?.stop();
     setListening(false);
     setInterimTranscript("");
-    setStatus("Listening stopped. Review transcript before generating the scribe draft.");
+    setStatus("Listening stopped. Use Solace auto-fill to structure the record.");
   }
 
   function joinInterviewRoom() {
@@ -293,19 +342,19 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
 
     setInterviewState("in_progress");
     setStatus(
-      "Interview in progress. Capture guided notes or use Listen & Draft, then commit the handoff."
+      "Interview in progress. Capture notes or transcript, then let Solace fill the record."
     );
   }
 
   async function generateScribe() {
     if (combinedNotes.trim().length < 20) {
-      setStatus("Capture interview notes or transcript before generating scribe.");
+      setStatus("Capture notes or transcript before asking Solace to fill the record.");
       return;
     }
 
     setGeneratingScribe(true);
     setScribeReviewed(false);
-    setStatus("Generating governed scribe draft…");
+    setStatus("Solace is filling the interview record and drafting the packet…");
 
     try {
       const response = await fetch("/api/nata/interviews/scribe", {
@@ -326,8 +375,12 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
         throw new Error(data?.error || "Scribe failed");
       }
 
-      setScribeDraft(normalizeScribeDraft(data.scribeDraft || {}));
-      setStatus("Scribe draft generated. Review and approve before commit.");
+      const nextGuidedNotes = normalizeGuidedNotes(data.guidedNotes || {});
+      const nextScribeDraft = normalizeScribeDraft(data.scribeDraft || {});
+
+      setGuidedNotes((current) => ({ ...current, ...nextGuidedNotes }));
+      setScribeDraft(nextScribeDraft);
+      setStatus("Solace filled the record. Review highlighted fields before commit.");
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : "Scribe generation failed"
@@ -343,7 +396,7 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
     setSaving(true);
     setInterviewState("committing");
     setStatus(
-      "Completing interview, generating packet, and scheduling dealer handoff…"
+      "Committing packet, packet readiness, and dealer interview handoff…"
     );
 
     try {
@@ -382,6 +435,19 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
     }
   }
 
+  function normalizeGuidedNotes(raw: Partial<GuidedNotes>): GuidedNotes {
+    return {
+      motivation: clean(raw.motivation),
+      experience: clean(raw.experience),
+      strengths: clean(raw.strengths),
+      concerns: clean(raw.concerns),
+      availability: clean(raw.availability),
+      compensation: clean(raw.compensation),
+      communication: clean(raw.communication),
+      recommendation: normalizeRecommendation(raw.recommendation),
+    };
+  }
+
   function normalizeScribeDraft(raw: Partial<ScribeDraft>): ScribeDraft {
     return {
       ...emptyScribeDraft,
@@ -397,6 +463,14 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
           ? [String(raw.concernsOrRisks)]
           : [],
     };
+  }
+
+  function updateGuidedField<K extends keyof GuidedNotes>(
+    field: K,
+    value: GuidedNotes[K]
+  ) {
+    setGuidedNotes((current) => ({ ...current, [field]: value }));
+    setScribeReviewed(false);
   }
 
   function updateScribeField<K extends keyof ScribeDraft>(
@@ -422,19 +496,15 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
     updateScribeField(field, list);
   }
 
-  function updateGuidedField<K extends keyof GuidedNotes>(
-    field: K,
-    value: GuidedNotes[K]
-  ) {
-    setGuidedNotes((current) => ({ ...current, [field]: value }));
-    setScribeReviewed(false);
-  }
+  const transcriptPreview = interimTranscript
+    ? `${liveTranscript}${liveTranscript ? "\n" : ""}${interimTranscript}`
+    : liveTranscript;
 
   const canCommit = validation.ready;
 
   return (
     <main style={layoutStyle}>
-      <section style={{ minHeight: "100vh", background: "#030712" }}>
+      <section style={roomPaneStyle}>
         {roomUrl ? (
           <iframe
             src={roomUrl}
@@ -455,67 +525,80 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
           ← Back to recruiter dashboard
         </Link>
 
-        <div style={{ marginTop: 22 }}>
+        <div style={{ marginTop: 18 }}>
           <div style={eyebrowStyle}>NATA Virtual Interview Studio</div>
-          <h1 style={{ margin: "10px 0 0", fontSize: 34, lineHeight: 1 }}>
+          <h1 style={{ margin: "8px 0 0", fontSize: 32, lineHeight: 1 }}>
             Interview cockpit.
           </h1>
-          <p style={{ color: "#bfd6f5", lineHeight: 1.6 }}>
-            Listen, capture, draft, review, and commit the dealer handoff through
-            one governed execution surface.
+          <p style={{ color: "#bfd6f5", lineHeight: 1.5, marginBottom: 0 }}>
+            Capture once. Let Solace structure the record. Review only what matters before handoff.
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={joinInterviewRoom}
-          disabled={!roomUrl || committed}
-          style={{
-            ...secondaryButton,
-            opacity: roomUrl && !committed ? 1 : 0.55,
-            cursor: roomUrl && !committed ? "pointer" : "not-allowed",
-          }}
-        >
-          {interviewState === "in_progress"
-            ? "Interview room active"
-            : committed
-              ? "Interview completed"
-              : "Join Interview Room"}
-        </button>
+        <div style={topActionGrid}>
+          <button
+            type="button"
+            onClick={joinInterviewRoom}
+            disabled={!roomUrl || committed}
+            style={{
+              ...secondaryButton,
+              opacity: roomUrl && !committed ? 1 : 0.55,
+              cursor: roomUrl && !committed ? "pointer" : "not-allowed",
+            }}
+          >
+            {interviewState === "in_progress"
+              ? "Interview active"
+              : committed
+                ? "Interview completed"
+                : "Join room"}
+          </button>
+
+          <button
+            type="button"
+            onClick={listening ? stopListening : startListening}
+            disabled={saving || committed}
+            style={{
+              ...secondaryButton,
+              border: listening
+                ? "1px solid rgba(74,222,128,0.4)"
+                : secondaryButton.border,
+              background: listening
+                ? "rgba(22,163,74,0.14)"
+                : secondaryButton.background,
+            }}
+          >
+            {listening ? "Stop listening" : "Start listening"}
+          </button>
+        </div>
 
         <div style={statusBox}>{status}</div>
 
-        <div style={scribePanel}>
+        <div style={readinessBand}>
+          <div>
+            <div style={eyebrowStyle}>Packet readiness</div>
+            <h2 style={{ margin: "5px 0 0", fontSize: 21 }}>{readinessLabel}</h2>
+          </div>
+          <div style={scorePill}>{validation.score}/{validation.total}</div>
+        </div>
+
+        <section style={sectionPanelCompact}>
           <div style={panelHeaderRow}>
             <div>
-              <div style={eyebrowStyle}>Listen & Draft</div>
-              <h2 style={{ margin: "6px 0 0", fontSize: 22 }}>
-                Governed live transcript
-              </h2>
+              <div style={eyebrowStyle}>1 · Capture</div>
+              <h2 style={panelTitle}>Transcript + notes</h2>
             </div>
-
             <button
               type="button"
-              onClick={listening ? stopListening : startListening}
-              disabled={saving || committed}
+              onClick={generateScribe}
+              disabled={generatingScribe || saving || committed}
               style={{
                 ...smallButton,
-                border: listening
-                  ? "1px solid rgba(74,222,128,0.4)"
-                  : smallButton.border,
-                background: listening
-                  ? "rgba(22,163,74,0.14)"
-                  : smallButton.background,
+                opacity: generatingScribe || saving || committed ? 0.55 : 1,
               }}
             >
-              {listening ? "Stop listening" : "Start listening"}
+              {generatingScribe ? "Filling…" : "Solace auto-fill"}
             </button>
           </div>
-
-          <p style={{ color: "#9fb4d6", lineHeight: 1.5, fontSize: 14 }}>
-            Transcript is draft-only. It feeds the scribe, but nothing reaches
-            the dealer packet until reviewed and committed.
-          </p>
 
           {!speechSupported && (
             <div style={warningBox}>
@@ -524,37 +607,70 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
           )}
 
           <textarea
-            value={
-              interimTranscript
-                ? `${liveTranscript}${liveTranscript ? "\n" : ""}${interimTranscript}`
-                : liveTranscript
-            }
+            value={transcriptPreview}
             onChange={(event) => {
               setLiveTranscript(event.target.value);
               setScribeReviewed(false);
             }}
-            rows={7}
-            placeholder="Live transcript appears here. Don can edit before drafting."
+            rows={5}
+            placeholder="Live transcript appears here. Don can edit before Solace structures it."
             style={inputStyle}
             disabled={saving || committed}
           />
-        </div>
 
-        <div style={sectionPanel}>
-          <div style={eyebrowStyle}>Guided Notes</div>
-          <h2 style={{ margin: "6px 0 14px", fontSize: 22 }}>
-            Interview record
-          </h2>
+          <textarea
+            value={notes}
+            onChange={(event) => {
+              setNotes(event.target.value);
+              setScribeReviewed(false);
+            }}
+            rows={3}
+            placeholder="Additional recruiter notes. Optional if transcript is enough."
+            style={{ ...inputStyle, marginTop: 10 }}
+            disabled={saving || committed}
+          />
+        </section>
 
-          <ScribeTextField title="Candidate motivation" value={guidedNotes.motivation} onChange={(v) => updateGuidedField("motivation", v)} disabled={saving || committed} />
-          <ScribeTextField title="Relevant experience" value={guidedNotes.experience} onChange={(v) => updateGuidedField("experience", v)} disabled={saving || committed} />
-          <ScribeTextArea title="Strengths" value={guidedNotes.strengths} onChange={(v) => updateGuidedField("strengths", v)} disabled={saving || committed} />
-          <ScribeTextArea title="Concerns / risks" value={guidedNotes.concerns} onChange={(v) => updateGuidedField("concerns", v)} disabled={saving || committed} />
-          <ScribeTextField title="Availability" value={guidedNotes.availability} onChange={(v) => updateGuidedField("availability", v)} disabled={saving || committed} />
-          <ScribeTextField title="Compensation alignment" value={guidedNotes.compensation} onChange={(v) => updateGuidedField("compensation", v)} disabled={saving || committed} />
-          <ScribeTextField title="Communication quality" value={guidedNotes.communication} onChange={(v) => updateGuidedField("communication", v)} disabled={saving || committed} />
+        <section style={sectionPanelCompact}>
+          <div style={panelHeaderRow}>
+            <div>
+              <div style={eyebrowStyle}>2 · Solace Record</div>
+              <h2 style={panelTitle}>Review compact fields</h2>
+            </div>
+          </div>
 
-          <label style={{ display: "grid", gap: 7, marginTop: 12 }}>
+          <div style={fieldGrid}>
+            {guidedFieldOrder.map((field) => (
+              <button
+                key={field}
+                type="button"
+                onClick={() => setExpandedField(expandedField === field ? null : field)}
+                style={fieldCardStyle(Boolean(guidedNotes[field]))}
+              >
+                <span style={fieldCardLabel}>{guidedFieldLabels[field]}</span>
+                <span style={fieldCardStatus}>
+                  {guidedNotes[field] ? "Captured" : "Missing"}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {expandedField && (
+            <label style={{ display: "grid", gap: 8, marginTop: 12 }}>
+              <span style={scribeLabel}>{guidedFieldLabels[expandedField]}</span>
+              <textarea
+                value={guidedNotes[expandedField]}
+                onChange={(event) =>
+                  updateGuidedField(expandedField, event.target.value)
+                }
+                rows={4}
+                style={inputStyle}
+                disabled={saving || committed}
+              />
+            </label>
+          )}
+
+          <label style={{ display: "grid", gap: 8, marginTop: 12 }}>
             <span style={scribeLabel}>Recommendation</span>
             <select
               value={guidedNotes.recommendation}
@@ -573,32 +689,14 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
               <option value="pass">Pass</option>
             </select>
           </label>
+        </section>
 
-          <label style={{ display: "grid", gap: 8, marginTop: 12 }}>
-            <span style={{ fontWeight: 900 }}>Additional recruiter notes</span>
-            <textarea
-              value={notes}
-              onChange={(event) => {
-                setNotes(event.target.value);
-                setScribeReviewed(false);
-              }}
-              rows={5}
-              placeholder="Capture any details that do not fit the guided fields."
-              style={inputStyle}
-              disabled={saving || committed}
-            />
-          </label>
-        </div>
-
-        <div style={scribePanel}>
+        <section style={scribePanelCompact}>
           <div style={panelHeaderRow}>
             <div>
-              <div style={eyebrowStyle}>Governed Scribe</div>
-              <h2 style={{ margin: "6px 0 0", fontSize: 22 }}>
-                Reviewable packet draft
-              </h2>
+              <div style={eyebrowStyle}>3 · Governed Scribe</div>
+              <h2 style={panelTitle}>Dealer/internal packet</h2>
             </div>
-
             <button
               type="button"
               onClick={generateScribe}
@@ -613,19 +711,41 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
           </div>
 
           {scribeDraft ? (
-            <div style={{ display: "grid", gap: 14, marginTop: 16 }}>
-              <div style={splitHeader}>Dealer-facing packet</div>
-              <ScribeListField title="Candidate strengths" value={scribeDraft.candidateStrengths.join("\n")} onChange={(v) => updateScribeList("candidateStrengths", v)} disabled={saving || committed} />
-              <ScribeTextField title="Availability" value={scribeDraft.availability} onChange={(v) => updateScribeField("availability", v)} disabled={saving || committed} />
-              <ScribeTextField title="Compensation alignment" value={scribeDraft.compensationAlignment} onChange={(v) => updateScribeField("compensationAlignment", v)} disabled={saving || committed} />
-              <ScribeTextField title="Communication quality" value={scribeDraft.communicationQuality} onChange={(v) => updateScribeField("communicationQuality", v)} disabled={saving || committed} />
-              <ScribeTextField title="Role fit" value={scribeDraft.roleFit} onChange={(v) => updateScribeField("roleFit", v)} disabled={saving || committed} />
-              <ScribeTextField title="Recommended next step" value={scribeDraft.recommendedNextStep} onChange={(v) => updateScribeField("recommendedNextStep", v)} disabled={saving || committed} />
-              <ScribeTextArea title="Dealer-facing summary" value={scribeDraft.dealerFacingSummary} onChange={(v) => updateScribeField("dealerFacingSummary", v)} disabled={saving || committed} />
+            <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+              <ScribeTextArea
+                title="Dealer-facing summary"
+                value={scribeDraft.dealerFacingSummary}
+                onChange={(value) => updateScribeField("dealerFacingSummary", value)}
+                disabled={saving || committed}
+                rows={4}
+              />
 
-              <div style={splitHeader}>Internal-only review</div>
-              <ScribeListField title="Concerns / risks" value={scribeDraft.concernsOrRisks.join("\n")} onChange={(v) => updateScribeList("concernsOrRisks", v)} disabled={saving || committed} />
-              <ScribeTextArea title="Internal-only notes" value={scribeDraft.internalOnlyNotes} onChange={(v) => updateScribeField("internalOnlyNotes", v)} disabled={saving || committed} />
+              <div style={twoColumnGrid}>
+                <ScribeListField
+                  title="Strengths"
+                  value={scribeDraft.candidateStrengths.join("\n")}
+                  onChange={(value) => updateScribeList("candidateStrengths", value)}
+                  disabled={saving || committed}
+                />
+                <ScribeListField
+                  title="Concerns"
+                  value={scribeDraft.concernsOrRisks.join("\n")}
+                  onChange={(value) => updateScribeList("concernsOrRisks", value)}
+                  disabled={saving || committed}
+                />
+              </div>
+
+              <details style={detailsStyle}>
+                <summary style={summaryStyle}>Show full packet fields</summary>
+                <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
+                  <ScribeTextField title="Availability" value={scribeDraft.availability} onChange={(v) => updateScribeField("availability", v)} disabled={saving || committed} />
+                  <ScribeTextField title="Compensation alignment" value={scribeDraft.compensationAlignment} onChange={(v) => updateScribeField("compensationAlignment", v)} disabled={saving || committed} />
+                  <ScribeTextField title="Communication quality" value={scribeDraft.communicationQuality} onChange={(v) => updateScribeField("communicationQuality", v)} disabled={saving || committed} />
+                  <ScribeTextField title="Role fit" value={scribeDraft.roleFit} onChange={(v) => updateScribeField("roleFit", v)} disabled={saving || committed} />
+                  <ScribeTextField title="Recommended next step" value={scribeDraft.recommendedNextStep} onChange={(v) => updateScribeField("recommendedNextStep", v)} disabled={saving || committed} />
+                  <ScribeTextArea title="Internal-only notes" value={scribeDraft.internalOnlyNotes} onChange={(v) => updateScribeField("internalOnlyNotes", v)} disabled={saving || committed} rows={4} />
+                </div>
+              </details>
 
               <label style={reviewBox}>
                 <input
@@ -635,23 +755,26 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
                   disabled={saving || committed}
                 />
                 <span>
-                  Don reviewed this transcript/scribe draft. It is approved for
-                  packet handoff.
+                  Don reviewed this Solace-filled record and approves it for packet handoff.
                 </span>
               </label>
             </div>
           ) : (
             <div style={emptyScribeState}>
-              Draft after notes or transcript are captured. No scribe content is
-              committed until reviewed.
+              Use Solace auto-fill after capturing notes/transcript. The packet stays draft-only until reviewed.
             </div>
           )}
-        </div>
+        </section>
 
-        <div style={handoffPanel}>
-          <h2 style={{ margin: 0, fontSize: 22 }}>Dealer interview handoff</h2>
+        <section style={handoffPanel}>
+          <div style={panelHeaderRow}>
+            <div>
+              <div style={eyebrowStyle}>4 · Commit</div>
+              <h2 style={panelTitle}>Dealer interview handoff</h2>
+            </div>
+          </div>
 
-          <label style={{ display: "grid", gap: 8, marginTop: 14 }}>
+          <label style={{ display: "grid", gap: 8, marginTop: 12 }}>
             <span style={{ fontWeight: 900 }}>Dealer interview date/time</span>
             <input
               type="datetime-local"
@@ -663,22 +786,17 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
           </label>
 
           <div style={validationBox}>
-            <div style={{ fontWeight: 950, marginBottom: 10 }}>
-              {committed
-                ? "Committed"
-                : canCommit
-                  ? "Ready to commit"
-                  : "Missing required state"}
+            <div style={{ fontWeight: 950, marginBottom: 8 }}>
+              {committed ? "Committed" : canCommit ? "Ready to commit" : "Missing required state"}
             </div>
-
             <ValidationRow valid={validation.roomReady} label="Interview room exists" />
             <ValidationRow valid={validation.interviewStarted} label="Interview joined / started" />
-            <ValidationRow valid={validation.notesPresent} label="Interview record or transcript captured" />
+            <ValidationRow valid={validation.notesPresent} label="Notes or transcript captured" />
             <ValidationRow valid={validation.availabilityConfirmed} label="Availability confirmed" />
             <ValidationRow valid={validation.compensationConfirmed} label="Compensation confirmed" />
             <ValidationRow valid={validation.recommendationSelected} label="Recommendation selected" />
-            <ValidationRow valid={validation.scribeReviewSatisfied} label="Scribe draft reviewed if generated" />
-            <ValidationRow valid={validation.dealerTimeSelected} label="Dealer interview time selected" />
+            <ValidationRow valid={validation.scribeReviewSatisfied} label="Scribe reviewed if generated" />
+            <ValidationRow valid={validation.dealerTimeSelected} label="Dealer time selected" />
           </div>
 
           <button
@@ -697,10 +815,22 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
                 ? "Committing handoff…"
                 : "Commit packet + schedule dealer handoff"}
           </button>
-        </div>
+        </section>
       </aside>
     </main>
   );
+}
+
+function clean(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeRecommendation(value: unknown): Recommendation {
+  if (value === "advance" || value === "hold" || value === "pass") {
+    return value;
+  }
+
+  return "";
 }
 
 function ValidationRow({ valid, label }: { valid: boolean; label: string }) {
@@ -714,18 +844,18 @@ function ValidationRow({ valid, label }: { valid: boolean; label: string }) {
 
 function ScribeTextField({ title, value, onChange, disabled }: { title: string; value: string; onChange: (value: string) => void; disabled: boolean }) {
   return (
-    <label style={{ display: "grid", gap: 7, marginTop: 12 }}>
+    <label style={{ display: "grid", gap: 7 }}>
       <span style={scribeLabel}>{title}</span>
       <input value={value} onChange={(event) => onChange(event.target.value)} style={inputStyle} disabled={disabled} />
     </label>
   );
 }
 
-function ScribeTextArea({ title, value, onChange, disabled }: { title: string; value: string; onChange: (value: string) => void; disabled: boolean }) {
+function ScribeTextArea({ title, value, onChange, disabled, rows = 4 }: { title: string; value: string; onChange: (value: string) => void; disabled: boolean; rows?: number }) {
   return (
-    <label style={{ display: "grid", gap: 7, marginTop: 12 }}>
+    <label style={{ display: "grid", gap: 7 }}>
       <span style={scribeLabel}>{title}</span>
-      <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={4} style={inputStyle} disabled={disabled} />
+      <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={rows} style={inputStyle} disabled={disabled} />
     </label>
   );
 }
@@ -739,19 +869,41 @@ function ScribeListField({ title, value, onChange, disabled }: { title: string; 
   );
 }
 
+function fieldCardStyle(valid: boolean) {
+  return {
+    display: "grid",
+    gap: 5,
+    textAlign: "left" as const,
+    padding: "10px 11px",
+    borderRadius: 14,
+    border: valid ? "1px solid rgba(74,222,128,0.24)" : "1px solid rgba(250,204,21,0.25)",
+    background: valid ? "rgba(22,163,74,0.1)" : "rgba(250,204,21,0.08)",
+    color: "#fff",
+    cursor: "pointer",
+  };
+}
+
 const layoutStyle = {
   minHeight: "100vh",
   background: "#07111f",
   color: "#fff",
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1.55fr) minmax(460px, 0.95fr)",
+  gridTemplateColumns: "minmax(0, 1.6fr) minmax(430px, 0.82fr)",
+} as const;
+
+const roomPaneStyle = {
+  minHeight: "100vh",
+  background: "#030712",
+  position: "sticky",
+  top: 0,
+  alignSelf: "start",
 } as const;
 
 const asideStyle = {
-  padding: 24,
+  height: "100vh",
+  padding: 22,
   borderLeft: "1px solid rgba(255,255,255,0.1)",
-  background:
-    "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(7,17,31,0.98))",
+  background: "linear-gradient(180deg, rgba(15,23,42,0.98), rgba(7,17,31,0.98))",
   overflowY: "auto",
 } as const;
 
@@ -760,12 +912,12 @@ const eyebrowStyle = {
   fontWeight: 950,
   letterSpacing: "0.16em",
   textTransform: "uppercase",
-  fontSize: 12,
+  fontSize: 11,
 } as const;
 
 const inputStyle = {
   width: "100%",
-  padding: 12,
+  padding: 11,
   borderRadius: 12,
   border: "1px solid rgba(255,255,255,0.14)",
   background: "rgba(3,7,18,0.88)",
@@ -774,7 +926,7 @@ const inputStyle = {
 } as const;
 
 const primaryButton = {
-  marginTop: 14,
+  marginTop: 12,
   width: "100%",
   padding: "13px 16px",
   borderRadius: 999,
@@ -785,9 +937,8 @@ const primaryButton = {
 } as const;
 
 const secondaryButton = {
-  marginTop: 16,
   width: "100%",
-  padding: "12px 16px",
+  padding: "11px 12px",
   borderRadius: 14,
   border: "1px solid rgba(147,197,253,0.35)",
   background: "rgba(37,99,235,0.18)",
@@ -796,7 +947,7 @@ const secondaryButton = {
 } as const;
 
 const smallButton = {
-  padding: "10px 12px",
+  padding: "9px 11px",
   borderRadius: 999,
   border: "1px solid rgba(250,204,21,0.35)",
   background: "rgba(250,204,21,0.12)",
@@ -806,37 +957,69 @@ const smallButton = {
   whiteSpace: "nowrap",
 } as const;
 
+const topActionGrid = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 10,
+  marginTop: 16,
+} as const;
+
 const statusBox = {
-  marginTop: 18,
-  padding: 14,
-  borderRadius: 16,
+  marginTop: 12,
+  padding: 12,
+  borderRadius: 15,
   lineHeight: 1.45,
-  fontSize: 14,
+  fontSize: 13,
   background: "rgba(37,99,235,0.12)",
   border: "1px solid rgba(96,165,250,0.24)",
   color: "#dbeafe",
 } as const;
 
-const sectionPanel = {
-  marginTop: 22,
-  padding: 16,
+const readinessBand = {
+  marginTop: 12,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  padding: 14,
+  borderRadius: 17,
+  background: "linear-gradient(135deg, rgba(37,99,235,0.2), rgba(250,204,21,0.08))",
+  border: "1px solid rgba(147,197,253,0.18)",
+} as const;
+
+const scorePill = {
+  minWidth: 58,
+  textAlign: "center",
+  padding: "8px 11px",
+  borderRadius: 999,
+  background: "rgba(2,6,23,0.7)",
+  border: "1px solid rgba(255,255,255,0.12)",
+  color: "#dbeafe",
+  fontWeight: 950,
+} as const;
+
+const sectionPanelCompact = {
+  marginTop: 14,
+  padding: 14,
   borderRadius: 18,
   background: "rgba(15,23,42,0.72)",
   border: "1px solid rgba(147,197,253,0.14)",
 } as const;
 
-const scribePanel = {
-  marginTop: 22,
-  padding: 16,
+const scribePanelCompact = {
+  marginTop: 14,
+  padding: 14,
   borderRadius: 18,
   background: "rgba(15,23,42,0.72)",
   border: "1px solid rgba(250,204,21,0.18)",
 } as const;
 
 const handoffPanel = {
-  marginTop: 24,
-  paddingTop: 20,
-  borderTop: "1px solid rgba(255,255,255,0.1)",
+  marginTop: 14,
+  padding: 14,
+  borderRadius: 18,
+  background: "rgba(2,6,23,0.35)",
+  border: "1px solid rgba(255,255,255,0.1)",
 } as const;
 
 const panelHeaderRow = {
@@ -846,20 +1029,53 @@ const panelHeaderRow = {
   gap: 12,
 } as const;
 
+const panelTitle = {
+  margin: "5px 0 0",
+  fontSize: 20,
+} as const;
+
+const fieldGrid = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 8,
+  marginTop: 12,
+} as const;
+
+const fieldCardLabel = {
+  color: "#dbeafe",
+  fontSize: 12,
+  fontWeight: 950,
+} as const;
+
+const fieldCardStatus = {
+  color: "#9fb4d6",
+  fontSize: 12,
+  fontWeight: 800,
+} as const;
+
 const scribeLabel = {
   color: "#dbeafe",
   fontSize: 13,
   fontWeight: 900,
 } as const;
 
-const splitHeader = {
-  marginTop: 2,
-  paddingTop: 8,
-  color: "#facc15",
-  fontSize: 12,
+const twoColumnGrid = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 10,
+} as const;
+
+const detailsStyle = {
+  padding: 12,
+  borderRadius: 14,
+  background: "rgba(2,6,23,0.45)",
+  border: "1px solid rgba(255,255,255,0.1)",
+} as const;
+
+const summaryStyle = {
+  cursor: "pointer",
+  color: "#dbeafe",
   fontWeight: 950,
-  letterSpacing: "0.12em",
-  textTransform: "uppercase",
 } as const;
 
 const reviewBox = {
@@ -883,12 +1099,13 @@ const warningBox = {
   color: "#fecaca",
   fontSize: 13,
   lineHeight: 1.45,
+  marginTop: 12,
   marginBottom: 12,
 } as const;
 
 const emptyScribeState = {
-  marginTop: 14,
-  padding: 14,
+  marginTop: 12,
+  padding: 13,
   borderRadius: 14,
   background: "rgba(2,6,23,0.48)",
   border: "1px dashed rgba(255,255,255,0.18)",
@@ -898,8 +1115,8 @@ const emptyScribeState = {
 } as const;
 
 const validationBox = {
-  marginTop: 16,
-  padding: 14,
+  marginTop: 12,
+  padding: 13,
   borderRadius: 16,
   background: "rgba(2,6,23,0.62)",
   border: "1px solid rgba(255,255,255,0.1)",
