@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
 import Nav from "../../../components/Nav";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
+import { buildCandidateScheduleUrl, sendInterviewInvite } from "../../../../lib/nataNotifications";
 
 type AnyRow = Record<string, any>;
 
@@ -281,9 +282,31 @@ export default async function RecruiterDashboard({
     "use server";
 
     const applicationId = cleanFormValue(formData.get("application_id"));
-    const reason = cleanFormValue(formData.get("reason")) || "Recruiter approved candidate for virtual interview after review.";
+    const reason =
+      cleanFormValue(formData.get("reason")) ||
+      "Recruiter approved candidate for virtual interview after review.";
 
     if (!applicationId) throw new Error("Application id is required.");
+
+    const { data: application, error: applicationLoadError } = await supabaseAdmin
+      .schema("nata")
+      .from("applications")
+      .select("*")
+      .eq("id", applicationId)
+      .eq("recruiter_id", recruiter.id)
+      .maybeSingle();
+
+    if (applicationLoadError) throw new Error(applicationLoadError.message);
+    if (!application) throw new Error("Application not found for this recruiter.");
+
+    const { data: job } = await supabaseAdmin
+      .schema("nata")
+      .from("jobs")
+      .select("*")
+      .eq("id", application.job_id)
+      .maybeSingle();
+
+    const bookingUrl = buildCandidateScheduleUrl(applicationId);
 
     const { error } = await supabaseAdmin
       .schema("nata")
@@ -291,13 +314,29 @@ export default async function RecruiterDashboard({
       .update({
         status: "virtual_invited",
         screening_status: "virtual_invited",
-        virtual_interview_status: "not_scheduled",
+        virtual_interview_status: "invited",
+        virtual_interview_url: bookingUrl,
         decision_reason: reason,
       })
       .eq("id", applicationId)
       .eq("recruiter_id", recruiter.id);
 
     if (error) throw new Error(error.message);
+
+    try {
+      await sendInterviewInvite({
+        applicationId,
+        candidateName: label(application.name || application.email, "Candidate"),
+        candidateEmail: application.email || null,
+        candidatePhone: application.phone || null,
+        roleTitle: label(job?.title || application.role, "Candidate"),
+        dealerName: label(job?.public_dealer_name || job?.dealer_slug, "Dealer"),
+        recruiterName: label(recruiter.name, "your recruiter"),
+        bookingUrl,
+      });
+    } catch (notificationError) {
+      console.error("Candidate invite notification failed:", notificationError);
+    }
 
     redirect(`/recruiter/${recruiterSlug}/dashboard`);
   }
@@ -566,7 +605,7 @@ export default async function RecruiterDashboard({
                     <form action={approveForInterview} style={actionForm}>
                       <input type="hidden" name="application_id" value={String(application.id)} />
                       <input name="reason" placeholder="Approval note" style={miniInput} />
-                      <button className="btn btn-primary" type="submit">Approve interview</button>
+                      <button className="btn btn-primary" type="submit">Approve + send invite</button>
                     </form>
                     <form action={holdCandidate} style={actionForm}>
                       <input type="hidden" name="application_id" value={String(application.id)} />
