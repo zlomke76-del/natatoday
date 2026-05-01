@@ -3,6 +3,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import Nav from "../../../components/Nav";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { hasDealerAccess } from "../../../../lib/dealerAccess";
+import ActionNotice from "./ActionNotice";
 
 type PageProps = {
   params: {
@@ -707,12 +708,11 @@ export default async function DealerDashboardPage({
         ) : null}
 
         {requestClosed ? (
-          <Notice
-            tone="success"
-            title={`${submittedRole} removed from active requests.`}
-            copy="The request has been removed from the open board and documented as filled or closed by the dealership."
-          />
-        ) : null}
+        <ActionNotice
+          title={`${submittedRole} request closed.`}
+          copy="Removed from active hiring. Candidates remain archived."
+        />
+      ) : null}
 
         {decisionSaved ? (
           <Notice
