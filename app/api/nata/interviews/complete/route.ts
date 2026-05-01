@@ -2,27 +2,33 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
 import { generateInterviewPacket } from "../../../../../lib/nataInterviewPacket";
 
-function getDealerInterviewTime(raw: unknown): string {
-  if (typeof raw === "string" && raw.trim()) {
-    return new Date(raw).toISOString();
+function cleanString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parseDealerInterviewAt(value: unknown): string | null {
+  const raw = cleanString(value);
+
+  if (!raw) {
+    return null;
   }
 
-  const fallback = new Date();
-  fallback.setDate(fallback.getDate() + 1);
-  fallback.setHours(10, 0, 0, 0);
-  return fallback.toISOString();
+  const parsed = new Date(raw);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toISOString();
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const applicationId =
-      typeof body.applicationId === "string" ? body.applicationId.trim() : "";
-
-    const notes = typeof body.notes === "string" ? body.notes.trim() : "";
-
-    const dealerInterviewAt = getDealerInterviewTime(body.dealerInterviewAt);
+    const applicationId = cleanString(body.applicationId);
+    const notes = cleanString(body.notes);
+    const dealerInterviewAt = parseDealerInterviewAt(body.dealerInterviewAt);
 
     if (!applicationId) {
       return NextResponse.json({ error: "Missing applicationId" }, { status: 400 });
@@ -35,14 +41,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const now = new Date().toISOString();
+    if (!dealerInterviewAt) {
+      return NextResponse.json(
+        { error: "Valid dealerInterviewAt is required" },
+        { status: 400 }
+      );
+    }
+
+    const { data: application, error: applicationError } = await supabaseAdmin
+      .schema("nata")
+      .from("applications")
+      .select("id")
+      .eq("id", applicationId)
+      .maybeSingle();
+
+    if (applicationError || !application) {
+      return NextResponse.json(
+        { error: applicationError?.message || "Application not found" },
+        { status: 404 }
+      );
+    }
+
+    const completedAt = new Date().toISOString();
 
     const { error: notesError } = await supabaseAdmin
       .schema("nata")
       .from("applications")
       .update({
         virtual_interview_notes: notes,
-        virtual_interview_completed_at: now,
+        virtual_interview_completed_at: completedAt,
         virtual_interview_status: "completed",
         screening_status: "virtual_completed",
         status: "virtual_completed",
@@ -62,7 +89,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { error: commitError } = await supabaseAdmin
+    const { data: committedApplication, error: commitError } = await supabaseAdmin
       .schema("nata")
       .from("applications")
       .update({
@@ -71,7 +98,9 @@ export async function POST(request: NextRequest) {
         screening_status: "dealer_interview_scheduled",
         status: "dealer_interview_scheduled",
       })
-      .eq("id", applicationId);
+      .eq("id", applicationId)
+      .select("*")
+      .single();
 
     if (commitError) {
       return NextResponse.json({ error: commitError.message }, { status: 500 });
@@ -79,9 +108,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      applicationId,
-      status: "dealer_interview_scheduled",
-      dealerInterviewAt,
+      application: committedApplication,
       packet: packetResult.packet,
     });
   } catch (error) {
