@@ -18,6 +18,19 @@ type InterviewState =
   | "committed"
   | "error";
 
+type Recommendation = "advance" | "hold" | "pass" | "";
+
+type GuidedNotes = {
+  motivation: string;
+  experience: string;
+  strengths: string;
+  concerns: string;
+  availability: string;
+  compensation: string;
+  communication: string;
+  recommendation: Recommendation;
+};
+
 type ScribeDraft = {
   candidateStrengths: string[];
   concernsOrRisks: string[];
@@ -28,6 +41,17 @@ type ScribeDraft = {
   recommendedNextStep: string;
   dealerFacingSummary: string;
   internalOnlyNotes: string;
+};
+
+const emptyGuidedNotes: GuidedNotes = {
+  motivation: "",
+  experience: "",
+  strengths: "",
+  concerns: "",
+  availability: "",
+  compensation: "",
+  communication: "",
+  recommendation: "",
 };
 
 const emptyScribeDraft: ScribeDraft = {
@@ -45,6 +69,7 @@ const emptyScribeDraft: ScribeDraft = {
 export default function RecruiterInterviewStudio({ params }: StudioProps) {
   const [roomUrl, setRoomUrl] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
+  const [guidedNotes, setGuidedNotes] = useState<GuidedNotes>(emptyGuidedNotes);
   const [dealerInterviewAt, setDealerInterviewAt] = useState("");
   const [status, setStatus] = useState("Creating interview room…");
   const [saving, setSaving] = useState(false);
@@ -64,7 +89,10 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
         const response = await fetch("/api/nata/interviews/room", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ applicationId: params.applicationId }),
+          body: JSON.stringify({
+            applicationId: params.applicationId,
+            recruiterName: "Don",
+          }),
         });
 
         const data = await response.json();
@@ -97,38 +125,105 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
     };
   }, [params.applicationId]);
 
+  const combinedNotes = useMemo(() => {
+    const sections = [
+      ["Candidate motivation", guidedNotes.motivation],
+      ["Relevant experience", guidedNotes.experience],
+      ["Strengths", guidedNotes.strengths],
+      ["Concerns / risks", guidedNotes.concerns],
+      ["Availability", guidedNotes.availability],
+      ["Compensation alignment", guidedNotes.compensation],
+      ["Communication quality", guidedNotes.communication],
+      ["Recommendation", guidedNotes.recommendation],
+      ["Recruiter freeform notes", notes],
+    ];
+
+    return sections
+      .filter(([, value]) => String(value || "").trim().length > 0)
+      .map(([label, value]) => `${label}: ${value}`)
+      .join("\n\n");
+  }, [guidedNotes, notes]);
+
   const validation = useMemo(() => {
-    const notesPresent = notes.trim().length >= 20;
-    const dealerTimeSelected = dealerInterviewAt.trim().length > 0;
     const roomReady = Boolean(roomUrl);
     const interviewStarted = interviewState === "in_progress" || committed;
+    const motivationCaptured = guidedNotes.motivation.trim().length > 0;
+    const experienceVerified = guidedNotes.experience.trim().length > 0;
+    const availabilityConfirmed = guidedNotes.availability.trim().length > 0;
+    const compensationConfirmed = guidedNotes.compensation.trim().length > 0;
+    const concernsDocumented = guidedNotes.concerns.trim().length > 0;
+    const recommendationSelected = guidedNotes.recommendation.length > 0;
+    const notesPresent = combinedNotes.trim().length >= 20;
+    const dealerTimeSelected = dealerInterviewAt.trim().length > 0;
     const scribeReviewSatisfied = !scribeDraft || scribeReviewed;
+
+    const readinessScore = [
+      roomReady,
+      interviewStarted,
+      motivationCaptured,
+      experienceVerified,
+      availabilityConfirmed,
+      compensationConfirmed,
+      concernsDocumented,
+      recommendationSelected,
+      notesPresent,
+      dealerTimeSelected,
+      scribeReviewSatisfied,
+    ].filter(Boolean).length;
+
+    const totalChecks = 11;
 
     return {
       roomReady,
       interviewStarted,
+      motivationCaptured,
+      experienceVerified,
+      availabilityConfirmed,
+      compensationConfirmed,
+      concernsDocumented,
+      recommendationSelected,
       notesPresent,
       dealerTimeSelected,
       scribeReviewSatisfied,
+      readinessScore,
+      totalChecks,
       ready:
         roomReady &&
         interviewStarted &&
         notesPresent &&
+        availabilityConfirmed &&
+        compensationConfirmed &&
+        recommendationSelected &&
         dealerTimeSelected &&
         scribeReviewSatisfied &&
         !saving &&
         !committed,
     };
   }, [
-    notes,
-    dealerInterviewAt,
     roomUrl,
     interviewState,
-    saving,
     committed,
+    guidedNotes,
+    combinedNotes,
+    dealerInterviewAt,
     scribeDraft,
     scribeReviewed,
+    saving,
   ]);
+
+  const readinessLabel = validation.ready
+    ? "Ready to commit"
+    : validation.readinessScore >= 8
+      ? "Review needed"
+      : "Not ready";
+
+  function updateGuidedField<K extends keyof GuidedNotes>(
+    field: K,
+    value: GuidedNotes[K]
+  ) {
+    setGuidedNotes((current) => ({ ...current, [field]: value }));
+    setScribeReviewed(false);
+  }
 
   function normalizeScribeDraft(raw: Partial<ScribeDraft>): ScribeDraft {
     return {
@@ -175,13 +270,13 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
 
     setInterviewState("in_progress");
     setStatus(
-      "Interview in progress. Capture notes, confirm dealer interview time, then commit the handoff."
+      "Interview in progress. Capture guided notes, draft the scribe, confirm dealer time, then commit the handoff."
     );
   }
 
   async function generateScribe() {
-    if (notes.trim().length < 20) {
-      setStatus("Add sufficient interview notes before generating scribe.");
+    if (combinedNotes.trim().length < 20) {
+      setStatus("Capture interview notes before generating scribe.");
       return;
     }
 
@@ -195,7 +290,8 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           applicationId: params.applicationId,
-          notes,
+          notes: combinedNotes,
+          guidedNotes,
           dealerInterviewAt,
         }),
       });
@@ -232,7 +328,8 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           applicationId: params.applicationId,
-          notes: notes.trim(),
+          notes: combinedNotes,
+          guidedNotes,
           dealerInterviewAt,
           scribeDraft,
           scribeReviewed,
@@ -269,7 +366,7 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
         background: "#07111f",
         color: "#fff",
         display: "grid",
-        gridTemplateColumns: "minmax(0, 1.65fr) minmax(420px, 0.9fr)",
+        gridTemplateColumns: "minmax(0, 1.55fr) minmax(460px, 0.95fr)",
       }}
     >
       <section style={{ minHeight: "100vh", background: "#030712" }}>
@@ -305,14 +402,30 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
           <div style={eyebrowStyle}>NATA Virtual Interview Studio</div>
 
           <h1 style={{ margin: "10px 0 0", fontSize: 34, lineHeight: 1 }}>
-            Interview, document, and commit handoff.
+            Interview cockpit.
           </h1>
 
           <p style={{ color: "#bfd6f5", lineHeight: 1.6 }}>
-            Join the virtual interview, capture Don/NATA notes, generate a
-            governed scribe draft, then commit the packet and manager handoff in
-            one controlled action.
+            Guide the interview, generate a governed scribe draft, verify packet
+            readiness, then commit the dealer handoff in one controlled action.
           </p>
+        </div>
+
+        <div style={contextCard}>
+          <div>
+            <div style={contextLabel}>Application</div>
+            <div style={contextValue}>{params.applicationId.slice(0, 8)}…</div>
+          </div>
+          <div>
+            <div style={contextLabel}>Recruiter</div>
+            <div style={contextValue}>{params.recruiterSlug}</div>
+          </div>
+          <div>
+            <div style={contextLabel}>State</div>
+            <div style={contextValue}>
+              {committed ? "dealer handoff committed" : interviewState}
+            </div>
+          </div>
         </div>
 
         <button
@@ -355,17 +468,148 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
           {status}
         </div>
 
-        <label style={{ display: "grid", gap: 8, marginTop: 22 }}>
-          <span style={{ fontWeight: 900 }}>Recruiter interview notes</span>
-          <textarea
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            rows={8}
-            placeholder="Capture strengths, concerns, availability, compensation alignment, communication quality, and recommendation."
-            style={inputStyle}
-            disabled={saving || committed}
+        <div style={readinessBand}>
+          <div>
+            <div style={eyebrowStyle}>Packet readiness</div>
+            <h2 style={{ margin: "6px 0 0", fontSize: 22 }}>
+              {readinessLabel}
+            </h2>
+          </div>
+          <div style={scorePill}>
+            {validation.readinessScore}/{validation.totalChecks}
+          </div>
+        </div>
+
+        <div style={checklistBox}>
+          <div style={{ fontWeight: 950, marginBottom: 10 }}>
+            Interview checklist
+          </div>
+          <ValidationRow
+            valid={validation.interviewStarted}
+            label="Opening completed / interview started"
           />
-        </label>
+          <ValidationRow
+            valid={validation.motivationCaptured}
+            label="Candidate motivation captured"
+          />
+          <ValidationRow
+            valid={validation.experienceVerified}
+            label="Experience verified"
+          />
+          <ValidationRow
+            valid={validation.availabilityConfirmed}
+            label="Availability confirmed"
+          />
+          <ValidationRow
+            valid={validation.compensationConfirmed}
+            label="Compensation confirmed"
+          />
+          <ValidationRow
+            valid={validation.concernsDocumented}
+            label="Concerns documented"
+          />
+          <ValidationRow
+            valid={validation.recommendationSelected}
+            label="Recommendation selected"
+          />
+        </div>
+
+        <div style={sectionPanel}>
+          <div style={panelHeaderRow}>
+            <div>
+              <div style={eyebrowStyle}>Guided Notes</div>
+              <h2 style={{ margin: "6px 0 0", fontSize: 22 }}>
+                Interview record
+              </h2>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
+            <ScribeTextField
+              title="Candidate motivation"
+              value={guidedNotes.motivation}
+              onChange={(value) => updateGuidedField("motivation", value)}
+              disabled={saving || committed}
+            />
+
+            <ScribeTextField
+              title="Relevant experience"
+              value={guidedNotes.experience}
+              onChange={(value) => updateGuidedField("experience", value)}
+              disabled={saving || committed}
+            />
+
+            <ScribeTextArea
+              title="Strengths"
+              value={guidedNotes.strengths}
+              onChange={(value) => updateGuidedField("strengths", value)}
+              disabled={saving || committed}
+            />
+
+            <ScribeTextArea
+              title="Concerns / risks"
+              value={guidedNotes.concerns}
+              onChange={(value) => updateGuidedField("concerns", value)}
+              disabled={saving || committed}
+            />
+
+            <ScribeTextField
+              title="Availability"
+              value={guidedNotes.availability}
+              onChange={(value) => updateGuidedField("availability", value)}
+              disabled={saving || committed}
+            />
+
+            <ScribeTextField
+              title="Compensation alignment"
+              value={guidedNotes.compensation}
+              onChange={(value) => updateGuidedField("compensation", value)}
+              disabled={saving || committed}
+            />
+
+            <ScribeTextField
+              title="Communication quality"
+              value={guidedNotes.communication}
+              onChange={(value) => updateGuidedField("communication", value)}
+              disabled={saving || committed}
+            />
+
+            <label style={{ display: "grid", gap: 7 }}>
+              <span style={scribeLabel}>Recommendation</span>
+              <select
+                value={guidedNotes.recommendation}
+                onChange={(event) =>
+                  updateGuidedField(
+                    "recommendation",
+                    event.target.value as Recommendation
+                  )
+                }
+                style={inputStyle}
+                disabled={saving || committed}
+              >
+                <option value="">Select recommendation</option>
+                <option value="advance">Advance to dealer interview</option>
+                <option value="hold">Hold / needs review</option>
+                <option value="pass">Pass</option>
+              </select>
+            </label>
+
+            <label style={{ display: "grid", gap: 8 }}>
+              <span style={{ fontWeight: 900 }}>Additional recruiter notes</span>
+              <textarea
+                value={notes}
+                onChange={(event) => {
+                  setNotes(event.target.value);
+                  setScribeReviewed(false);
+                }}
+                rows={5}
+                placeholder="Capture any details that do not fit the guided fields."
+                style={inputStyle}
+                disabled={saving || committed}
+              />
+            </label>
+          </div>
+        </div>
 
         <div style={scribePanel}>
           <div style={panelHeaderRow}>
@@ -385,30 +629,25 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
                 opacity: generatingScribe || saving || committed ? 0.55 : 1,
               }}
             >
-              {generatingScribe ? "Generating…" : "Generate Draft"}
+              {generatingScribe ? "Drafting…" : "Draft packet"}
             </button>
           </div>
 
           <p style={{ color: "#9fb4d6", lineHeight: 1.5, fontSize: 14 }}>
-            The scribe is draft-only. Don must review and approve it before it
-            can travel with the dealer handoff.
+            The scribe is draft-only. Don reviews and approves the dealer-facing
+            record before it can travel with the handoff.
           </p>
 
           {scribeDraft ? (
             <div style={{ display: "grid", gap: 14, marginTop: 16 }}>
+              <div style={splitHeader}>Dealer-facing packet</div>
+
               <ScribeListField
                 title="Candidate strengths"
                 value={scribeDraft.candidateStrengths.join("\n")}
                 onChange={(value) =>
                   updateScribeList("candidateStrengths", value)
                 }
-                disabled={saving || committed}
-              />
-
-              <ScribeListField
-                title="Concerns / risks"
-                value={scribeDraft.concernsOrRisks.join("\n")}
-                onChange={(value) => updateScribeList("concernsOrRisks", value)}
                 disabled={saving || committed}
               />
 
@@ -462,6 +701,15 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
                 disabled={saving || committed}
               />
 
+              <div style={splitHeader}>Internal-only review</div>
+
+              <ScribeListField
+                title="Concerns / risks"
+                value={scribeDraft.concernsOrRisks.join("\n")}
+                onChange={(value) => updateScribeList("concernsOrRisks", value)}
+                disabled={saving || committed}
+              />
+
               <ScribeTextArea
                 title="Internal-only notes"
                 value={scribeDraft.internalOnlyNotes}
@@ -486,8 +734,8 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
             </div>
           ) : (
             <div style={emptyScribeState}>
-              Generate after notes are captured. No scribe content is committed
-              until reviewed.
+              Draft after interview notes are captured. No scribe content is
+              committed until reviewed.
             </div>
           )}
         </div>
@@ -537,7 +785,19 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
             />
             <ValidationRow
               valid={validation.notesPresent}
-              label="Recruiter notes captured"
+              label="Interview record captured"
+            />
+            <ValidationRow
+              valid={validation.availabilityConfirmed}
+              label="Availability confirmed"
+            />
+            <ValidationRow
+              valid={validation.compensationConfirmed}
+              label="Compensation confirmed"
+            />
+            <ValidationRow
+              valid={validation.recommendationSelected}
+              label="Recommendation selected"
             />
             <ValidationRow
               valid={validation.scribeReviewSatisfied}
@@ -563,7 +823,7 @@ export default function RecruiterInterviewStudio({ params }: StudioProps) {
               ? "Dealer handoff committed"
               : saving
                 ? "Committing handoff…"
-                : "Complete interview + schedule dealer"}
+                : "Commit packet + schedule dealer handoff"}
           </button>
         </div>
       </aside>
@@ -723,12 +983,79 @@ const statusBox = {
   fontSize: 14,
 } as const;
 
+const contextCard = {
+  marginTop: 18,
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr 1fr",
+  gap: 10,
+  padding: 14,
+  borderRadius: 18,
+  background: "rgba(2,6,23,0.62)",
+  border: "1px solid rgba(255,255,255,0.1)",
+} as const;
+
+const contextLabel = {
+  color: "#8fb2df",
+  fontSize: 11,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+} as const;
+
+const contextValue = {
+  color: "#fff",
+  fontSize: 13,
+  fontWeight: 900,
+  marginTop: 4,
+  textTransform: "capitalize",
+} as const;
+
+const readinessBand = {
+  marginTop: 18,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  padding: 16,
+  borderRadius: 18,
+  background:
+    "linear-gradient(135deg, rgba(37,99,235,0.2), rgba(250,204,21,0.08))",
+  border: "1px solid rgba(147,197,253,0.18)",
+} as const;
+
+const scorePill = {
+  minWidth: 64,
+  textAlign: "center",
+  padding: "9px 12px",
+  borderRadius: 999,
+  background: "rgba(2,6,23,0.7)",
+  border: "1px solid rgba(255,255,255,0.12)",
+  color: "#dbeafe",
+  fontWeight: 950,
+} as const;
+
+const checklistBox = {
+  marginTop: 16,
+  padding: 14,
+  borderRadius: 16,
+  background: "rgba(2,6,23,0.54)",
+  border: "1px solid rgba(255,255,255,0.1)",
+} as const;
+
 const validationBox = {
   marginTop: 16,
   padding: 14,
   borderRadius: 16,
   background: "rgba(2,6,23,0.62)",
   border: "1px solid rgba(255,255,255,0.1)",
+} as const;
+
+const sectionPanel = {
+  marginTop: 22,
+  padding: 16,
+  borderRadius: 18,
+  background: "rgba(15,23,42,0.72)",
+  border: "1px solid rgba(147,197,253,0.14)",
 } as const;
 
 const scribePanel = {
@@ -750,6 +1077,16 @@ const scribeLabel = {
   color: "#dbeafe",
   fontSize: 13,
   fontWeight: 900,
+} as const;
+
+const splitHeader = {
+  marginTop: 2,
+  paddingTop: 8,
+  color: "#facc15",
+  fontSize: 12,
+  fontWeight: 950,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
 } as const;
 
 const reviewBox = {
