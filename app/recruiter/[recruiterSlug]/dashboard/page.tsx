@@ -409,10 +409,23 @@ export default async function RecruiterDashboard({
 
       <section style={{ width: "min(1180px, calc(100% - 40px))", margin: "0 auto", padding: "60px 0" }}>
         <div className="eyebrow">Recruiter Control Center</div>
-        <h1>{recruiter.name} — Operations Command Center</h1>
-        <p style={{ color: "#cfe2ff", maxWidth: 860 }}>
-          Daily visibility for dealer demand, role-specific scoring, recruiter review, candidate coaching, interview readiness, and dealer handoff status.
-        </p>
+
+        <div style={headerRow}>
+          <div>
+            <h1 style={{ marginTop: 0 }}>{recruiter.name} — Operations Command Center</h1>
+            <p style={{ color: "#cfe2ff", maxWidth: 860 }}>
+              Daily visibility for dealer demand, role-specific scoring, recruiter review, candidate coaching, interview readiness, and dealer handoff status.
+            </p>
+          </div>
+
+          <Link
+            href={`/recruiter/${recruiterSlug}/availability`}
+            className="btn btn-secondary"
+            style={{ whiteSpace: "nowrap" }}
+          >
+            Manage availability
+          </Link>
+        </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 14, marginTop: 34 }}>
           {[
@@ -590,6 +603,14 @@ function Checklist({ title, items }: { title: string; items: string[] }) {
 function EmptyState({ children }: { children: React.ReactNode }) {
   return <div style={{ padding: 24, borderRadius: 20, background: "rgba(255,255,255,0.05)", color: "#cfe2ff" }}>{children}</div>;
 }
+
+const headerRow: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 20,
+  flexWrap: "wrap",
+};
 
 const metricCard: React.CSSProperties = { padding: 20, borderRadius: 20, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)" };
 const dealerRow: React.CSSProperties = { padding: 22, borderRadius: 22, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", display: "grid", gridTemplateColumns: "1.4fr repeat(5, .7fr)", gap: 14, alignItems: "center" };
