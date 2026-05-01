@@ -700,25 +700,23 @@ export default async function DealerDashboardPage({
         </div>
 
         {requestSubmitted ? (
-          <Notice
-            tone="success"
+          <ActionNotice
             title={`${submittedRole} request received.`}
-            copy="NATA Today will handle the job posting, candidate intake, screening, routing, and packet preparation. Candidates will appear on your manager board only when the interview is scheduled and the packet is ready."
+            copy="NATA Today will handle posting, screening, routing, and packet preparation."
           />
         ) : null}
 
         {requestClosed ? (
-        <ActionNotice
-          title={`${submittedRole} request closed.`}
-          copy="Removed from active hiring. Candidates remain archived."
-        />
-      ) : null}
+          <ActionNotice
+            title={`${submittedRole} request closed.`}
+            copy="Removed from active hiring. Candidates remain archived."
+          />
+        ) : null}
 
         {decisionSaved ? (
-          <Notice
-            tone="success"
+          <ActionNotice
             title={`${decisionCandidate} decision saved.`}
-            copy="The interview decision has been documented. If the outcome was Hired, the public listing has been closed automatically."
+            copy="The interview decision has been documented."
           />
         ) : null}
 
@@ -1397,33 +1395,6 @@ export default async function DealerDashboardPage({
         </section>
       </section>
     </main>
-  );
-}
-
-function Notice({
-  title,
-  copy,
-}: {
-  tone: "success";
-  title: string;
-  copy: string;
-}) {
-  return (
-    <div
-      style={{
-        marginTop: 24,
-        padding: 18,
-        borderRadius: 22,
-        background: "rgba(34,197,94,0.1)",
-        border: "1px solid rgba(34,197,94,0.24)",
-        color: "#d1fae5",
-        display: "grid",
-        gap: 6,
-      }}
-    >
-      <strong style={{ color: "#fff" }}>{title}</strong>
-      <span>{copy}</span>
-    </div>
   );
 }
 
