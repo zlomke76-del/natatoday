@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
+import { sendEmail } from "../../../../lib/email";
 
 type AnyRow = Record<string, any>;
 
