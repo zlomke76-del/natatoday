@@ -269,7 +269,8 @@ function buildLoadSnapshots(recruiters: Recruiter[], applications: AssignmentRow
         (application) => application.recruiter_id === recruiter.id && isCompletedRecently(application)
       ).length;
       const loadScore = assignedCount + interviewCount * 3 - completedRecentCount * 2;
-      const capacityStatus = loadScore >= LEAD_RECRUITER_OVERLOAD_THRESHOLD ? "critical" : loadScore >= 10 ? "watch" : "stable";
+      const capacityStatus: LoadSnapshot["capacityStatus"] =
+        loadScore >= LEAD_RECRUITER_OVERLOAD_THRESHOLD ? "critical" : loadScore >= 10 ? "watch" : "stable";
 
       return {
         recruiter,
