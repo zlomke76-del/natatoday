@@ -126,7 +126,7 @@ async function logOutboundEmail(input: {
       to_email: toEmail,
       provider: "resend",
       provider_message_id: input.providerMessageId || null,
-      provider_payload: input.providerPayload || {},
+      provider_payload: input.providerPayload ? JSON.parse(JSON.stringify(input.providerPayload)) : {},
       sent_at: input.status === "sent" ? new Date().toISOString() : null,
     });
 
