@@ -12,6 +12,7 @@ Dealer enrollment
 → Candidate applies
 → Solace screening
 → Recruiter review
+→ Controlled assignment
 → Interview invite
 → Candidate books 15-minute virtual interview
 → Virtual interview
@@ -29,6 +30,7 @@ The system is built to:
 - Give recruiters a true operating cockpit
 - Support internal email + SMS candidate communication
 - Support portable recruiter availability and scheduling
+- Protect Don / lead recruiters from becoming unmanaged bottlenecks
 - Keep dealers focused only on candidates ready for action
 
 ---
@@ -43,8 +45,8 @@ Dealers can:
 
 - Submit new hiring requests
 - View open requests
-- Remove/close requests manually when filled internally or no longer needed
-- View filled/closed requests
+- Remove / close requests manually when filled internally or no longer needed
+- View filled / closed requests
 - Review only manager-ready candidates
 - Document interview outcomes
 
@@ -57,7 +59,7 @@ AND dealer_interview_at IS NOT NULL
 AND interview_packet_ready = true
 ```
 
-Dealers should not see raw applicants, unreviewed applicants, or candidates still in screening.
+Dealers should not see raw applicants, unreviewed applicants, candidates still in screening, or candidates without a prepared interview packet.
 
 ---
 
@@ -89,7 +91,7 @@ This override is only for the JV demo dealer and is protected by:
 NATA_JV_OVERRIDE_KEY=
 ```
 
-All other dealer access must use secure session/access flow.
+All other dealer access must use secure session / access flow.
 
 ---
 
@@ -112,7 +114,7 @@ Recruiters can see:
 - Role-specific score threshold
 - Why the score was assigned
 - Recruiter verification checklist
-- Candidate support/coaching notes
+- Candidate support / coaching notes
 - Approve / Hold / Pass actions
 
 Recruiter dashboard route:
@@ -125,6 +127,287 @@ Don’s dashboard:
 
 ```txt
 /recruiter/don/dashboard
+```
+
+---
+
+### 4. Recruiter Admin Platform
+
+Admin route:
+
+```txt
+/recruiter/admin
+```
+
+The recruiter admin platform supports:
+
+- Add recruiters / agents
+- Define role and permission profile
+- Send secure recruiter invites
+- Activate recruiters through invite flow
+- Assign candidates manually
+- View workforce load
+- Monitor backlog
+- Trigger controlled auto-assignment / balancing
+
+Admin authority is explicit. Don / admin users operate with full visibility. Recruiters and agents should only see work within their assigned scope unless permissions grant broader access.
+
+---
+
+## Recruiter Invite + Activation System
+
+Recruiter onboarding is controlled through invite state, not open account creation.
+
+Flow:
+
+```txt
+Admin submits recruiter invite
+→ POST /api/nata/recruiters/invite
+→ recruiter created / updated as invited
+→ raw token generated
+→ token_hash stored in nata.recruiter_invites
+→ email + SMS sent with raw token URL
+→ recruiter opens /recruiter/invite/[token]
+→ token is hashed server-side
+→ token_hash lookup validates invite
+→ recruiter activates workspace
+→ recruiter.status = active
+→ recruiter session cookie issued
+→ redirect to recruiter dashboard
+```
+
+Important security rule:
+
+```txt
+Raw token is sent only in the URL.
+Only token_hash is stored in the database.
+```
+
+Relevant routes:
+
+```txt
+/api/nata/recruiters/invite
+/api/nata/recruiters/accept-invite
+/recruiter/invite/[token]
+```
+
+Recruiter invite states:
+
+```txt
+pending
+accepted
+expired
+revoked
+```
+
+Recruiter account states:
+
+```txt
+invited
+active
+suspended
+```
+
+---
+
+## Recruiter Access Control
+
+Recruiter routes are protected by a recruiter session bridge.
+
+Current minimum access model:
+
+```txt
+Invite accepted
+→ secure recruiter cookies issued:
+   nata_recruiter_id
+   nata_recruiter_slug
+   nata_recruiter_role
+→ /recruiter/[slug]/dashboard allowed only for matching recruiter
+→ admin can access broader recruiter routes
+```
+
+Public recruiter paths:
+
+```txt
+/recruiter/invite/[token]
+/recruiter/admin
+/api/nata/recruiters/invite
+/api/nata/recruiters/accept-invite
+```
+
+System rule:
+
+```txt
+No active recruiter session → no recruiter workspace access.
+Wrong recruiter slug → redirect to authenticated recruiter's dashboard unless admin.
+```
+
+Future hardening:
+
+- Replace simple cookie bridge with full authenticated recruiter account model
+- Server-validate recruiter status on each protected request
+- Enforce API-level role permissions for all recruiter actions
+
+---
+
+## Assignment + Auto-Balancing System
+
+NATA now has a controlled assignment engine.
+
+It is not a generic auto-router. It is a throughput protection layer.
+
+Assignment priority:
+
+```txt
+1. Dealer / dealer-group assignment
+2. Manual admin assignment
+3. Existing assigned recruiter
+4. Controlled assist / auto assignment only under imbalance
+```
+
+Core principle:
+
+```txt
+Manual assignment stays primary.
+Dealer intent wins.
+Auto-assignment only protects flow when workload imbalance becomes significant.
+```
+
+### Assignment Modes
+
+```txt
+manual
+suggest
+auto_one
+auto_balance
+rebalance_one
+no_auto
+```
+
+### Manual Assignment
+
+Manual assignment always wins.
+
+Used when:
+
+- Don assigns a candidate directly
+- A dealer / group has an assigned recruiter
+- Admin wants a specific recruiter to own the file
+
+Manual assignment should not be overwritten by the auto engine unless explicitly rebalanced by admin.
+
+---
+
+### Dealer / Group-Based Assignment
+
+Most candidates should route according to dealer or dealer group.
+
+Preferred behavior:
+
+```txt
+application.job_id
+→ job.dealer_id
+→ dealer.assigned_recruiter_id
+→ application.recruiter_id
+```
+
+If a dealer has a default recruiter, that recruiter should receive the candidate unless an admin overrides it.
+
+This preserves dealer continuity and prevents recruiters from becoming interchangeable when relationship context matters.
+
+---
+
+### Controlled Auto Assignment
+
+Auto-assignment is a pressure valve.
+
+It should activate only when operational flow is at risk:
+
+```txt
+unassigned eligible backlog exceeds threshold
+OR recruiter load variance exceeds threshold
+OR Don / lead recruiter load exceeds threshold
+```
+
+The system should prefer assistive routing first:
+
+```txt
+Suggest assignment
+→ show who should receive overflow
+→ allow admin to confirm
+```
+
+Auto-routing should be reserved for clear backlog or imbalance conditions.
+
+---
+
+### Load Scoring
+
+Recruiter load should include both assigned candidates and interview obligations.
+
+Baseline load score:
+
+```txt
+load_score =
+  assigned_candidate_count
++ active_interview_count * 3
+```
+
+Interview bookings matter more because interviews are the bottleneck.
+
+Important bottleneck reality:
+
+```txt
+Don currently performs most or all virtual interviews.
+Future recruiters / agents may assist with virtual interviews.
+```
+
+Therefore, the engine should protect Don from overload while keeping candidate flow moving.
+
+---
+
+### Eligible Candidates for Auto Assignment
+
+A candidate is eligible for controlled assignment when:
+
+```txt
+application.recruiter_id IS NULL
+AND application is not rejected / not_fit
+AND candidate is still active in the recruiter-side pipeline
+```
+
+Typical eligible states:
+
+```txt
+needs_review
+review
+ready
+virtual_invited
+virtual_scheduled
+```
+
+Candidates should not be auto-assigned after dealer handoff unless explicitly rebalanced by admin.
+
+---
+
+### What Auto Assignment Must Not Do
+
+The engine must not:
+
+- Override dealer-assigned recruiter silently
+- Override manual admin assignment silently
+- Send raw applicants directly to dealers
+- Treat all recruiters as interchangeable when dealer continuity matters
+- Route candidates to inactive recruiters
+- Route interview work to recruiters without interview permission / availability
+- Hide the reason an assignment happened
+
+Every automated assignment should be explainable.
+
+Example explanation:
+
+```txt
+Assigned to Sarah because Don exceeded interview load threshold and Sarah had the lowest active load score.
 ```
 
 ---
@@ -146,7 +429,7 @@ new
 → placed | not_hired | keep_warm | no_show | needs_followup
 ```
 
-Additional states in use:
+Additional states currently in use:
 
 ```txt
 not_fit
@@ -154,6 +437,15 @@ review
 ready
 dealer_interview_scheduled
 virtual_completed
+```
+
+Preferred future cleanup:
+
+```txt
+Standardize status values and reduce duplicate meanings between:
+status
+screening_status
+virtual_interview_status
 ```
 
 ---
@@ -273,10 +565,10 @@ Route:
 Supports:
 
 - Sunday through Saturday availability
-- Start/end time per day
+- Start / end time per day
 - Recruiter timezone
 - Notes per day
-- Previous/next week navigation
+- Previous / next week navigation
 - Weekly schedule updates
 
 Availability convention:
@@ -478,7 +770,7 @@ filled_note = dealer note
 closed_reason = selected reason
 ```
 
-The request leaves Open Requests and appears in closed/filled history.
+The request leaves Open Requests and appears in closed / filled history.
 
 ---
 
@@ -583,6 +875,7 @@ Resend
 
 Used for:
 
+- Recruiter invite
 - Interview invitation
 - Booking confirmation
 - Future reminders
@@ -597,6 +890,7 @@ Twilio
 
 Used for:
 
+- Recruiter invite
 - Interview invitation
 - Booking confirmation
 - Future reminders
@@ -607,6 +901,7 @@ Required communication guardrail:
 
 ```txt
 Only text candidates for application/interview-related communication.
+Only text recruiters for access, assignment, or operational notices.
 ```
 
 ---
@@ -661,6 +956,7 @@ nata.applications
 nata.interview_packets
 nata.decision_records
 nata.recruiters
+nata.recruiter_invites
 nata.dealers
 ```
 
@@ -716,6 +1012,7 @@ interview_packet_ready
 interview_questions
 verification_items
 interview_packet_id
+assigned_recruiter
 recruiter_id
 ```
 
@@ -743,6 +1040,65 @@ filled_by_application_id
 filled_note
 closed_reason
 distribution_status
+```
+
+### nata.dealers
+
+Important fields:
+
+```txt
+id
+slug
+name
+city
+state
+pipeline_status
+billing_status
+assigned_recruiter_id
+multi_store_group
+dealership_location_count
+plan
+stripe_customer_id
+stripe_subscription_id
+```
+
+### nata.recruiters
+
+Important fields:
+
+```txt
+id
+name
+slug
+role
+status
+is_active
+email
+phone
+title
+manager_recruiter_id
+permissions
+owner_id
+invited_at
+activated_at
+```
+
+### nata.recruiter_invites
+
+Important fields:
+
+```txt
+id
+recruiter_id
+token_hash
+status
+sent_to_email
+sent_to_phone
+expires_at
+accepted_at
+revoked_at
+created_at
+updated_at
 ```
 
 ### nata.recruiter_weekly_availability
@@ -795,6 +1151,7 @@ status
 screening_status
 fit_score
 role threshold
+recruiter assignment
 interview readiness
 packet readiness
 dealer interview time
@@ -841,6 +1198,23 @@ candidate progression
 
 ---
 
+### Assignment Governance
+
+Assignment is governed by relationship, authority, and operational load.
+
+Rules:
+
+```txt
+Dealer assignment wins.
+Manual admin assignment wins.
+Existing assignment is respected.
+Auto assignment only applies to eligible unassigned candidates or explicit rebalance actions.
+Inactive recruiters cannot receive assignments.
+Don overload should trigger assist / overflow behavior, not silent uncontrolled routing.
+```
+
+---
+
 ### Candidate Support
 
 Candidates should receive:
@@ -868,6 +1242,12 @@ The system should help qualified-but-incomplete candidates improve their applica
 ✔ Stripe checkout
 ✔ Stripe webhook provisioning
 ✔ Recruiter dashboard
+✔ Recruiter admin console
+✔ Recruiter invite creation
+✔ Secure recruiter invite activation
+✔ Recruiter session bridge
+✔ Assignment-based visibility model
+✔ Controlled auto-assignment / load balancing layer
 ✔ Role-specific fit thresholds
 ✔ Candidate support/review panel
 ✔ Resume + photo visibility
@@ -899,30 +1279,43 @@ The system should help qualified-but-incomplete candidates improve their applica
    - join virtual room
    - notes capture
    - complete interview
+   - packet generation after completion
 
-3. Add candidate-facing support page:
+3. Harden recruiter access:
+   - server-side status validation
+   - API-level role checks
+   - admin / recruiter / agent permission enforcement
+
+4. Refine auto-assignment:
+   - dealer-group assignment preferences
+   - visible assignment explanations
+   - Don overload threshold tuning
+   - recruiter capacity settings
+   - suggest-first UI before full automation
+
+5. Add candidate-facing support page:
    - improve resume
    - upload better proof
    - confirm availability
    - explain fit score
 
-4. Add notification logging:
+6. Add notification logging:
    - email sent
    - SMS sent
    - delivery status
    - failure tracking
 
-5. Add recruiter blackouts UI:
+7. Add recruiter blackouts UI:
    - block lunch
    - PTO
    - one-off unavailable periods
 
-6. Expand job distribution:
+8. Expand job distribution:
    - Indeed API
    - ZipRecruiter
    - dealership careers embed
 
-7. Add agent portal:
+9. Add agent portal:
    - recruiter assignment
    - agent sourcing
    - performance tracking
@@ -945,6 +1338,8 @@ Principles:
 - Dealers do not write jobs manually; Solace structures them
 - Candidates are screened before dealer interaction
 - Recruiters control progression
+- Assignment respects dealer relationship first
+- Automation exists to protect throughput, not replace judgment
 - Availability controls scheduling
 - Every decision must be documented
 - No candidate reaches a manager without sufficient state
@@ -964,7 +1359,17 @@ manual, reactive, fragmented
 into:
 
 ```txt
-structured, controlled, recruiter-assisted, and scalable
+structured, controlled, recruiter-assisted, load-aware, and scalable
+```
+
+The system now has the foundation for a true hiring operating system:
+
+```txt
+State controls progression.
+Assignment controls visibility.
+Availability controls scheduling.
+Packets control dealer handoff.
+Automation protects flow only when the system is under pressure.
 ```
 
 ---
