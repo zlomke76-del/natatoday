@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import Link from "next/link";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
@@ -10,8 +11,13 @@ type InvitePageProps = {
   };
 };
 
+function hashInviteToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
 export default async function RecruiterInvitePage({ params }: InvitePageProps) {
   const token = params.token;
+  const tokenHash = hashInviteToken(token);
 
   const { data: invite, error } = await supabaseAdmin
     .schema("nata")
@@ -19,7 +25,7 @@ export default async function RecruiterInvitePage({ params }: InvitePageProps) {
     .select(
       `
       id,
-      token,
+      token_hash,
       status,
       expires_at,
       accepted_at,
@@ -36,7 +42,7 @@ export default async function RecruiterInvitePage({ params }: InvitePageProps) {
       )
     `
     )
-    .eq("token", token)
+    .eq("token_hash", tokenHash)
     .maybeSingle();
 
   const recruiter = Array.isArray(invite?.recruiters)
@@ -44,9 +50,14 @@ export default async function RecruiterInvitePage({ params }: InvitePageProps) {
     : invite?.recruiters;
 
   const invalid = error || !invite || !recruiter;
+
   const expired =
-    invite?.expires_at && new Date(invite.expires_at).getTime() < Date.now();
-  const alreadyAccepted = invite?.status === "accepted" || invite?.accepted_at;
+    invite?.expires_at &&
+    new Date(invite.expires_at).getTime() < Date.now();
+
+  const alreadyAccepted =
+    invite?.status === "accepted" || invite?.accepted_at;
+
   const alreadyActive =
     recruiter?.status === "active" || recruiter?.activated_at;
 
