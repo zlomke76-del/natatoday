@@ -22,12 +22,28 @@ type Slot = {
   endsAt: string;
 };
 
+type Range = {
+  startsAt: Date;
+  endsAt: Date;
+};
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 const SLOT_MINUTES = 15;
 const LOOKAHEAD_DAYS = 21;
+
+const SCHEDULING_ALLOWED_STATUS = "virtual_invited";
+const SCHEDULING_LOCKED_STATUSES = new Set([
+  "virtual_scheduled",
+  "virtual_completed",
+  "dealer_interview_scheduled",
+  "not_fit",
+  "placed",
+  "hired",
+  "withdrawn",
+]);
 
 function appUrl() {
   return (
@@ -136,6 +152,7 @@ function formatTimeOnly(value: Date, timeZone: string) {
 function formatSlotWindow(startsAt: Date, endsAt: Date, timeZone: string) {
   return `${formatSlotLabel(startsAt, timeZone)} – ${formatTimeOnly(endsAt, timeZone)}`;
 }
+
 function safeRoomName(applicationId: string, startsAt: Date) {
   const stamp = startsAt
     .toISOString()
@@ -199,9 +216,18 @@ async function createVirtualMeetingRoom(applicationId: string, startsAt: Date, e
   };
 }
 
-
-function overlaps(start: Date, end: Date, ranges: { startsAt: Date; endsAt: Date }[]) {
+function overlaps(start: Date, end: Date, ranges: Range[]) {
   return ranges.some((range) => start < range.endsAt && end > range.startsAt);
+}
+
+function isScheduleStateAllowed(application: AnyRow) {
+  const status = label(application.status).toLowerCase();
+  const virtualStatus = label(application.virtual_interview_status).toLowerCase();
+
+  if (SCHEDULING_LOCKED_STATUSES.has(status)) return false;
+  if (["scheduled", "completed", "canceled"].includes(virtualStatus)) return false;
+
+  return status === SCHEDULING_ALLOWED_STATUS || virtualStatus === "invited";
 }
 
 async function loadApplication(applicationId: string) {
@@ -266,6 +292,24 @@ async function loadAvailability(recruiterId: string, weekStarts: string[]) {
   return (data || []) as AnyRow[];
 }
 
+async function loadExistingBookingForApplication(applicationId: string) {
+  const { data, error } = await supabaseAdmin
+    .schema("nata")
+    .from("interview_bookings")
+    .select("*")
+    .eq("application_id", applicationId)
+    .neq("status", "canceled")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Failed to load existing booking:", error);
+  }
+
+  return data as AnyRow | null;
+}
+
 async function loadExistingRanges(recruiterId: string) {
   const now = new Date();
   const later = addDays(now, LOOKAHEAD_DAYS + 1);
@@ -310,7 +354,7 @@ function buildSlots({
   recruiterTimezone,
 }: {
   availabilityRows: AnyRow[];
-  ranges: { startsAt: Date; endsAt: Date }[];
+  ranges: Range[];
   recruiterTimezone: string;
 }) {
   const now = new Date();
@@ -360,6 +404,43 @@ function buildSlots({
   return slots.slice(0, 40);
 }
 
+function LockedPanel({
+  titleText,
+  body,
+  application,
+  recruiterTimezone,
+}: {
+  titleText: string;
+  body: string;
+  application?: AnyRow | null;
+  recruiterTimezone: string;
+}) {
+  return (
+    <main className="shell">
+      <Nav />
+      <section style={wrap}>
+        <div className="eyebrow">NATA Today Interview Scheduling</div>
+        <div style={lockedPanel}>
+          <h1 style={title}>{titleText}</h1>
+          <p style={muted}>{body}</p>
+          {application?.virtual_interview_at ? (
+            <p style={{ ...muted, marginTop: 12 }}>
+              Scheduled start: <strong style={{ color: "#fff" }}>{formatSlotLabel(new Date(application.virtual_interview_at), recruiterTimezone)}</strong>
+            </p>
+          ) : null}
+          {application?.virtual_interview_room_url ? (
+            <p style={{ marginTop: 18 }}>
+              <a href={application.virtual_interview_room_url} className="btn btn-primary">
+                Join virtual interview
+              </a>
+            </p>
+          ) : null}
+        </div>
+      </section>
+    </main>
+  );
+}
+
 export default async function CandidateSchedulePage({
   params,
   searchParams,
@@ -402,6 +483,39 @@ export default async function CandidateSchedulePage({
   }
 
   const recruiterTimezone = label(recruiter.timezone, "America/Chicago");
+  const existingBooking = await loadExistingBookingForApplication(String(application.id));
+  const booked = searchParams?.booked === "1";
+  const applicationAlreadyScheduled =
+    label(application.status).toLowerCase() === "virtual_scheduled" ||
+    label(application.virtual_interview_status).toLowerCase() === "scheduled" ||
+    Boolean(existingBooking);
+
+  if (booked || applicationAlreadyScheduled) {
+    return (
+      <LockedPanel
+        titleText="Interview confirmed."
+        body="This scheduling link has already been used. Your 15-minute virtual interview is locked and cannot be booked again from this page."
+        application={{
+          ...application,
+          virtual_interview_at: application.virtual_interview_at || existingBooking?.starts_at,
+          virtual_interview_room_url: application.virtual_interview_room_url || existingBooking?.meeting_url,
+        }}
+        recruiterTimezone={recruiterTimezone}
+      />
+    );
+  }
+
+  if (!isScheduleStateAllowed(application)) {
+    return (
+      <LockedPanel
+        titleText="Scheduling is no longer available."
+        body="This invite is not currently eligible for scheduling. It may have expired, been replaced, or moved to another stage. Contact NATA Today if you believe this is incorrect."
+        application={application}
+        recruiterTimezone={recruiterTimezone}
+      />
+    );
+  }
+
   const today = new Date();
   const weekStarts = Array.from(
     new Set(
@@ -417,7 +531,6 @@ export default async function CandidateSchedulePage({
 
   const roleTitle = label(job?.title || application.role, "this role");
   const dealerName = label(job?.public_dealer_name || job?.dealer_slug, "the dealership");
-  const booked = searchParams?.booked === "1";
 
   async function bookInterview(formData: FormData) {
     "use server";
@@ -425,19 +538,23 @@ export default async function CandidateSchedulePage({
     const applicationId = clean(formData.get("application_id"));
     const selectedStart = clean(formData.get("slot"));
     const recruiterId = clean(formData.get("recruiter_id"));
-    const recruiterTimezone = clean(formData.get("timezone")) || "America/Chicago";
+    const timezone = clean(formData.get("timezone")) || "America/Chicago";
 
     if (!applicationId || !selectedStart || !recruiterId) {
       throw new Error("Missing interview booking details.");
     }
 
     const startsAt = new Date(selectedStart);
+    if (Number.isNaN(startsAt.getTime())) {
+      throw new Error("Invalid interview time selected.");
+    }
+
     const endsAt = new Date(startsAt.getTime() + SLOT_MINUTES * 60 * 1000);
-    const virtualMeeting = await createVirtualMeetingRoom(applicationId, startsAt, endsAt);
-    const bookingToken =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `${applicationId}-${Date.now()}`;
+    const earliest = new Date(Date.now() + 2 * 60 * 60 * 1000);
+
+    if (startsAt <= earliest) {
+      throw new Error("That time is no longer available. Please choose another slot.");
+    }
 
     const { data: currentApplication, error: currentApplicationError } =
       await supabaseAdmin
@@ -449,6 +566,24 @@ export default async function CandidateSchedulePage({
 
     if (currentApplicationError) throw new Error(currentApplicationError.message);
     if (!currentApplication) throw new Error("Application not found.");
+
+    if (!isScheduleStateAllowed(currentApplication)) {
+      throw new Error("This application is no longer eligible for scheduling.");
+    }
+
+    const { data: existingApplicationBooking, error: existingBookingError } =
+      await supabaseAdmin
+        .schema("nata")
+        .from("interview_bookings")
+        .select("id")
+        .eq("application_id", applicationId)
+        .neq("status", "canceled")
+        .limit(1);
+
+    if (existingBookingError) throw new Error(existingBookingError.message);
+    if ((existingApplicationBooking || []).length > 0) {
+      throw new Error("This interview has already been scheduled.");
+    }
 
     const { data: currentJob } = await supabaseAdmin
       .schema("nata")
@@ -462,7 +597,34 @@ export default async function CandidateSchedulePage({
       .from("recruiters")
       .select("*")
       .eq("id", recruiterId)
+      .eq("is_active", true)
       .maybeSingle();
+
+    if (!currentRecruiter) {
+      throw new Error("Recruiter is no longer available.");
+    }
+
+    const actionToday = new Date();
+    const actionWeekStarts = Array.from(
+      new Set(
+        Array.from({ length: 4 }).map((_, index) =>
+          getWeekStartSunday(addDays(actionToday, index * 7))
+        )
+      )
+    );
+
+    const actionAvailabilityRows = await loadAvailability(recruiterId, actionWeekStarts);
+    const actionRanges = await loadExistingRanges(recruiterId);
+    const availableSlots = buildSlots({
+      availabilityRows: actionAvailabilityRows,
+      ranges: actionRanges,
+      recruiterTimezone: timezone,
+    });
+
+    const selectedSlot = availableSlots.find((slot) => slot.value === startsAt.toISOString());
+    if (!selectedSlot) {
+      throw new Error("That time is no longer available. Please choose another slot.");
+    }
 
     const { data: conflicts, error: conflictError } = await supabaseAdmin
       .schema("nata")
@@ -479,6 +641,9 @@ export default async function CandidateSchedulePage({
       throw new Error("That time was just booked. Please go back and choose another slot.");
     }
 
+    const virtualMeeting = await createVirtualMeetingRoom(applicationId, startsAt, endsAt);
+    const bookingToken = crypto.randomUUID();
+
     const { error: bookingError } = await supabaseAdmin
       .schema("nata")
       .from("interview_bookings")
@@ -487,7 +652,7 @@ export default async function CandidateSchedulePage({
         recruiter_id: recruiterId,
         starts_at: startsAt.toISOString(),
         ends_at: endsAt.toISOString(),
-        timezone: recruiterTimezone,
+        timezone,
         status: "scheduled",
         meeting_url: virtualMeeting.meetingUrl,
         meeting_room_name: virtualMeeting.meetingRoomName,
@@ -510,7 +675,8 @@ export default async function CandidateSchedulePage({
         virtual_interview_room_name: virtualMeeting.meetingRoomName,
         virtual_interview_url: virtualMeeting.meetingUrl,
       })
-      .eq("id", applicationId);
+      .eq("id", applicationId)
+      .eq("status", SCHEDULING_ALLOWED_STATUS);
 
     if (applicationUpdateError) throw new Error(applicationUpdateError.message);
 
@@ -522,9 +688,9 @@ export default async function CandidateSchedulePage({
         roleTitle: label(currentJob?.title || currentApplication.role, "this role"),
         dealerName: label(currentJob?.public_dealer_name || currentJob?.dealer_slug, "the dealership"),
         recruiterName: label(currentRecruiter?.name, "your recruiter"),
-        scheduledStartLabel: formatSlotLabel(startsAt, recruiterTimezone),
-        scheduledEndLabel: formatTimeOnly(endsAt, recruiterTimezone),
-        scheduledWindowLabel: formatSlotWindow(startsAt, endsAt, recruiterTimezone),
+        scheduledStartLabel: formatSlotLabel(startsAt, timezone),
+        scheduledEndLabel: formatTimeOnly(endsAt, timezone),
+        scheduledWindowLabel: formatSlotWindow(startsAt, endsAt, timezone),
         meetingUrl: virtualMeeting.meetingUrl,
       });
     } catch (notificationError) {
@@ -541,92 +707,74 @@ export default async function CandidateSchedulePage({
       <section style={wrap}>
         <div className="eyebrow">NATA Today Interview Scheduling</div>
 
-        {booked ? (
-          <div style={successPanel}>
-            <h1 style={title}>Interview confirmed.</h1>
-            <p style={muted}>
-              Your 15-minute virtual interview has been scheduled with a specific start and end time.
-              You should also receive a confirmation by email and text if your contact information is available.
-            </p>
-            {application.virtual_interview_at ? (
-              <p style={{ ...muted, marginTop: 12 }}>
-                Scheduled start: <strong style={{ color: "#fff" }}>{formatSlotLabel(new Date(application.virtual_interview_at), recruiterTimezone)}</strong>
-              </p>
-            ) : null}
-            {application.virtual_interview_room_url ? (
-              <p style={{ marginTop: 18 }}>
-                <a href={application.virtual_interview_room_url} className="btn btn-primary">
-                  Join virtual interview
-                </a>
-              </p>
-            ) : null}
+        <h1 style={title}>Choose your 15-minute virtual interview.</h1>
+        <p style={muted}>
+          {label(application.name, "Candidate")}, your application for{" "}
+          <strong style={{ color: "#fff" }}>{roleTitle}</strong> with{" "}
+          <strong style={{ color: "#fff" }}>{dealerName}</strong> has advanced.
+          Choose one available time with {label(recruiter.name, "your recruiter")}.
+        </p>
+
+        <div style={processBand}>
+          <span>1. Choose time</span>
+          <span>2. Confirm interview</span>
+          <span>3. Receive meeting link</span>
+        </div>
+
+        <div style={summaryGrid}>
+          <div style={summaryCard}>
+            <span style={kicker}>Candidate</span>
+            <strong>{label(application.name || application.email, "Candidate")}</strong>
           </div>
-        ) : (
-          <>
-            <h1 style={title}>Choose your 15-minute virtual interview.</h1>
-            <p style={muted}>
-              {label(application.name, "Candidate")}, your application for{" "}
-              <strong style={{ color: "#fff" }}>{roleTitle}</strong> with{" "}
-              <strong style={{ color: "#fff" }}>{dealerName}</strong> has advanced.
-              Choose one available time with {label(recruiter.name, "your recruiter")}.
-            </p>
+          <div style={summaryCard}>
+            <span style={kicker}>Recruiter</span>
+            <strong>{label(recruiter.name, "Recruiter")}</strong>
+          </div>
+          <div style={summaryCard}>
+            <span style={kicker}>Timezone</span>
+            <strong>{recruiterTimezone}</strong>
+          </div>
+        </div>
 
-            <div style={summaryGrid}>
-              <div style={summaryCard}>
-                <span style={kicker}>Candidate</span>
-                <strong>{label(application.name || application.email, "Candidate")}</strong>
+        <form action={bookInterview} style={panel}>
+          <input type="hidden" name="application_id" value={String(application.id)} />
+          <input type="hidden" name="recruiter_id" value={String(recruiter.id)} />
+          <input type="hidden" name="timezone" value={recruiterTimezone} />
+
+          <div style={slotGrid}>
+            {slots.length > 0 ? (
+              slots.map((slot, index) => (
+                <label key={slot.value} style={slotCard}>
+                  <input
+                    type="radio"
+                    name="slot"
+                    value={slot.value}
+                    required
+                    defaultChecked={index === 0}
+                    style={{ accentColor: "#1473ff" }}
+                  />
+                  <span>{slot.label}</span>
+                </label>
+              ))
+            ) : (
+              <div style={emptyState}>
+                No interview slots are currently available. Please contact NATA Today
+                or check back after the recruiter updates availability.
               </div>
-              <div style={summaryCard}>
-                <span style={kicker}>Recruiter</span>
-                <strong>{label(recruiter.name, "Recruiter")}</strong>
-              </div>
-              <div style={summaryCard}>
-                <span style={kicker}>Timezone</span>
-                <strong>{recruiterTimezone}</strong>
-              </div>
+            )}
+          </div>
+
+          {slots.length > 0 ? (
+            <div style={submitRow}>
+              <span style={mutedSmall}>
+                This will reserve a 15-minute virtual interview and lock this scheduling link.
+              </span>
+              <button type="submit" className="btn btn-primary" style={{ border: 0, cursor: "pointer" }}>
+                Confirm interview time
+              </button>
             </div>
-
-            <form action={bookInterview} style={panel}>
-              <input type="hidden" name="application_id" value={String(application.id)} />
-              <input type="hidden" name="recruiter_id" value={String(recruiter.id)} />
-              <input type="hidden" name="timezone" value={recruiterTimezone} />
-
-              <div style={slotGrid}>
-                {slots.length > 0 ? (
-                  slots.map((slot, index) => (
-                    <label key={slot.value} style={slotCard}>
-                      <input
-                        type="radio"
-                        name="slot"
-                        value={slot.value}
-                        required
-                        defaultChecked={index === 0}
-                        style={{ accentColor: "#1473ff" }}
-                      />
-                      <span>{slot.label}</span>
-                    </label>
-                  ))
-                ) : (
-                  <div style={emptyState}>
-                    No interview slots are currently available. Please contact NATA Today
-                    or check back after the recruiter updates availability.
-                  </div>
-                )}
-              </div>
-
-              {slots.length > 0 ? (
-                <div style={submitRow}>
-                  <span style={mutedSmall}>
-                    This will reserve a 15-minute virtual interview and notify NATA Today.
-                  </span>
-                  <button type="submit" className="btn btn-primary" style={{ border: 0, cursor: "pointer" }}>
-                    Confirm interview time
-                  </button>
-                </div>
-              ) : null}
-            </form>
-          </>
-        )}
+          ) : null}
+        </form>
       </section>
     </main>
   );
@@ -664,6 +812,15 @@ const kicker: React.CSSProperties = {
   letterSpacing: ".14em",
   textTransform: "uppercase",
   marginBottom: 8,
+};
+
+const processBand: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 10,
+  marginTop: 22,
+  color: "#dbeafe",
+  fontWeight: 900,
 };
 
 const summaryGrid: React.CSSProperties = {
@@ -725,9 +882,9 @@ const emptyState: React.CSSProperties = {
   lineHeight: 1.5,
 };
 
-const successPanel: React.CSSProperties = {
+const lockedPanel: React.CSSProperties = {
   padding: 34,
   borderRadius: 30,
-  background: "linear-gradient(145deg, rgba(34,197,94,0.12), rgba(255,255,255,0.045))",
-  border: "1px solid rgba(34,197,94,0.26)",
+  background: "linear-gradient(145deg, rgba(251,191,36,0.12), rgba(255,255,255,0.045))",
+  border: "1px solid rgba(251,191,36,0.26)",
 };
