@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { supabaseAdmin } from "../../lib/supabaseAdmin";
 
 export default async function RecruiterRoot() {
   // TEMP: hardcode Don for now (replace with auth later)
