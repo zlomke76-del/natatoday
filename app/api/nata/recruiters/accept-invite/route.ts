@@ -21,20 +21,33 @@ export async function POST(request: NextRequest) {
     const { data: invite, error: inviteError } = await supabaseAdmin
       .schema("nata")
       .from("recruiter_invites")
-      .select("id,recruiter_id,token_hash,status,expires_at,accepted_at")
+      .select(
+        `
+        id,
+        recruiter_id,
+        token_hash,
+        status,
+        expires_at,
+        accepted_at,
+        recruiters (
+          id,
+          name,
+          slug,
+          role,
+          status,
+          activated_at
+        )
+      `
+      )
       .eq("token_hash", tokenHash)
       .maybeSingle();
 
-    if (inviteError || !invite) {
+    const recruiter = Array.isArray(invite?.recruiters)
+      ? invite?.recruiters[0]
+      : invite?.recruiters;
+
+    if (inviteError || !invite || !recruiter) {
       return NextResponse.json({ error: "Invite not found" }, { status: 404 });
-    }
-
-    if (invite.status === "accepted" || invite.accepted_at) {
-      return NextResponse.redirect(new URL("/recruiter/dashboard", request.url));
-    }
-
-    if (invite.status !== "pending") {
-      return NextResponse.json({ error: "Invite is no longer valid" }, { status: 400 });
     }
 
     if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
@@ -47,13 +60,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invite expired" }, { status: 400 });
     }
 
+    if (invite.status !== "pending" && invite.status !== "accepted") {
+      return NextResponse.json({ error: "Invite is no longer valid" }, { status: 400 });
+    }
+
     const { error: recruiterError } = await supabaseAdmin
       .schema("nata")
       .from("recruiters")
       .update({
         status: "active",
         is_active: true,
-        activated_at: now,
+        activated_at: recruiter.activated_at || now,
         updated_at: now,
       })
       .eq("id", invite.recruiter_id);
@@ -70,7 +87,7 @@ export async function POST(request: NextRequest) {
       .from("recruiter_invites")
       .update({
         status: "accepted",
-        accepted_at: now,
+        accepted_at: invite.accepted_at || now,
         updated_at: now,
       })
       .eq("id", invite.id);
@@ -82,7 +99,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.redirect(new URL("/recruiter/dashboard", request.url));
+    const redirectUrl = new URL(`/recruiter/${recruiter.slug}/dashboard`, request.url);
+    const response = NextResponse.redirect(redirectUrl, { status: 303 });
+
+    response.cookies.set("nata_recruiter_id", recruiter.id, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+
+    response.cookies.set("nata_recruiter_slug", recruiter.slug, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+
+    response.cookies.set("nata_recruiter_role", recruiter.role || "recruiter", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+
+    return response;
   } catch (error) {
     console.error("POST /api/nata/recruiters/accept-invite failed", error);
 
