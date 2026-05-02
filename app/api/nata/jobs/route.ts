@@ -712,6 +712,34 @@ async function createCandidateOutreachForJob(job: any) {
   return { created: outreachRows.length, skipped, error: null };
 }
 
+
+async function triggerMatchRunner(origin: string) {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || origin;
+  const secret = process.env.NATA_MATCH_RUNNER_SECRET;
+
+  try {
+    const response = await fetch(`${appUrl}/api/nata/run-matching`, {
+      method: "POST",
+      headers: secret ? { Authorization: `Bearer ${secret}` } : undefined,
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+      console.error("Match runner trigger failed:", detail);
+      return { triggered: false, error: detail };
+    }
+
+    return { triggered: true, result: await response.json() };
+  } catch (error) {
+    console.error("Match runner trigger error:", error);
+    return {
+      triggered: false,
+      error: error instanceof Error ? error.message : "Match runner trigger failed",
+    };
+  }
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const slug = searchParams.get("slug");
@@ -870,11 +898,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const outreach = await createCandidateOutreachForJob(data);
+  const matching = await triggerMatchRunner(request.nextUrl.origin);
 
   return NextResponse.json({
     job: normalizeJob(data),
-    outreach,
+    matching,
+    outreach: {
+      created: 0,
+      skipped: 0,
+      status: "disabled_recruiter_review_required",
+      note: "No candidate outreach, interview invitation, email, or SMS is sent automatically from job creation.",
+    },
     distribution: {
       status: distributionStatus,
       quality_score: quality.score,
