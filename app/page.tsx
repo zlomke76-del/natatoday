@@ -35,24 +35,24 @@ const steps = [
 
 const proofCards = [
   {
-    title: "Technician pipeline control",
-    copy: "Hard-to-find service talent is organized by certification level, experience, availability, and role fit before your store invests time.",
+    title: "Technician capacity protected",
+    copy: "Service talent is organized by certification, experience, availability, and readiness before your store invests time — reducing missed hires that impact service revenue.",
   },
   {
-    title: "Manager time protected",
-    copy: "Your team is not chasing applicants or sorting through noise. They focus only on candidates who have earned the interview.",
+    title: "Manager time stays focused",
+    copy: "Your managers stop sorting through applicants and chasing responses. They meet candidates who have already been screened and qualified.",
   },
   {
-    title: "Interviews become decisions",
-    copy: "The interview is no longer the first filter. It becomes the moment your dealership confirms the right hire.",
+    title: "Interviews become final checks",
+    copy: "The first real conversation is no longer the first filter. It becomes the moment your dealership confirms the right hire.",
   },
 ];
 
 const metrics = [
-  { value: "60–80%", label: "reduction in unqualified interviews" },
-  { value: "Faster", label: "time-to-fill on critical roles" },
-  { value: "Full", label: "technician pipeline visibility" },
-  { value: "More", label: "manager time spent on hiring decisions" },
+  { value: "60–80%", label: "fewer unqualified interviews" },
+  { value: "Faster", label: "critical-role hiring" },
+  { value: "Visible", label: "technician readiness before interviews" },
+  { value: "Protected", label: "manager time" },
 ];
 
 export default function Home() {
@@ -172,9 +172,16 @@ export default function Home() {
             <div className="section-kicker dark">
               What changes for the dealer
             </div>
-            <h2>Fewer interviews. Better conversations. Faster hires.</h2>
+
+            <h2>
+              Fewer wasted interviews. <br />
+              Better hires worth making.
+            </h2>
+
             <p>
-              NATA Today is not another tool to manage. It removes the work that slows hiring down — especially when technician roles directly impact service capacity and revenue.
+              NATA Today removes the screening burden before it reaches your managers.
+              Candidates are organized, evaluated, and prepared first — so interviews
+              become confirmation, not discovery.
             </p>
           </div>
 
@@ -196,14 +203,28 @@ export default function Home() {
             ))}
           </div>
 
+          <div className="contrast-strip">
+            <div>
+              <strong>Before:</strong> Interviews are where you figure it out
+            </div>
+            <div>
+              <strong>After:</strong> Interviews confirm what’s already clear
+            </div>
+          </div>
+
           <div className="closing-band">
             <div>
               <span>Dealer-ready recruiting</span>
+
               <h3>Stop starting from zero with every applicant.</h3>
+
               <p>
-                Your team gets candidates who have already been screened, prepared, and matched to the role — including technician certification and readiness when it matters most.
+                Your team gets candidates who have already been screened, prepared,
+                and matched to the role — with technician readiness visible before
+                the interview ever happens.
               </p>
             </div>
+
             <Link className="btn btn-primary" href="/dealer-demo">
               See the Dealer View
             </Link>
