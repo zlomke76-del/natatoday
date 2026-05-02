@@ -51,7 +51,7 @@ const proofCards = [
 const metrics = [
   { value: "60–80%", label: "fewer unqualified interviews" },
   { value: "Faster", label: "critical-role hiring" },
-  { value: "Visible", label: "technician readiness before interviews" },
+  { value: "Visible", label: "candidate readiness before interviews" },
   { value: "Protected", label: "manager time" },
 ];
 
