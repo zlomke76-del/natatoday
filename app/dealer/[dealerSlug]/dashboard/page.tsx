@@ -14,6 +14,7 @@ type PageProps = {
     role?: string;
     decision?: string;
     candidate?: string;
+    schedule?: string;
   };
 };
 
@@ -27,6 +28,23 @@ type ManagerCandidate = {
   role: string;
   status: string;
   dealerInterviewAt: string;
+  summary: string;
+  notes: string[];
+  resumeUrl: string;
+  photoUrl: string;
+  nataNotes: string;
+  interviewQuestions: string[];
+  verificationItems: string[];
+  fitScore: number | null;
+};
+
+type ReadyScheduleCandidate = {
+  id: string;
+  applicationId: string;
+  jobId: string;
+  name: string;
+  role: string;
+  status: string;
   summary: string;
   notes: string[];
   resumeUrl: string;
@@ -56,6 +74,8 @@ const paySuggestions: Record<string, string> = {
   "Parts Advisor": "$20 - $30 per hour",
   "Finance Manager": "$95,000 - $180,000 per year",
 };
+
+const DEALER_SCHEDULE_REQUESTED_STATUS = "dealer_schedule_requested";
 
 const MANAGER_VISIBLE_STATUSES = new Set([
   "dealer_interview_scheduled",
@@ -345,6 +365,38 @@ function buildNataNotes(application: AnyRow, role: string) {
   return `NATA review: ${summary}${fitScoreLine} Use the manager interview to verify role fit, availability, compensation alignment, and any remaining concerns before a final hiring decision.`;
 }
 
+function toReadyScheduleCandidate(
+  application: AnyRow,
+  job: AnyRow | undefined,
+): ReadyScheduleCandidate | null {
+  const status = getApplicationStatus(application);
+
+  if (status !== DEALER_SCHEDULE_REQUESTED_STATUS) return null;
+  if (!hasReadyPacket(application)) return null;
+
+  const role = String(
+    job?.title || application.role || application.job_title || "Role",
+  );
+
+  return {
+    id: String(application.id),
+    applicationId: String(application.id),
+    jobId: String(application.job_id || job?.id || ""),
+    name: getCandidateName(application),
+    role,
+    status,
+    summary: getApplicationSummary(application),
+    notes: getCandidateTags(application),
+    resumeUrl: getResumeUrl(application),
+    photoUrl: getCandidatePhotoUrl(application),
+    nataNotes: buildNataNotes(application, role),
+    interviewQuestions: getInterviewQuestions(role, application),
+    verificationItems: getVerificationItems(role, application),
+    fitScore:
+      typeof application.fit_score === "number" ? application.fit_score : null,
+  };
+}
+
 function toManagerCandidate(
   application: AnyRow,
   job: AnyRow | undefined,
@@ -440,6 +492,17 @@ async function loadDashboardData(dealerSlug: string) {
 
   const jobById = new Map(jobs.map((job) => [String(job.id), job]));
 
+  const readyScheduleCandidates = applications
+    .map((application) =>
+      toReadyScheduleCandidate(
+        application,
+        jobById.get(String(application.job_id)),
+      ),
+    )
+    .filter((candidate): candidate is ReadyScheduleCandidate =>
+      Boolean(candidate),
+    );
+
   const managerCandidates = applications
     .map((application) =>
       toManagerCandidate(application, jobById.get(String(application.job_id))),
@@ -458,6 +521,7 @@ async function loadDashboardData(dealerSlug: string) {
     jobs,
     applications,
     decisions,
+    readyScheduleCandidates,
     managerCandidates,
     openJobs,
     filledJobs,
@@ -506,6 +570,8 @@ export default async function DealerDashboardPage({
   const requestSubmitted = searchParams?.request === "submitted";
   const requestClosed = searchParams?.request === "closed";
   const decisionSaved = searchParams?.decision === "saved";
+  const scheduleRequested = searchParams?.schedule === "requested";
+  const scheduleConfirmed = searchParams?.schedule === "confirmed";
   const submittedRole = searchParams?.role
     ? decodeURIComponent(searchParams.role)
     : "Hiring request";
@@ -513,8 +579,14 @@ export default async function DealerDashboardPage({
     ? decodeURIComponent(searchParams.candidate)
     : "Candidate";
 
-  const { applications, decisions, managerCandidates, openJobs, filledJobs } =
-    await loadDashboardData(params.dealerSlug);
+  const {
+    applications,
+    decisions,
+    readyScheduleCandidates,
+    managerCandidates,
+    openJobs,
+    filledJobs,
+  } = await loadDashboardData(params.dealerSlug);
 
   async function submitHiringRequest(formData: FormData) {
     "use server";
@@ -773,6 +845,20 @@ export default async function DealerDashboardPage({
           <ActionNotice
             title={`${decisionCandidate} decision saved.`}
             copy="The interview decision has been documented."
+          />
+        ) : null}
+
+        {scheduleRequested ? (
+          <ActionNotice
+            title="Dealer scheduling request sent."
+            copy="The dealer has been notified by dashboard alert, email, and SMS where available."
+          />
+        ) : null}
+
+        {scheduleConfirmed ? (
+          <ActionNotice
+            title="Manager interview scheduled."
+            copy="The candidate has been notified by email and SMS where available."
           />
         ) : null}
 
@@ -1252,6 +1338,264 @@ export default async function DealerDashboardPage({
         </section>
 
         <section style={{ marginTop: 40 }}>
+          <div className="eyebrow">Ready for dealer scheduling</div>
+
+          {readyScheduleCandidates.length > 0 ? (
+            <div style={{ display: "grid", gap: 14, marginTop: 16 }}>
+              {readyScheduleCandidates.map((candidate) => (
+                <article
+                  key={candidate.id}
+                  style={{
+                    padding: 22,
+                    borderRadius: 24,
+                    background:
+                      "linear-gradient(145deg, rgba(251,191,36,0.105), rgba(255,255,255,0.035))",
+                    border: "1px solid rgba(251,191,36,0.22)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "96px minmax(0, 1fr) auto",
+                      gap: 18,
+                      alignItems: "center",
+                    }}
+                  >
+                    <CandidatePhoto
+                      url={candidate.photoUrl}
+                      name={candidate.name}
+                    />
+
+                    <div>
+                      <h3
+                        style={{
+                          margin: 0,
+                          color: "#fff",
+                          fontSize: 28,
+                          letterSpacing: "-0.04em",
+                          lineHeight: 1,
+                        }}
+                      >
+                        {candidate.name}
+                      </h3>
+
+                      <p style={{ margin: "8px 0 0", color: "#bfd6f5" }}>
+                        {candidate.role} · Ready for manager interview time
+                      </p>
+
+                      <p
+                        style={{
+                          color: "#9fb4d6",
+                          lineHeight: 1.55,
+                          margin: "10px 0 0",
+                        }}
+                      >
+                        {candidate.summary}
+                      </p>
+                    </div>
+
+                    <div
+                      style={{ display: "grid", gap: 8, justifyItems: "end" }}
+                    >
+                      <StatusBadge status="Packet ready · schedule needed" />
+                      {candidate.fitScore !== null ? (
+                        <span
+                          style={{
+                            padding: "8px 10px",
+                            borderRadius: 999,
+                            background: "rgba(251,191,36,0.12)",
+                            border: "1px solid rgba(251,191,36,0.22)",
+                            color: "#fbbf24",
+                            fontSize: 12,
+                            fontWeight: 950,
+                          }}
+                        >
+                          Fit score {candidate.fitScore}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <details
+                    style={{
+                      marginTop: 16,
+                      padding: 16,
+                      borderRadius: 18,
+                      background: "rgba(255,255,255,0.045)",
+                      border: "1px solid rgba(255,255,255,0.09)",
+                    }}
+                  >
+                    <summary
+                      style={{
+                        color: "#fff",
+                        fontWeight: 900,
+                        cursor: "pointer",
+                      }}
+                    >
+                      View recommendation packet
+                    </summary>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "160px minmax(0, 0.75fr) minmax(0, 1.15fr)",
+                        gap: 12,
+                        marginTop: 14,
+                        alignItems: "stretch",
+                      }}
+                    >
+                      <PacketIdentityBlock
+                        name={candidate.name}
+                        role={candidate.role}
+                        photoUrl={candidate.photoUrl}
+                        fitScore={candidate.fitScore}
+                      />
+                      <ResumeBlock url={candidate.resumeUrl} />
+                      <QuestionBlock questions={candidate.interviewQuestions} />
+                    </div>
+
+                    <div style={{ marginTop: 12 }}>
+                      <PacketBlock
+                        title="NATA recommendation"
+                        copy={candidate.nataNotes}
+                      />
+                    </div>
+
+                    <div style={{ marginTop: 14 }}>
+                      <strong style={{ color: "#fff" }}>
+                        Verify during manager interview
+                      </strong>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 8,
+                          marginTop: 10,
+                        }}
+                      >
+                        {candidate.verificationItems.map((item) => (
+                          <span
+                            key={item}
+                            style={{
+                              padding: "8px 10px",
+                              borderRadius: 999,
+                              background: "rgba(255,255,255,0.055)",
+                              border: "1px solid rgba(255,255,255,0.09)",
+                              color: "#d7e8ff",
+                              fontSize: 13,
+                            }}
+                          >
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </details>
+
+                  <form
+                    method="POST"
+                    action={`/api/nata/applications/${candidate.applicationId}/schedule-dealer-interview`}
+                    style={{
+                      marginTop: 16,
+                      padding: 16,
+                      borderRadius: 18,
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                    }}
+                  >
+                    <input
+                      type="hidden"
+                      name="dealer_slug"
+                      value={params.dealerSlug}
+                    />
+
+                    <h4
+                      style={{
+                        margin: "0 0 12px",
+                        color: "#fff",
+                        fontSize: 18,
+                      }}
+                    >
+                      Select optimal manager interview time
+                    </h4>
+
+                    <div className="grid-2" style={{ gap: 14 }}>
+                      <Field label="Interview date">
+                        <input
+                          name="interview_date"
+                          type="date"
+                          required
+                          style={inputStyle}
+                        />
+                      </Field>
+
+                      <Field label="Interview time">
+                        <input
+                          name="interview_time"
+                          type="time"
+                          required
+                          style={inputStyle}
+                        />
+                      </Field>
+
+                      <Field label="Manager / interviewer">
+                        <input
+                          name="manager_name"
+                          placeholder="Example: Sales Manager"
+                          required
+                          style={inputStyle}
+                        />
+                      </Field>
+
+                      <Field label="Interview location">
+                        <input
+                          name="interview_location"
+                          placeholder="Example: Sales office"
+                          style={inputStyle}
+                        />
+                      </Field>
+                    </div>
+
+                    <div style={{ marginTop: 14 }}>
+                      <Field label="Optional note for candidate">
+                        <textarea
+                          name="dealer_schedule_note"
+                          rows={3}
+                          placeholder="Example: Please arrive 10 minutes early and ask for the sales manager."
+                          style={inputStyle}
+                        />
+                      </Field>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 14,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <span style={{ color: "#9fb4d6", fontSize: 13 }}>
+                        Confirming a time moves this candidate onto the manager
+                        interview board and notifies the candidate.
+                      </span>
+                      <button className="btn btn-primary" type="submit">
+                        Confirm interview time
+                      </button>
+                    </div>
+                  </form>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyState copy="No candidates are waiting for dealer interview scheduling." />
+          )}
+        </section>
+
+        <section style={{ marginTop: 40 }}>
           <div className="eyebrow">Manager interview board</div>
 
           {managerCandidates.length > 0 ? (
@@ -1550,9 +1894,9 @@ export default async function DealerDashboardPage({
               </h3>
               <p style={{ margin: "10px 0 0", lineHeight: 1.6 }}>
                 NATA Today is still screening candidates, completing virtual
-                interviews, scheduling manager interviews, or preparing
-                interview packets. Candidates appear here only when the packet
-                is ready and the interview is scheduled.
+                interviews, requesting a manager interview time, or preparing
+                interview packets. Candidates appear here for decision only when
+                the packet is ready and the interview is scheduled.
               </p>
             </div>
           )}
