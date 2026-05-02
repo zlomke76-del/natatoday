@@ -30,6 +30,7 @@ type ManagerCandidate = {
   summary: string;
   notes: string[];
   resumeUrl: string;
+  photoUrl: string;
   nataNotes: string;
   interviewQuestions: string[];
   verificationItems: string[];
@@ -103,7 +104,7 @@ function getApplicationStatus(application: AnyRow) {
     application.screening_status ||
       application.status ||
       application.application_status ||
-      "new"
+      "new",
   );
 }
 
@@ -114,7 +115,7 @@ function getCandidateName(application: AnyRow) {
       application.name ||
       application.applicant_name ||
       application.email ||
-      "Candidate"
+      "Candidate",
   );
 }
 
@@ -128,7 +129,7 @@ function getApplicationSummary(application: AnyRow) {
       application.summary ||
       application.decision_reason ||
       application.cover_note ||
-      "Candidate packet is ready for manager review."
+      "Candidate packet is ready for manager review.",
   );
 }
 
@@ -137,7 +138,17 @@ function getResumeUrl(application: AnyRow) {
     application.resume_url ||
       application.resume_path ||
       application.resume_public_url ||
-      ""
+      "",
+  );
+}
+
+function getCandidatePhotoUrl(application: AnyRow) {
+  return String(
+    application.profile_photo_url ||
+      application.photo_url ||
+      application.candidate_photo_url ||
+      application.headshot_url ||
+      "",
   );
 }
 
@@ -165,7 +176,12 @@ function hasReadyPacket(application: AnyRow) {
   const hasSummary = Boolean(getApplicationSummary(application));
   const hasResume = Boolean(getResumeUrl(application));
 
-  return MANAGER_VISIBLE_STATUSES.has(status) && hasInterview && hasSummary && hasResume;
+  return (
+    MANAGER_VISIBLE_STATUSES.has(status) &&
+    hasInterview &&
+    hasSummary &&
+    hasResume
+  );
 }
 
 function formatInterviewTime(value: string | null) {
@@ -187,7 +203,10 @@ function formatInterviewTime(value: string | null) {
 
 function splitList(value: unknown) {
   if (Array.isArray(value)) {
-    return value.map(String).map((item) => item.trim()).filter(Boolean);
+    return value
+      .map(String)
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
 
   if (typeof value === "string" && value.trim()) {
@@ -201,7 +220,9 @@ function splitList(value: unknown) {
 }
 
 function getCandidateTags(application: AnyRow) {
-  const directTags = splitList(application.notes || application.tags || application.fit_signals);
+  const directTags = splitList(
+    application.notes || application.tags || application.fit_signals,
+  );
 
   if (directTags.length > 0) return directTags.slice(0, 4);
 
@@ -221,7 +242,7 @@ function getInterviewQuestions(role: string, application: AnyRow) {
   const existing = splitList(
     application.interview_questions ||
       application.manager_questions ||
-      application.suggested_questions
+      application.suggested_questions,
   );
 
   if (existing.length > 0) return existing.slice(0, 5);
@@ -276,20 +297,32 @@ function getVerificationItems(role: string, application: AnyRow) {
   const existing = splitList(
     application.verification_items ||
       application.verification_flags ||
-      application.remaining_verification_flags
+      application.remaining_verification_flags,
   );
 
   if (existing.length > 0) return existing.slice(0, 5);
 
   const lower = role.toLowerCase();
-  const defaults = ["Confirm schedule", "Confirm start date", "Confirm compensation alignment"];
+  const defaults = [
+    "Confirm schedule",
+    "Confirm start date",
+    "Confirm compensation alignment",
+  ];
 
   if (lower.includes("technician")) {
-    return ["Confirm certifications", "Confirm tool availability", ...defaults].slice(0, 5);
+    return [
+      "Confirm certifications",
+      "Confirm tool availability",
+      ...defaults,
+    ].slice(0, 5);
   }
 
   if (lower.includes("sales") || lower.includes("bdc")) {
-    return ["Confirm weekend availability", "Confirm follow-up expectations", ...defaults].slice(0, 5);
+    return [
+      "Confirm weekend availability",
+      "Confirm follow-up expectations",
+      ...defaults,
+    ].slice(0, 5);
   }
 
   return defaults;
@@ -300,7 +333,7 @@ function buildNataNotes(application: AnyRow, role: string) {
     application.nata_notes ||
       application.packet_notes ||
       application.interview_packet_notes ||
-      ""
+      "",
   ).trim();
 
   if (existing) return existing;
@@ -312,7 +345,10 @@ function buildNataNotes(application: AnyRow, role: string) {
   return `NATA review: ${summary}${fitScoreLine} Use the manager interview to verify role fit, availability, compensation alignment, and any remaining concerns before a final hiring decision.`;
 }
 
-function toManagerCandidate(application: AnyRow, job: AnyRow | undefined): ManagerCandidate | null {
+function toManagerCandidate(
+  application: AnyRow,
+  job: AnyRow | undefined,
+): ManagerCandidate | null {
   const status = getApplicationStatus(application);
   const dealerInterviewAt = getDealerInterviewAt(application);
 
@@ -320,7 +356,9 @@ function toManagerCandidate(application: AnyRow, job: AnyRow | undefined): Manag
   if (!dealerInterviewAt) return null;
   if (!hasReadyPacket(application)) return null;
 
-  const role = String(job?.title || application.role || application.job_title || "Role");
+  const role = String(
+    job?.title || application.role || application.job_title || "Role",
+  );
 
   return {
     id: String(application.id),
@@ -333,10 +371,12 @@ function toManagerCandidate(application: AnyRow, job: AnyRow | undefined): Manag
     summary: getApplicationSummary(application),
     notes: getCandidateTags(application),
     resumeUrl: getResumeUrl(application),
+    photoUrl: getCandidatePhotoUrl(application),
     nataNotes: buildNataNotes(application, role),
     interviewQuestions: getInterviewQuestions(role, application),
     verificationItems: getVerificationItems(role, application),
-    fitScore: typeof application.fit_score === "number" ? application.fit_score : null,
+    fitScore:
+      typeof application.fit_score === "number" ? application.fit_score : null,
   };
 }
 
@@ -370,12 +410,13 @@ async function loadDashboardData(dealerSlug: string) {
   let decisions: AnyRow[] = [];
 
   if (jobIds.length > 0) {
-    const { data: applicationsData, error: applicationsError } = await supabaseAdmin
-      .schema("nata")
-      .from("applications")
-      .select("*")
-      .in("job_id", jobIds)
-      .order("created_at", { ascending: false });
+    const { data: applicationsData, error: applicationsError } =
+      await supabaseAdmin
+        .schema("nata")
+        .from("applications")
+        .select("*")
+        .in("job_id", jobIds)
+        .order("created_at", { ascending: false });
 
     if (applicationsError) {
       console.error("Failed to load dealer applications:", applicationsError);
@@ -400,15 +441,17 @@ async function loadDashboardData(dealerSlug: string) {
   const jobById = new Map(jobs.map((job) => [String(job.id), job]));
 
   const managerCandidates = applications
-    .map((application) => toManagerCandidate(application, jobById.get(String(application.job_id))))
+    .map((application) =>
+      toManagerCandidate(application, jobById.get(String(application.job_id))),
+    )
     .filter((candidate): candidate is ManagerCandidate => Boolean(candidate));
 
   const openJobs = jobs.filter(
-    (job) => job.is_active !== false && job.publish_status !== "filled"
+    (job) => job.is_active !== false && job.publish_status !== "filled",
   );
 
   const filledJobs = jobs.filter(
-    (job) => job.publish_status === "filled" || job.is_active === false
+    (job) => job.publish_status === "filled" || job.is_active === false,
   );
 
   return {
@@ -447,12 +490,12 @@ export default async function DealerDashboardPage({
               Access required.
             </h1>
             <p className="lede">
-              This dealer workspace is protected. Complete enrollment through Stripe
-              or use the secure access link issued after checkout.
+              This dealer workspace is protected. Complete enrollment through
+              Stripe or use the secure access link issued after checkout.
             </p>
             <p style={{ color: "#9fb4d6", lineHeight: 1.6, marginTop: 18 }}>
-              If your subscription is already active, contact NATA Today and we can
-              resend the secure access link for this dealership.
+              If your subscription is already active, contact NATA Today and we
+              can resend the secure access link for this dealership.
             </p>
           </div>
         </section>
@@ -481,16 +524,19 @@ export default async function DealerDashboardPage({
     const salary = cleanFormValue(formData.get("payRange"));
     const needBy = cleanFormValue(formData.get("needBy"));
     const notes = cleanFormValue(formData.get("notes"));
-    const publishMode = cleanFormValue(formData.get("publish_mode")) || "public";
+    const publishMode =
+      cleanFormValue(formData.get("publish_mode")) || "public";
 
     if (!title) {
-      throw new Error("Role is required before a hiring request can be submitted.");
+      throw new Error(
+        "Role is required before a hiring request can be submitted.",
+      );
     }
 
     const adminKey = process.env.NATA_ADMIN_KEY;
     if (!adminKey) {
       throw new Error(
-        "Missing NATA_ADMIN_KEY. Add it to Vercel before submitting hiring requests."
+        "Missing NATA_ADMIN_KEY. Add it to Vercel before submitting hiring requests.",
       );
     }
 
@@ -522,13 +568,15 @@ export default async function DealerDashboardPage({
     const result = await response.json().catch(() => null);
 
     if (!response.ok) {
-      throw new Error(result?.error || "Hiring request could not be published.");
+      throw new Error(
+        result?.error || "Hiring request could not be published.",
+      );
     }
 
     redirect(
       `/dealer/${params.dealerSlug}/dashboard?request=submitted&role=${encodeURIComponent(
-        title
-      )}`
+        title,
+      )}`,
     );
   }
 
@@ -536,7 +584,8 @@ export default async function DealerDashboardPage({
     "use server";
 
     const jobId = cleanFormValue(formData.get("job_id"));
-    const jobTitle = cleanFormValue(formData.get("job_title")) || "Hiring request";
+    const jobTitle =
+      cleanFormValue(formData.get("job_title")) || "Hiring request";
     const closedReason =
       cleanFormValue(formData.get("closed_reason")) || "walk_in_candidate";
     const filledNote = cleanFormValue(formData.get("filled_note"));
@@ -571,8 +620,8 @@ export default async function DealerDashboardPage({
 
     redirect(
       `/dealer/${params.dealerSlug}/dashboard?request=closed&role=${encodeURIComponent(
-        jobTitle
-      )}`
+        jobTitle,
+      )}`,
     );
   }
 
@@ -587,7 +636,9 @@ export default async function DealerDashboardPage({
     const candidateName = cleanFormValue(formData.get("candidate_name"));
 
     if (!jobId || !applicationId || !outcome || !decisionReason) {
-      throw new Error("Outcome and reason are required before saving a decision.");
+      throw new Error(
+        "Outcome and reason are required before saving a decision.",
+      );
     }
 
     const { error: decisionError } = await supabaseAdmin
@@ -623,7 +674,10 @@ export default async function DealerDashboardPage({
       .eq("id", applicationId);
 
     if (applicationError) {
-      console.error("Failed to update application after decision:", applicationError);
+      console.error(
+        "Failed to update application after decision:",
+        applicationError,
+      );
       throw new Error("Application status could not be updated.");
     }
 
@@ -649,8 +703,8 @@ export default async function DealerDashboardPage({
 
     redirect(
       `/dealer/${params.dealerSlug}/dashboard?decision=saved&candidate=${encodeURIComponent(
-        candidateName || "Candidate"
-      )}`
+        candidateName || "Candidate",
+      )}`,
     );
   }
 
@@ -678,8 +732,8 @@ export default async function DealerDashboardPage({
             <p className="lede">
               Submit hiring requests, track open roles, and act only when a
               manager interview is scheduled with a completed packet. Our team
-              handles posting, screening, candidate routing, and interview packet
-              preparation before anything lands on your board.
+              handles posting, screening, candidate routing, and interview
+              packet preparation before anything lands on your board.
             </p>
           </div>
 
@@ -692,7 +746,9 @@ export default async function DealerDashboardPage({
               minWidth: 240,
             }}
           >
-            <strong style={{ color: "#fff", display: "block" }}>{dealerName}</strong>
+            <strong style={{ color: "#fff", display: "block" }}>
+              {dealerName}
+            </strong>
             <span style={{ color: "#9fb4d6", display: "block", marginTop: 6 }}>
               Monthly pipeline program active
             </span>
@@ -755,14 +811,20 @@ export default async function DealerDashboardPage({
             </h2>
 
             <p style={{ color: "#bfd6f5", lineHeight: 1.6, marginTop: 12 }}>
-              Submit the role, pay range, urgency, visibility preference, and notes.
-              NATA Today formats the post, handles publication, and opens the candidate pipeline.
+              Submit the role, pay range, urgency, visibility preference, and
+              notes. NATA Today formats the post, handles publication, and opens
+              the candidate pipeline.
             </p>
 
             <form action={submitHiringRequest} style={{ marginTop: 24 }}>
               <div className="grid-2" style={{ gap: 16 }}>
                 <Field label="Role needed">
-                  <select name="role" defaultValue="" required style={inputStyle}>
+                  <select
+                    name="role"
+                    defaultValue=""
+                    required
+                    style={inputStyle}
+                  >
                     <option value="" disabled>
                       Select role
                     </option>
@@ -775,7 +837,11 @@ export default async function DealerDashboardPage({
                 </Field>
 
                 <Field label="Priority">
-                  <select name="priority" defaultValue="Standard" style={inputStyle}>
+                  <select
+                    name="priority"
+                    defaultValue="Standard"
+                    style={inputStyle}
+                  >
                     {priorityOptions.map((priority) => (
                       <option key={priority} value={priority}>
                         {priority}
@@ -797,7 +863,11 @@ export default async function DealerDashboardPage({
                 </Field>
 
                 <Field label="Publishing mode">
-                  <select name="publish_mode" defaultValue="public" style={inputStyle}>
+                  <select
+                    name="publish_mode"
+                    defaultValue="public"
+                    style={inputStyle}
+                  >
                     <option value="public">Public dealership posting</option>
                     <option value="confidential">Confidential search</option>
                   </select>
@@ -889,9 +959,9 @@ export default async function DealerDashboardPage({
             </h2>
 
             <p style={{ color: "#cfe2ff", lineHeight: 1.6 }}>
-              Candidates do not appear on the dealer board while NATA Today is still
-              screening, completing the virtual interview, scheduling the manager
-              interview, or preparing the packet.
+              Candidates do not appear on the dealer board while NATA Today is
+              still screening, completing the virtual interview, scheduling the
+              manager interview, or preparing the packet.
             </p>
 
             <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
@@ -925,10 +995,13 @@ export default async function DealerDashboardPage({
             >
               {openJobs.map((job) => {
                 const jobApplications = applications.filter(
-                  (application) => String(application.job_id) === String(job.id)
+                  (application) =>
+                    String(application.job_id) === String(job.id),
                 );
                 const readyCount = jobApplications.filter((application) =>
-                  MANAGER_VISIBLE_STATUSES.has(getApplicationStatus(application))
+                  MANAGER_VISIBLE_STATUSES.has(
+                    getApplicationStatus(application),
+                  ),
                 ).length;
 
                 return (
@@ -988,9 +1061,15 @@ export default async function DealerDashboardPage({
                         marginTop: 18,
                       }}
                     >
-                      <Metric label="Candidates" value={jobApplications.length} />
+                      <Metric
+                        label="Candidates"
+                        value={jobApplications.length}
+                      />
                       <Metric label="Ready" value={readyCount} />
-                      <Metric label="Status" value={job.publish_status || "published"} />
+                      <Metric
+                        label="Status"
+                        value={job.publish_status || "published"}
+                      />
                     </div>
 
                     <p style={{ color: "#9fb4d6", margin: "16px 0 0" }}>
@@ -1009,7 +1088,11 @@ export default async function DealerDashboardPage({
                         gap: 10,
                       }}
                     >
-                      <input type="hidden" name="job_id" value={String(job.id)} />
+                      <input
+                        type="hidden"
+                        name="job_id"
+                        value={String(job.id)}
+                      />
                       <input
                         type="hidden"
                         name="job_title"
@@ -1019,7 +1102,8 @@ export default async function DealerDashboardPage({
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "minmax(0, 0.72fr) minmax(0, 1fr)",
+                          gridTemplateColumns:
+                            "minmax(0, 0.72fr) minmax(0, 1fr)",
                           gap: 10,
                           alignItems: "start",
                         }}
@@ -1030,10 +1114,16 @@ export default async function DealerDashboardPage({
                             defaultValue="walk_in_candidate"
                             style={inputStyle}
                           >
-                            <option value="walk_in_candidate">Filled by walk-in candidate</option>
-                            <option value="internal_hire">Filled internally</option>
+                            <option value="walk_in_candidate">
+                              Filled by walk-in candidate
+                            </option>
+                            <option value="internal_hire">
+                              Filled internally
+                            </option>
                             <option value="role_paused">Role paused</option>
-                            <option value="no_longer_needed">No longer needed</option>
+                            <option value="no_longer_needed">
+                              No longer needed
+                            </option>
                           </select>
                         </Field>
 
@@ -1056,7 +1146,8 @@ export default async function DealerDashboardPage({
                         }}
                       >
                         <span style={{ color: "#9fb4d6", fontSize: 13 }}>
-                          Removes this request from the open board and records the closure.
+                          Removes this request from the open board and records
+                          the closure.
                         </span>
                         <button
                           className="btn btn-secondary"
@@ -1092,10 +1183,11 @@ export default async function DealerDashboardPage({
                 const hiredDecision = decisions.find(
                   (decision) =>
                     String(decision.job_id) === String(job.id) &&
-                    String(decision.outcome) === "hired"
+                    String(decision.outcome) === "hired",
                 );
                 const application = applications.find(
-                  (item) => String(item.id) === String(hiredDecision?.application_id)
+                  (item) =>
+                    String(item.id) === String(hiredDecision?.application_id),
                 );
 
                 return (
@@ -1139,12 +1231,16 @@ export default async function DealerDashboardPage({
                     <p style={{ margin: "10px 0 0", color: "#cfe2ff" }}>
                       Filled by{" "}
                       <strong style={{ color: "#fff" }}>
-                        {application ? getCandidateName(application) : "documented hire"}
+                        {application
+                          ? getCandidateName(application)
+                          : "documented hire"}
                       </strong>
                     </p>
 
                     <p style={{ color: "#9fb4d6", lineHeight: 1.55 }}>
-                      {hiredDecision?.decision_reason || job.filled_note || "Decision documented."}
+                      {hiredDecision?.decision_reason ||
+                        job.filled_note ||
+                        "Decision documented."}
                     </p>
                   </article>
                 );
@@ -1166,42 +1262,74 @@ export default async function DealerDashboardPage({
                   style={{
                     padding: 22,
                     borderRadius: 24,
-                    background: "rgba(255,255,255,0.05)",
-                    border: "1px solid rgba(255,255,255,0.1)",
+                    background:
+                      "linear-gradient(145deg, rgba(255,255,255,0.065), rgba(255,255,255,0.035))",
+                    border: "1px solid rgba(255,255,255,0.12)",
                   }}
                 >
                   <div
                     style={{
-                      display: "flex",
-                      justifyContent: "space-between",
+                      display: "grid",
+                      gridTemplateColumns: "96px minmax(0, 1fr) auto",
                       gap: 18,
-                      alignItems: "flex-start",
-                      flexWrap: "wrap",
+                      alignItems: "center",
                     }}
                   >
+                    <CandidatePhoto
+                      url={candidate.photoUrl}
+                      name={candidate.name}
+                    />
+
                     <div>
                       <h3
                         style={{
                           margin: 0,
                           color: "#fff",
-                          fontSize: 24,
-                          letterSpacing: "-0.035em",
+                          fontSize: 28,
+                          letterSpacing: "-0.04em",
+                          lineHeight: 1,
                         }}
                       >
                         {candidate.name}
                       </h3>
 
-                      <p style={{ margin: "6px 0 0", color: "#bfd6f5" }}>
-                        {candidate.role} · {formatInterviewTime(candidate.dealerInterviewAt)}
+                      <p style={{ margin: "8px 0 0", color: "#bfd6f5" }}>
+                        {candidate.role} ·{" "}
+                        {formatInterviewTime(candidate.dealerInterviewAt)}
+                      </p>
+
+                      <p
+                        style={{
+                          color: "#9fb4d6",
+                          lineHeight: 1.55,
+                          margin: "10px 0 0",
+                        }}
+                      >
+                        {candidate.summary}
                       </p>
                     </div>
 
-                    <StatusBadge status="Packet ready · interview scheduled" />
+                    <div
+                      style={{ display: "grid", gap: 8, justifyItems: "end" }}
+                    >
+                      <StatusBadge status="Packet ready · interview scheduled" />
+                      {candidate.fitScore !== null ? (
+                        <span
+                          style={{
+                            padding: "8px 10px",
+                            borderRadius: 999,
+                            background: "rgba(251,191,36,0.12)",
+                            border: "1px solid rgba(251,191,36,0.22)",
+                            color: "#fbbf24",
+                            fontSize: 12,
+                            fontWeight: 950,
+                          }}
+                        >
+                          Fit score {candidate.fitScore}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
-
-                  <p style={{ color: "#9fb4d6", lineHeight: 1.55, marginTop: 14 }}>
-                    {candidate.summary}
-                  </p>
 
                   <div
                     style={{
@@ -1250,21 +1378,34 @@ export default async function DealerDashboardPage({
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "minmax(0, 0.85fr) minmax(0, 1.15fr)",
+                        gridTemplateColumns:
+                          "160px minmax(0, 0.75fr) minmax(0, 1.15fr)",
                         gap: 12,
                         marginTop: 14,
+                        alignItems: "stretch",
                       }}
                     >
+                      <PacketIdentityBlock
+                        name={candidate.name}
+                        role={candidate.role}
+                        photoUrl={candidate.photoUrl}
+                        fitScore={candidate.fitScore}
+                      />
                       <ResumeBlock url={candidate.resumeUrl} />
                       <QuestionBlock questions={candidate.interviewQuestions} />
                     </div>
 
                     <div style={{ marginTop: 12 }}>
-                      <PacketBlock title="NATA notes" copy={candidate.nataNotes} />
+                      <PacketBlock
+                        title="NATA notes"
+                        copy={candidate.nataNotes}
+                      />
                     </div>
 
                     <div style={{ marginTop: 14 }}>
-                      <strong style={{ color: "#fff" }}>Verify during interview</strong>
+                      <strong style={{ color: "#fff" }}>
+                        Verify during interview
+                      </strong>
                       <div
                         style={{
                           display: "flex",
@@ -1302,21 +1443,40 @@ export default async function DealerDashboardPage({
                       border: "1px solid rgba(255,255,255,0.08)",
                     }}
                   >
-                    <input type="hidden" name="job_id" value={candidate.jobId} />
+                    <input
+                      type="hidden"
+                      name="job_id"
+                      value={candidate.jobId}
+                    />
                     <input
                       type="hidden"
                       name="application_id"
                       value={candidate.applicationId}
                     />
-                    <input type="hidden" name="candidate_name" value={candidate.name} />
+                    <input
+                      type="hidden"
+                      name="candidate_name"
+                      value={candidate.name}
+                    />
 
-                    <h4 style={{ margin: "0 0 12px", color: "#fff", fontSize: 18 }}>
+                    <h4
+                      style={{
+                        margin: "0 0 12px",
+                        color: "#fff",
+                        fontSize: 18,
+                      }}
+                    >
                       Interview outcome
                     </h4>
 
                     <div className="grid-2" style={{ gap: 14 }}>
                       <Field label="Outcome">
-                        <select name="outcome" required defaultValue="" style={inputStyle}>
+                        <select
+                          name="outcome"
+                          required
+                          defaultValue=""
+                          style={inputStyle}
+                        >
                           <option value="" disabled>
                             Select outcome
                           </option>
@@ -1324,7 +1484,9 @@ export default async function DealerDashboardPage({
                           <option value="not_hired">Not hired</option>
                           <option value="keep_warm">Keep warm</option>
                           <option value="no_show">No-show</option>
-                          <option value="needs_followup">Needs follow-up</option>
+                          <option value="needs_followup">
+                            Needs follow-up
+                          </option>
                         </select>
                       </Field>
 
@@ -1361,7 +1523,8 @@ export default async function DealerDashboardPage({
                       }}
                     >
                       <span style={{ color: "#9fb4d6", fontSize: 13 }}>
-                        Hired closes the public listing. Other outcomes keep the role open.
+                        Hired closes the public listing. Other outcomes keep the
+                        role open.
                       </span>
                       <button className="btn btn-primary" type="submit">
                         Save decision
@@ -1386,9 +1549,10 @@ export default async function DealerDashboardPage({
                 No manager interviews are ready yet.
               </h3>
               <p style={{ margin: "10px 0 0", lineHeight: 1.6 }}>
-                NATA Today is still screening candidates, completing virtual interviews,
-                scheduling manager interviews, or preparing interview packets. Candidates
-                appear here only when the packet is ready and the interview is scheduled.
+                NATA Today is still screening candidates, completing virtual
+                interviews, scheduling manager interviews, or preparing
+                interview packets. Candidates appear here only when the packet
+                is ready and the interview is scheduled.
               </p>
             </div>
           )}
@@ -1476,6 +1640,100 @@ function EmptyState({ copy }: { copy: string }) {
   );
 }
 
+function CandidatePhoto({ url, name }: { url: string; name: string }) {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+
+  return (
+    <div
+      style={{
+        width: 92,
+        height: 92,
+        borderRadius: 24,
+        overflow: "hidden",
+        background: "rgba(20,115,255,0.14)",
+        border: "1px solid rgba(147,197,253,0.24)",
+        display: "grid",
+        placeItems: "center",
+        color: "#dbeafe",
+        fontSize: 26,
+        fontWeight: 950,
+      }}
+    >
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={url}
+          alt={`${name} profile photo`}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      ) : (
+        initials || "NA"
+      )}
+    </div>
+  );
+}
+
+function PacketIdentityBlock({
+  name,
+  role,
+  photoUrl,
+  fitScore,
+}: {
+  name: string;
+  role: string;
+  photoUrl: string;
+  fitScore: number | null;
+}) {
+  return (
+    <div
+      style={{
+        padding: 14,
+        borderRadius: 16,
+        background: "rgba(5,10,18,0.5)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        display: "grid",
+        gap: 10,
+        justifyItems: "center",
+        textAlign: "center",
+      }}
+    >
+      <CandidatePhoto url={photoUrl} name={name} />
+      <div>
+        <strong style={{ color: "#fff", display: "block" }}>{name}</strong>
+        <span
+          style={{
+            color: "#bfd6f5",
+            display: "block",
+            marginTop: 4,
+            fontSize: 12,
+          }}
+        >
+          {role}
+        </span>
+        {fitScore !== null ? (
+          <span
+            style={{
+              color: "#fbbf24",
+              display: "block",
+              marginTop: 6,
+              fontSize: 12,
+              fontWeight: 900,
+            }}
+          >
+            Fit score {fitScore}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function ResumeBlock({ url }: { url: string }) {
   return (
     <div
@@ -1512,7 +1770,8 @@ function ResumeBlock({ url }: { url: string }) {
             lineHeight: 1.45,
           }}
         >
-          Resume is not attached. Candidate remains off the board until packet is ready.
+          Resume is not attached. Candidate remains off the board until packet
+          is ready.
         </span>
       )}
     </div>
