@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import Nav from "../components/Nav";
 
@@ -18,27 +19,118 @@ type Job = {
   confidential_note?: string | null;
 };
 
+type JobsResponse = {
+  jobs: Job[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+};
+
+type CareersSearchParams = {
+  q?: string;
+  location?: string;
+  role?: string;
+  type?: string;
+  publishMode?: string;
+  page?: string;
+};
+
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
-async function getJobs(): Promise<Job[]> {
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL || "https://natatoday.vercel.app";
+const PAGE_SIZE = 25;
 
-  const res = await fetch(`${appUrl}/api/nata/jobs`, {
+function clean(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function safePage(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) return 1;
+  return Math.floor(parsed);
+}
+
+function buildSearchUrl(input: {
+  q: string;
+  location: string;
+  role: string;
+  type: string;
+  publishMode: string;
+  page: number;
+}) {
+  const params = new URLSearchParams();
+
+  if (input.q) params.set("q", input.q);
+  if (input.location) params.set("location", input.location);
+  if (input.role && input.role !== "all") params.set("role", input.role);
+  if (input.type && input.type !== "all") params.set("type", input.type);
+  if (input.publishMode && input.publishMode !== "all") {
+    params.set("publishMode", input.publishMode);
+  }
+  if (input.page > 1) params.set("page", String(input.page));
+
+  const query = params.toString();
+  return query ? `/careers?${query}` : "/careers";
+}
+
+async function getJobs(searchParams: CareersSearchParams): Promise<JobsResponse> {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://natatoday.vercel.app";
+  const q = clean(searchParams.q);
+  const location = clean(searchParams.location);
+  const role = clean(searchParams.role) || "all";
+  const type = clean(searchParams.type) || "all";
+  const publishMode = clean(searchParams.publishMode) || "all";
+  const page = safePage(searchParams.page);
+  const offset = (page - 1) * PAGE_SIZE;
+
+  const params = new URLSearchParams({
+    limit: String(PAGE_SIZE),
+    offset: String(offset),
+  });
+
+  if (q) params.set("q", q);
+  if (location) params.set("location", location);
+  if (role !== "all") params.set("role", role);
+  if (type !== "all") params.set("type", type);
+  if (publishMode !== "all") params.set("publishMode", publishMode);
+
+  const res = await fetch(`${appUrl}/api/nata/jobs?${params.toString()}`, {
     cache: "no-store",
   });
 
   if (!res.ok) {
     console.error("Failed to load jobs:", res.status);
-    return [];
+    return { jobs: [], total: 0, limit: PAGE_SIZE, offset, hasMore: false };
   }
 
   const data = await res.json();
-  return data.jobs || [];
+
+  return {
+    jobs: data.jobs || [],
+    total: Number(data.total || data.jobs?.length || 0),
+    limit: Number(data.limit || PAGE_SIZE),
+    offset: Number(data.offset || offset),
+    hasMore: Boolean(data.hasMore),
+  };
 }
 
-export default async function CareersPage() {
-  const jobs = await getJobs();
+export default async function CareersPage({
+  searchParams,
+}: {
+  searchParams: CareersSearchParams;
+}) {
+  const q = clean(searchParams.q);
+  const location = clean(searchParams.location);
+  const role = clean(searchParams.role) || "all";
+  const type = clean(searchParams.type) || "all";
+  const publishMode = clean(searchParams.publishMode) || "all";
+  const page = safePage(searchParams.page);
+  const result = await getJobs(searchParams);
+  const totalPages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
+  const showingFrom = result.total === 0 ? 0 : result.offset + 1;
+  const showingTo = Math.min(result.offset + result.jobs.length, result.total);
 
   return (
     <main className="shell">
@@ -47,12 +139,10 @@ export default async function CareersPage() {
       <section style={pageSectionStyle}>
         <div className="eyebrow">Dealership Careers</div>
 
-        <h1>Open dealership roles published by Solace.</h1>
+        <h1>Find your next dealership role.</h1>
 
         <p className="lede">
-          Apply to a current opening or join the NATA candidate pool. Solace can
-          review your profile for dealership opportunities within your area as
-          new roles are published.
+          Search active dealership openings or join the NATA candidate pool. Solace can review your profile for dealership opportunities within your area as new roles are published.
         </p>
 
         <div style={candidatePoolCardStyle}>
@@ -61,9 +151,7 @@ export default async function CareersPage() {
               <div style={poolBadgeStyle}>Candidate Pool</div>
               <h2 style={poolTitleStyle}>Be considered for future openings.</h2>
               <p style={poolCopyStyle}>
-                Upload your resume once. Solace will look for dealership roles
-                within 0–100 miles of your location and keep you eligible for
-                future opportunities unless you are already placed.
+                Upload your resume once. Solace will look for dealership roles within 0–100 miles of your location and keep you eligible for future opportunities unless you are already placed.
               </p>
 
               <div style={poolRulesStyle}>
@@ -79,40 +167,22 @@ export default async function CareersPage() {
               encType="multipart/form-data"
               style={poolFormStyle}
             >
+              <div style={compactPoolHeaderStyle}>
+                <strong>Join the pool</strong>
+                <span>Minimum viable info. Solace does the rest.</span>
+              </div>
+
               <div style={formGridStyle}>
-                <Input
-                  label="Full name"
-                  name="name"
-                  placeholder="Enter your full name"
-                  required
-                />
-                <Input
-                  label="Email"
-                  name="email"
-                  type="email"
-                  placeholder="Enter your email"
-                  required
-                />
-                <Input
-                  label="Phone"
-                  name="phone"
-                  placeholder="(555) 123-4567"
-                  required
-                />
-                <Input
-                  label="Location / ZIP"
-                  name="location"
-                  placeholder="Houston, TX or 77002"
-                  required
-                />
+                <Input label="Phone" name="phone" placeholder="(555) 123-4567" required />
+                <Input label="Location / ZIP" name="location" placeholder="Houston, TX or 77002" required />
               </div>
 
               <div style={{ marginTop: 14 }}>
-                <Input
-                  label="LinkedIn profile"
-                  name="linkedin"
-                  placeholder="linkedin.com/in/yourprofile"
-                />
+                <Input label="Email" name="email" type="email" placeholder="name@email.com" />
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <Input label="Full name" name="name" placeholder="Optional if listed on resume" />
               </div>
 
               <div style={uploadGridStyle}>
@@ -122,7 +192,7 @@ export default async function CareersPage() {
                   accept=".pdf,.doc,.docx"
                   icon="📄"
                   primary="Upload your resume"
-                  helper="PDF, DOC, or DOCX. Solace uses this to compare your background to future dealership roles."
+                  helper="Required. Solace uses this to extract role signals and match future dealership roles."
                   required
                 />
 
@@ -132,22 +202,17 @@ export default async function CareersPage() {
                   accept="image/*"
                   capture="user"
                   icon="📷"
-                  primary="Take selfie or upload photo"
+                  primary="Selfie or photo"
                   helper="Optional, but helpful for recruiter review."
                 />
               </div>
 
               <div style={privacyNoticeStyle}>
                 <span style={shieldStyle}>◇</span>
-                <span>
-                  Candidate pool submissions stay internal unless NATA identifies
-                  a potential role fit.
-                </span>
+                <span>Candidate pool submissions stay internal unless NATA identifies a potential role fit.</span>
               </div>
 
-              <button type="submit" style={poolSubmitButtonStyle}>
-                Join candidate pool →
-              </button>
+              <button type="submit" style={poolSubmitButtonStyle}>Join candidate pool →</button>
             </form>
           </div>
         </div>
@@ -159,51 +224,105 @@ export default async function CareersPage() {
           </div>
         </div>
 
+        <form method="GET" action="/careers" style={searchPanelStyle}>
+          <div style={searchGridStyle}>
+            <label style={searchLabelStyle}>
+              <span>Search</span>
+              <input
+                name="q"
+                defaultValue={q}
+                placeholder="Sales, technician, advisor, BDC..."
+                style={searchInputStyle}
+              />
+            </label>
+
+            <label style={searchLabelStyle}>
+              <span>Location</span>
+              <input
+                name="location"
+                defaultValue={location}
+                placeholder="Houston, Dallas, 77002..."
+                style={searchInputStyle}
+              />
+            </label>
+
+            <label style={searchLabelStyle}>
+              <span>Role</span>
+              <select name="role" defaultValue={role} style={searchInputStyle}>
+                <option value="all">All roles</option>
+                <option value="sales">Sales</option>
+                <option value="technician">Technician</option>
+                <option value="service-advisor">Service Advisor</option>
+                <option value="bdc">BDC</option>
+                <option value="parts">Parts</option>
+                <option value="finance">Finance / F&amp;I</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+
+            <label style={searchLabelStyle}>
+              <span>Type</span>
+              <select name="type" defaultValue={type} style={searchInputStyle}>
+                <option value="all">All types</option>
+                <option value="full-time">Full-time</option>
+                <option value="part-time">Part-time</option>
+                <option value="contract">Contract</option>
+              </select>
+            </label>
+
+            <label style={searchLabelStyle}>
+              <span>Visibility</span>
+              <select name="publishMode" defaultValue={publishMode} style={searchInputStyle}>
+                <option value="all">All listings</option>
+                <option value="public">Public dealership roles</option>
+                <option value="confidential">Confidential searches</option>
+              </select>
+            </label>
+
+            <div style={searchActionsStyle}>
+              <button type="submit" style={searchButtonStyle}>Search roles</button>
+              <Link href="/careers" style={clearButtonStyle}>Clear</Link>
+            </div>
+          </div>
+        </form>
+
+        <div style={resultsMetaStyle}>
+          <span>
+            Showing {showingFrom}-{showingTo} of {result.total} roles
+          </span>
+          <span>Page {page} of {totalPages}</span>
+        </div>
+
         <div style={{ display: "grid", gap: 18, marginTop: 22 }}>
-          {jobs.length === 0 ? (
+          {result.jobs.length === 0 ? (
             <div style={emptyStateStyle}>
-              <h2 style={{ margin: 0 }}>No open roles yet.</h2>
+              <h2 style={{ margin: 0 }}>No matching roles.</h2>
               <p style={{ color: "#cfe2ff", lineHeight: 1.6 }}>
-                Open dealership roles will appear here when active requests are
-                published.
+                Try a broader search, clear filters, or join the candidate pool so Solace can surface future openings near you.
               </p>
             </div>
           ) : (
-            jobs.map((job) => {
+            result.jobs.map((job) => {
               const isConfidential = Boolean(job.is_confidential);
               const dealerName =
                 job.display_dealer ||
-                (isConfidential
-                  ? "Confidential Dealership"
-                  : "Jersey Village Chrysler Jeep Dodge Ram");
-
-              const location =
-                job.display_location || job.location || "Dealership location";
+                (isConfidential ? "Confidential Dealership" : "Jersey Village Chrysler Jeep Dodge Ram");
+              const jobLocation = job.display_location || job.location || "Dealership location";
 
               return (
-                <Link
-                  key={job.id}
-                  href={`/careers/${job.slug}`}
-                  style={jobCardStyle}
-                >
+                <Link key={job.id} href={`/careers/${job.slug}`} style={jobCardStyle}>
                   <div style={jobCardGridStyle}>
                     <div style={{ maxWidth: 780 }}>
                       <div style={tagRowStyle}>
                         <span
                           style={{
                             ...roleTagStyle,
-                            background: isConfidential
-                              ? "rgba(251,191,36,0.14)"
-                              : "rgba(20,115,255,0.14)",
-                            border: isConfidential
-                              ? "1px solid rgba(251,191,36,0.28)"
-                              : "1px solid rgba(20,115,255,0.24)",
+                            background: isConfidential ? "rgba(251,191,36,0.14)" : "rgba(20,115,255,0.14)",
+                            border: isConfidential ? "1px solid rgba(251,191,36,0.28)" : "1px solid rgba(20,115,255,0.24)",
                             color: isConfidential ? "#fbbf24" : "#d7e8ff",
                           }}
                         >
-                          {isConfidential
-                            ? "Confidential search"
-                            : "Public dealership role"}
+                          {isConfidential ? "Confidential search" : "Public dealership role"}
                         </span>
 
                         <span style={{ color: "#9fb4d6", fontSize: 13 }}>
@@ -214,27 +333,21 @@ export default async function CareersPage() {
                       <h2 style={{ margin: 0 }}>{job.title}</h2>
 
                       <p style={{ margin: "10px 0 0", color: "#cfe2ff" }}>
-                        {dealerName} · {location}
+                        {dealerName} · {jobLocation}
                         {job.type ? ` · ${job.type}` : ""}
                       </p>
 
-                      {job.description ? (
-                        <p style={jobDescriptionStyle}>{job.description}</p>
-                      ) : null}
+                      {job.description ? <p style={jobDescriptionStyle}>{job.description}</p> : null}
 
                       {isConfidential ? (
                         <p style={confidentialTextStyle}>
-                          {job.confidential_note ||
-                            "This role is being handled confidentially on behalf of a dealership. Candidate information is reviewed before any dealership handoff."}
+                          {job.confidential_note || "This role is being handled confidentially on behalf of a dealership. Candidate information is reviewed before any dealership handoff."}
                         </p>
                       ) : null}
                     </div>
 
                     <div style={jobActionStackStyle}>
-                      {job.salary ? (
-                        <div style={salaryPillStyle}>{job.salary}</div>
-                      ) : null}
-
+                      {job.salary ? <div style={salaryPillStyle}>{job.salary}</div> : null}
                       <span style={applyPillStyle}>Apply for this role</span>
                     </div>
                   </div>
@@ -243,6 +356,34 @@ export default async function CareersPage() {
             })
           )}
         </div>
+
+        {result.total > PAGE_SIZE ? (
+          <div style={paginationStyle}>
+            {page > 1 ? (
+              <Link
+                href={buildSearchUrl({ q, location, role, type, publishMode, page: page - 1 })}
+                style={pageButtonStyle}
+              >
+                ← Previous
+              </Link>
+            ) : (
+              <span style={disabledPageButtonStyle}>← Previous</span>
+            )}
+
+            <span style={pageStatusStyle}>Page {page} of {totalPages}</span>
+
+            {result.hasMore ? (
+              <Link
+                href={buildSearchUrl({ q, location, role, type, publishMode, page: page + 1 })}
+                style={pageButtonStyle}
+              >
+                Next →
+              </Link>
+            ) : (
+              <span style={disabledPageButtonStyle}>Next →</span>
+            )}
+          </div>
+        ) : null}
       </section>
     </main>
   );
@@ -264,13 +405,7 @@ function Input({
   return (
     <label>
       <span style={labelStyle}>{label}</span>
-      <input
-        name={name}
-        type={type}
-        required={required}
-        placeholder={placeholder}
-        style={inputStyle}
-      />
+      <input name={name} type={type} required={required} placeholder={placeholder} style={inputStyle} />
     </label>
   );
 }
@@ -297,51 +432,41 @@ function UploadField({
   return (
     <div>
       <span style={labelStyle}>{label}</span>
-
       <label style={uploadBoxStyle}>
         <span style={uploadIconStyle}>{icon}</span>
         <span style={uploadPrimaryStyle}>{primary}</span>
         <span style={uploadHelperStyle}>{helper}</span>
-        <input
-          type="file"
-          name={name}
-          accept={accept}
-          capture={capture}
-          required={required}
-          style={fileInputStyle}
-        />
+        <input type="file" name={name} accept={accept} capture={capture} required={required} style={fileInputStyle} />
       </label>
     </div>
   );
 }
 
-const pageSectionStyle: React.CSSProperties = {
+const pageSectionStyle: CSSProperties = {
   width: "min(1180px, calc(100% - 40px))",
   margin: "0 auto",
   padding: "72px 0 96px",
 };
 
-const candidatePoolCardStyle: React.CSSProperties = {
+const candidatePoolCardStyle: CSSProperties = {
   marginTop: 38,
   borderRadius: 34,
   padding: 1,
-  background:
-    "linear-gradient(135deg, rgba(20,115,255,0.55), rgba(250,204,21,0.35), rgba(255,255,255,0.12))",
+  background: "linear-gradient(135deg, rgba(20,115,255,0.55), rgba(250,204,21,0.35), rgba(255,255,255,0.12))",
   boxShadow: "0 34px 100px rgba(0,0,0,0.32)",
 };
 
-const candidatePoolGridStyle: React.CSSProperties = {
+const candidatePoolGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "minmax(0, 0.9fr) minmax(420px, 0.8fr)",
   gap: 28,
   alignItems: "start",
   borderRadius: 33,
   padding: 30,
-  background:
-    "radial-gradient(circle at 15% 0%, rgba(20,115,255,0.24), transparent 32%), linear-gradient(145deg, rgba(10,20,38,0.98), rgba(5,12,24,0.98))",
+  background: "radial-gradient(circle at 15% 0%, rgba(20,115,255,0.24), transparent 32%), linear-gradient(145deg, rgba(10,20,38,0.98), rgba(5,12,24,0.98))",
 };
 
-const poolBadgeStyle: React.CSSProperties = {
+const poolBadgeStyle: CSSProperties = {
   display: "inline-flex",
   padding: "8px 11px",
   borderRadius: 999,
@@ -354,21 +479,21 @@ const poolBadgeStyle: React.CSSProperties = {
   textTransform: "uppercase",
 };
 
-const poolTitleStyle: React.CSSProperties = {
+const poolTitleStyle: CSSProperties = {
   margin: "16px 0 0",
   fontSize: "clamp(34px, 4vw, 56px)",
   lineHeight: 0.95,
   letterSpacing: "-0.045em",
 };
 
-const poolCopyStyle: React.CSSProperties = {
+const poolCopyStyle: CSSProperties = {
   color: "#cfe2ff",
   marginTop: 18,
   fontSize: 17,
   lineHeight: 1.6,
 };
 
-const poolRulesStyle: React.CSSProperties = {
+const poolRulesStyle: CSSProperties = {
   display: "grid",
   gap: 10,
   marginTop: 24,
@@ -377,23 +502,29 @@ const poolRulesStyle: React.CSSProperties = {
   fontSize: 14,
 };
 
-const poolFormStyle: React.CSSProperties = {
+const poolFormStyle: CSSProperties = {
   borderRadius: 28,
   padding: 24,
-  background:
-    "linear-gradient(145deg, rgba(248,251,255,0.98), rgba(232,239,249,0.98))",
+  background: "linear-gradient(145deg, rgba(248,251,255,0.98), rgba(232,239,249,0.98))",
   color: "#111827",
   boxShadow: "0 24px 70px rgba(0,0,0,0.28)",
   border: "1px solid rgba(255,255,255,0.88)",
 };
 
-const formGridStyle: React.CSSProperties = {
+const compactPoolHeaderStyle: CSSProperties = {
+  display: "grid",
+  gap: 4,
+  marginBottom: 14,
+  color: "#111827",
+};
+
+const formGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
   gap: 14,
 };
 
-const labelStyle: React.CSSProperties = {
+const labelStyle: CSSProperties = {
   display: "block",
   color: "#111827",
   fontWeight: 900,
@@ -401,7 +532,7 @@ const labelStyle: React.CSSProperties = {
   fontSize: 13,
 };
 
-const inputStyle: React.CSSProperties = {
+const inputStyle: CSSProperties = {
   width: "100%",
   padding: "13px 14px",
   borderRadius: 12,
@@ -413,14 +544,14 @@ const inputStyle: React.CSSProperties = {
   boxShadow: "0 1px 0 rgba(255,255,255,0.9) inset",
 };
 
-const uploadGridStyle: React.CSSProperties = {
+const uploadGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
   gap: 14,
   marginTop: 18,
 };
 
-const uploadBoxStyle: React.CSSProperties = {
+const uploadBoxStyle: CSSProperties = {
   minHeight: 138,
   display: "flex",
   flexDirection: "column",
@@ -435,32 +566,12 @@ const uploadBoxStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const uploadIconStyle: React.CSSProperties = {
-  fontSize: 26,
-  lineHeight: 1,
-};
+const uploadIconStyle: CSSProperties = { fontSize: 26, lineHeight: 1 };
+const uploadPrimaryStyle: CSSProperties = { color: "#111827", fontWeight: 950, fontSize: 14 };
+const uploadHelperStyle: CSSProperties = { color: "#64748b", fontSize: 12, lineHeight: 1.35, maxWidth: 220 };
+const fileInputStyle: CSSProperties = { width: "100%", marginTop: 8, color: "#334155", fontSize: 12 };
 
-const uploadPrimaryStyle: React.CSSProperties = {
-  color: "#111827",
-  fontWeight: 950,
-  fontSize: 14,
-};
-
-const uploadHelperStyle: React.CSSProperties = {
-  color: "#64748b",
-  fontSize: 12,
-  lineHeight: 1.35,
-  maxWidth: 220,
-};
-
-const fileInputStyle: React.CSSProperties = {
-  width: "100%",
-  marginTop: 8,
-  color: "#334155",
-  fontSize: 12,
-};
-
-const privacyNoticeStyle: React.CSSProperties = {
+const privacyNoticeStyle: CSSProperties = {
   display: "flex",
   alignItems: "flex-start",
   gap: 10,
@@ -470,7 +581,7 @@ const privacyNoticeStyle: React.CSSProperties = {
   lineHeight: 1.45,
 };
 
-const shieldStyle: React.CSSProperties = {
+const shieldStyle: CSSProperties = {
   width: 24,
   height: 24,
   borderRadius: 999,
@@ -482,7 +593,7 @@ const shieldStyle: React.CSSProperties = {
   flex: "0 0 auto",
 };
 
-const poolSubmitButtonStyle: React.CSSProperties = {
+const poolSubmitButtonStyle: CSSProperties = {
   marginTop: 22,
   width: "100%",
   padding: "16px",
@@ -496,7 +607,7 @@ const poolSubmitButtonStyle: React.CSSProperties = {
   boxShadow: "0 16px 34px rgba(20,115,255,0.28)",
 };
 
-const sectionHeaderStyle: React.CSSProperties = {
+const sectionHeaderStyle: CSSProperties = {
   marginTop: 54,
   display: "flex",
   alignItems: "end",
@@ -504,20 +615,97 @@ const sectionHeaderStyle: React.CSSProperties = {
   gap: 20,
 };
 
-const openingsTitleStyle: React.CSSProperties = {
+const openingsTitleStyle: CSSProperties = {
   margin: "8px 0 0",
   fontSize: "clamp(30px, 4vw, 46px)",
   letterSpacing: "-0.04em",
 };
 
-const emptyStateStyle: React.CSSProperties = {
+const searchPanelStyle: CSSProperties = {
+  marginTop: 22,
+  padding: 18,
+  borderRadius: 24,
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.12)",
+};
+
+const searchGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1.3fr 1fr 0.85fr 0.85fr 0.95fr auto",
+  gap: 12,
+  alignItems: "end",
+};
+
+const searchLabelStyle: CSSProperties = {
+  display: "grid",
+  gap: 7,
+  color: "#dbeafe",
+  fontSize: 12,
+  fontWeight: 950,
+};
+
+const searchInputStyle: CSSProperties = {
+  width: "100%",
+  minHeight: 44,
+  padding: "0 12px",
+  borderRadius: 13,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "rgba(3,7,18,0.82)",
+  color: "#fff",
+  outline: "none",
+};
+
+const searchActionsStyle: CSSProperties = {
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+};
+
+const searchButtonStyle: CSSProperties = {
+  minHeight: 44,
+  padding: "0 16px",
+  borderRadius: 999,
+  border: "none",
+  background: "linear-gradient(135deg, #1473ff, #0757c9)",
+  color: "#fff",
+  fontWeight: 950,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const clearButtonStyle: CSSProperties = {
+  minHeight: 44,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0 14px",
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,0.15)",
+  color: "#dbeafe",
+  textDecoration: "none",
+  fontWeight: 900,
+  whiteSpace: "nowrap",
+};
+
+const resultsMetaStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 14,
+  flexWrap: "wrap",
+  marginTop: 18,
+  color: "#9fb4d6",
+  fontSize: 13,
+  fontWeight: 850,
+};
+
+const emptyStateStyle: CSSProperties = {
   border: "1px solid rgba(255,255,255,0.12)",
   borderRadius: 28,
   padding: 28,
   background: "rgba(255,255,255,0.06)",
 };
 
-const jobCardStyle: React.CSSProperties = {
+const jobCardStyle: CSSProperties = {
   display: "block",
   border: "1px solid rgba(255,255,255,0.12)",
   borderRadius: 28,
@@ -526,7 +714,7 @@ const jobCardStyle: React.CSSProperties = {
   textDecoration: "none",
 };
 
-const jobCardGridStyle: React.CSSProperties = {
+const jobCardGridStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   gap: 18,
@@ -534,7 +722,7 @@ const jobCardGridStyle: React.CSSProperties = {
   alignItems: "flex-start",
 };
 
-const tagRowStyle: React.CSSProperties = {
+const tagRowStyle: CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
   gap: 10,
@@ -542,7 +730,7 @@ const tagRowStyle: React.CSSProperties = {
   marginBottom: 12,
 };
 
-const roleTagStyle: React.CSSProperties = {
+const roleTagStyle: CSSProperties = {
   padding: "7px 10px",
   borderRadius: 999,
   fontSize: 12,
@@ -551,25 +739,11 @@ const roleTagStyle: React.CSSProperties = {
   textTransform: "uppercase",
 };
 
-const jobDescriptionStyle: React.CSSProperties = {
-  margin: "14px 0 0",
-  color: "#9fb4d6",
-  lineHeight: 1.6,
-};
+const jobDescriptionStyle: CSSProperties = { margin: "14px 0 0", color: "#9fb4d6", lineHeight: 1.6 };
+const confidentialTextStyle: CSSProperties = { margin: "14px 0 0", color: "#f8d98b", lineHeight: 1.6 };
+const jobActionStackStyle: CSSProperties = { display: "grid", gap: 12, justifyItems: "end" };
 
-const confidentialTextStyle: React.CSSProperties = {
-  margin: "14px 0 0",
-  color: "#f8d98b",
-  lineHeight: 1.6,
-};
-
-const jobActionStackStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 12,
-  justifyItems: "end",
-};
-
-const salaryPillStyle: React.CSSProperties = {
+const salaryPillStyle: CSSProperties = {
   padding: "10px 14px",
   borderRadius: 999,
   background: "rgba(20,115,255,0.14)",
@@ -579,7 +753,7 @@ const salaryPillStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-const applyPillStyle: React.CSSProperties = {
+const applyPillStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -590,4 +764,35 @@ const applyPillStyle: React.CSSProperties = {
   color: "#fff",
   fontWeight: 900,
   whiteSpace: "nowrap",
+};
+
+const paginationStyle: CSSProperties = {
+  marginTop: 28,
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  gap: 12,
+};
+
+const pageButtonStyle: CSSProperties = {
+  minHeight: 42,
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "0 16px",
+  borderRadius: 999,
+  background: "rgba(20,115,255,0.16)",
+  border: "1px solid rgba(96,165,250,0.26)",
+  color: "#bfdbfe",
+  fontWeight: 950,
+  textDecoration: "none",
+};
+
+const disabledPageButtonStyle: CSSProperties = {
+  ...pageButtonStyle,
+  opacity: 0.45,
+};
+
+const pageStatusStyle: CSSProperties = {
+  color: "#9fb4d6",
+  fontWeight: 850,
 };
