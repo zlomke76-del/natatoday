@@ -249,7 +249,7 @@ export default async function RecruiterAdminPage() {
             <div style={eyebrowStyle}>Onboard team member</div>
             <h2 style={panelTitleStyle}>Add recruiter or agent</h2>
 
-            <form method="POST" action="/api/nata/recruiters/upsert" style={formStyle}>
+            <form method="POST" action="/api/nata/recruiters/invite" style={formStyle}>
               <div style={formGridStyle}>
                 <Field label="Full name" name="name" placeholder="Brandy Diamond" required />
                 <Field label="Slug" name="slug" placeholder="brandy-diamond" required />
@@ -278,17 +278,7 @@ export default async function RecruiterAdminPage() {
                   </select>
                 </label>
 
-                <label style={labelStyle}>
-                  <span>Status</span>
-                  <select name="status" defaultValue="invited" style={inputStyle}>
-                    <option value="invited">Invited</option>
-                    <option value="active">Active</option>
-                    <option value="suspended">Suspended</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
-                </label>
-              </div>
-
+                
               <fieldset style={permissionFieldsetStyle}>
                 <legend style={permissionLegendStyle}>Execution permissions</legend>
                 <Check name="can_view_all" label="Can view all candidates and recruiters" />
