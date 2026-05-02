@@ -21,9 +21,21 @@ type AvailabilityBlock = {
   isAvailable: boolean;
 };
 
+type ScheduledInterview = {
+  id: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  title: string;
+  subtitle: string;
+  status: string;
+  meetingUrl: string;
+};
+
 type Props = {
   recruiter: RecruiterPayload;
   rows: AnyRow[];
+  scheduledInterviews: AnyRow[];
   weekStart: string;
   previousWeek: string;
   nextWeek: string;
@@ -246,9 +258,123 @@ function normalizeBlocksForSave(blocks: AvailabilityBlock[]) {
   });
 }
 
+
+function getFirstString(row: AnyRow, keys: string[]) {
+  for (const key of keys) {
+    const value = row?.[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return "";
+}
+
+function getInterviewStart(row: AnyRow) {
+  return getFirstString(row, [
+    "start_time",
+    "starts_at",
+    "scheduled_at",
+    "interview_at",
+    "virtual_interview_at",
+    "booking_start",
+    "meeting_start",
+    "start",
+  ]);
+}
+
+function getInterviewEnd(row: AnyRow, startIso: string) {
+  const explicitEnd = getFirstString(row, [
+    "end_time",
+    "ends_at",
+    "booking_end",
+    "meeting_end",
+    "end",
+  ]);
+
+  if (explicitEnd) {
+    return explicitEnd;
+  }
+
+  const durationRaw =
+    Number(row?.duration_minutes) ||
+    Number(row?.duration) ||
+    Number(row?.interview_duration_minutes) ||
+    30;
+
+  const start = new Date(startIso);
+  if (Number.isNaN(start.getTime())) {
+    return "";
+  }
+
+  start.setMinutes(start.getMinutes() + Math.max(15, durationRaw));
+  return start.toISOString();
+}
+
+function getTimeFromIso(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toTimeString().slice(0, 5);
+}
+
+function getDayFromIso(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return -1;
+  }
+
+  return date.getDay();
+}
+
+function normalizeScheduledInterviews(rows: AnyRow[]): ScheduledInterview[] {
+  return rows
+    .map((row, index) => {
+      const startIso = getInterviewStart(row);
+      const endIso = getInterviewEnd(row, startIso);
+      const startTime = getTimeFromIso(startIso);
+      const endTime = getTimeFromIso(endIso);
+      const dayOfWeek = getDayFromIso(startIso);
+
+      if (dayOfWeek < 0 || !startTime || !endTime) {
+        return null;
+      }
+
+      const candidateName =
+        getFirstString(row, ["candidate_name", "name", "applicant_name"]) ||
+        getFirstString(row?.candidate || {}, ["name"]) ||
+        getFirstString(row?.application || {}, ["name"]) ||
+        "Scheduled interview";
+
+      const role =
+        getFirstString(row, ["role", "job_title", "position_title"]) ||
+        getFirstString(row?.job || {}, ["title"]) ||
+        getFirstString(row?.application || {}, ["role", "job_title"]) ||
+        "";
+
+      return {
+        id: String(row?.id || `${dayOfWeek}-${startTime}-${index}`),
+        dayOfWeek,
+        startTime,
+        endTime,
+        title: candidateName,
+        subtitle: role || `${formatTime(startTime)} – ${formatTime(endTime)}`,
+        status: getFirstString(row, ["status", "booking_status", "virtual_interview_status"]),
+        meetingUrl: getFirstString(row, ["meeting_url", "virtual_interview_room_url", "room_url"]),
+      };
+    })
+    .filter(Boolean) as ScheduledInterview[];
+}
+
 export default function AvailabilityCalendarClient({
   recruiter,
   rows,
+  scheduledInterviews,
   weekStart,
   previousWeek,
   nextWeek,
@@ -272,6 +398,10 @@ export default function AvailabilityCalendarClient({
         return a.startTime.localeCompare(b.startTime);
       });
   }, [blocks]);
+
+  const normalizedInterviews = useMemo(() => {
+    return normalizeScheduledInterviews(scheduledInterviews);
+  }, [scheduledInterviews]);
 
   const availableDayCount = useMemo(() => {
     return days.filter((day) =>
@@ -415,6 +545,11 @@ export default function AvailabilityCalendarClient({
               <span>active blocks</span>
             </div>
 
+            <div style={miniStat}>
+              <strong>{normalizedInterviews.length}</strong>
+              <span>scheduled</span>
+            </div>
+
             <label style={timezoneField}>
               <span style={labelStyle}>Timezone</span>
               <select
@@ -446,12 +581,13 @@ export default function AvailabilityCalendarClient({
             <strong>Weekly interview availability</strong>
             <span>
               Click a day, add blocks, edit times, or remove windows. Candidate slots
-              are generated from every active block.
+              are generated from every active block and reduced by scheduled interviews.
             </span>
           </div>
 
           <div style={legend}>
             <span style={legendAvailable}>Available block</span>
+            <span style={legendBooked}>Scheduled interview</span>
             <span style={legendClosed}>No blocks</span>
           </div>
         </div>
@@ -466,6 +602,9 @@ export default function AvailabilityCalendarClient({
               const date = addDays(weekStart, day.value);
               const dayBlocks = activeBlocks.filter(
                 (block) => block.dayOfWeek === day.value
+              );
+              const dayInterviews = normalizedInterviews.filter(
+                (interview) => interview.dayOfWeek === day.value
               );
 
               return (
@@ -486,6 +625,7 @@ export default function AvailabilityCalendarClient({
                   <strong>{formatDayNumber(date)}</strong>
                   <small>
                     {dayBlocks.length} block{dayBlocks.length === 1 ? "" : "s"}
+                    {dayInterviews.length ? ` · ${dayInterviews.length} booked` : ""}
                   </small>
                 </button>
               );
@@ -503,6 +643,9 @@ export default function AvailabilityCalendarClient({
               const date = addDays(weekStart, day.value);
               const dayBlocks = activeBlocks.filter(
                 (block) => block.dayOfWeek === day.value
+              );
+              const dayInterviews = normalizedInterviews.filter(
+                (interview) => interview.dayOfWeek === day.value
               );
 
               return (
@@ -547,6 +690,27 @@ export default function AvailabilityCalendarClient({
                     </span>
                   )}
 
+                  {dayInterviews.map((interview, index) => (
+                    <span
+                      key={interview.id}
+                      style={{
+                        ...scheduledInterviewBlock,
+                        ...getSlotEventStyle(
+                          interview.startTime,
+                          interview.endTime,
+                          index
+                        ),
+                      }}
+                      title={interview.meetingUrl || interview.status || undefined}
+                    >
+                      <strong>{interview.title}</strong>
+                      <span>
+                        {formatTime(interview.startTime)} – {formatTime(interview.endTime)}
+                      </span>
+                      {interview.subtitle ? <em>{interview.subtitle}</em> : null}
+                    </span>
+                  ))}
+
                   <span style={dayDateLabel}>{formatDisplayDate(date)}</span>
                 </button>
               );
@@ -588,6 +752,29 @@ export default function AvailabilityCalendarClient({
               </button>
             </div>
           </div>
+
+          {normalizedInterviews.filter((interview) => interview.dayOfWeek === selectedDay).length > 0 ? (
+            <div style={scheduledList}>
+              {normalizedInterviews
+                .filter((interview) => interview.dayOfWeek === selectedDay)
+                .map((interview) => (
+                  <article key={interview.id} style={scheduledListItem}>
+                    <div>
+                      <strong>{interview.title}</strong>
+                      <span>
+                        {formatTime(interview.startTime)} – {formatTime(interview.endTime)}
+                        {interview.subtitle ? ` · ${interview.subtitle}` : ""}
+                      </span>
+                    </div>
+                    {interview.meetingUrl ? (
+                      <a href={interview.meetingUrl} target="_blank" rel="noreferrer">
+                        Join
+                      </a>
+                    ) : null}
+                  </article>
+                ))}
+            </div>
+          ) : null}
 
           {selectedDayBlocks.length > 0 ? (
             <div style={editorBlockList}>
@@ -1110,6 +1297,51 @@ const emptyEditor: React.CSSProperties = {
   border: "1px dashed rgba(148,163,184,0.28)",
   background: "rgba(148,163,184,0.08)",
   color: "#dbeafe",
+};
+
+
+const scheduledInterviewBlock: React.CSSProperties = {
+  position: "absolute",
+  minHeight: 54,
+  padding: 10,
+  borderRadius: 14,
+  border: "1px solid rgba(251,191,36,0.48)",
+  background:
+    "linear-gradient(180deg, rgba(251,191,36,0.98), rgba(217,119,6,0.92))",
+  boxShadow: "0 16px 40px rgba(217,119,6,0.24)",
+  color: "#111827",
+  overflow: "hidden",
+  display: "grid",
+  alignContent: "start",
+  gap: 3,
+};
+
+const scheduledList: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+  marginBottom: 14,
+};
+
+const scheduledListItem: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "center",
+  padding: 12,
+  borderRadius: 16,
+  border: "1px solid rgba(251,191,36,0.3)",
+  background: "rgba(251,191,36,0.12)",
+  color: "#fde68a",
+};
+
+const legendBooked: React.CSSProperties = {
+  padding: "8px 11px",
+  borderRadius: 999,
+  background: "rgba(251,191,36,0.15)",
+  border: "1px solid rgba(251,191,36,0.32)",
+  color: "#fde68a",
+  fontSize: 12,
+  fontWeight: 900,
 };
 
 const submitRow: React.CSSProperties = {
