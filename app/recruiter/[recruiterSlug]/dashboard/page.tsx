@@ -457,13 +457,23 @@ export default async function RecruiterDashboard({
             </p>
           </div>
 
-          <Link
-            href={`/recruiter/${recruiterSlug}/availability`}
-            className="btn btn-secondary"
-            style={{ whiteSpace: "nowrap" }}
-          >
-            Manage availability
-          </Link>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <Link
+              href={`/recruiter/${recruiterSlug}/candidate-pool`}
+              className="btn btn-primary"
+              style={{ whiteSpace: "nowrap" }}
+            >
+              Candidate Pool →
+            </Link>
+
+            <Link
+              href={`/recruiter/${recruiterSlug}/availability`}
+              className="btn btn-secondary"
+              style={{ whiteSpace: "nowrap" }}
+            >
+              Manage availability
+            </Link>
+          </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 14, marginTop: 34 }}>
