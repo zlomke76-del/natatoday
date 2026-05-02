@@ -841,7 +841,11 @@ function RosterGroup({ title, recruiters, loadSnapshots }: { title: string; recr
         return (
           <article key={recruiter.id} style={rosterCardStyle}>
             {recruiter.profile_photo_url ? (
-              <img src={recruiter.profile_photo_url} alt={recruiter.name} style={avatarImageStyle} />
+              <div
+                aria-label={recruiter.name}
+                role="img"
+                style={avatarPhotoStyle(recruiter.profile_photo_url)}
+              />
             ) : (
               <div style={avatarStyle}>{initials(recruiter.name)}</div>
             )}
@@ -925,8 +929,45 @@ const primaryButtonStyle: CSSProperties = { minHeight: 48, borderRadius: 999, bo
 const rosterGroupStyle: CSSProperties = { display: "grid", gap: 10, marginTop: 18 };
 const rosterGroupTitleStyle: CSSProperties = { margin: 0, color: "#facc15", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.12em" };
 const rosterCardStyle: CSSProperties = { display: "grid", gridTemplateColumns: "54px minmax(0, 1fr) auto", gap: 14, alignItems: "center", padding: 14, borderRadius: 20, background: "rgba(2,6,23,0.36)", border: "1px solid rgba(255,255,255,0.08)" };
-const avatarStyle: CSSProperties = { width: 54, height: 54, borderRadius: 16, display: "grid", placeItems: "center", background: "rgba(20,115,255,0.22)", border: "1px solid rgba(147,197,253,0.22)", color: "#dbeafe", fontWeight: 950 };
-const avatarImageStyle: CSSProperties = { width: 54, height: 54, borderRadius: 16, objectFit: "cover", border: "1px solid rgba(147,197,253,0.26)", background: "rgba(15,23,42,0.82)", boxShadow: "0 10px 24px rgba(0,0,0,0.22)" };
+const avatarStyle: CSSProperties = {
+  width: 54,
+  height: 54,
+  minWidth: 54,
+  borderRadius: 16,
+  display: "grid",
+  placeItems: "center",
+  background: "rgba(20,115,255,0.22)",
+  border: "1px solid rgba(147,197,253,0.22)",
+  color: "#dbeafe",
+  fontWeight: 950,
+  overflow: "hidden",
+  boxShadow: "0 10px 24px rgba(0,0,0,0.22)",
+};
+
+function avatarPhotoStyle(url: string): CSSProperties {
+  return {
+    ...avatarStyle,
+    backgroundColor: "rgba(15,23,42,0.82)",
+    backgroundImage: `url("${url}")`,
+    backgroundSize: "cover",
+    backgroundPosition: "center center",
+    backgroundRepeat: "no-repeat",
+    border: "1px solid rgba(147,197,253,0.30)",
+  };
+}
+
+const avatarImageStyle: CSSProperties = {
+  width: 54,
+  height: 54,
+  minWidth: 54,
+  borderRadius: 16,
+  objectFit: "cover",
+  objectPosition: "center center",
+  border: "1px solid rgba(147,197,253,0.26)",
+  background: "rgba(15,23,42,0.82)",
+  boxShadow: "0 10px 24px rgba(0,0,0,0.22)",
+  display: "block",
+};
 const rosterNameStyle: CSSProperties = { margin: 0, fontSize: 18 };
 const rosterMetaStyle: CSSProperties = { margin: "4px 0 0", color: "#9fb4d6", fontSize: 13 };
 const permissionPillRowStyle: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 };
