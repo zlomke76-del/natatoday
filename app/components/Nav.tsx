@@ -11,16 +11,18 @@ export default function Nav() {
 
   const closeMenu = () => setOpen(false);
 
-  // 🔥 Expanded context detection
   const isCandidateFlow =
-    pathname?.startsWith("/careers") ||
-    pathname?.startsWith("/candidate");
+    pathname?.startsWith("/careers") || pathname?.startsWith("/candidate");
+
+  const isDealerWorkspace = pathname?.startsWith("/dealer/");
+
+  const brandHref = isCandidateFlow ? "/careers" : isDealerWorkspace ? pathname || "/" : "/";
 
   return (
     <header className="nav">
       <div className="nav-inner">
         <Link
-          href={isCandidateFlow ? "/careers" : "/"}
+          href={brandHref}
           className="brand"
           aria-label={isCandidateFlow ? "NATA Today careers" : "NATA Today home"}
           onClick={closeMenu}
@@ -38,8 +40,7 @@ export default function Nav() {
           <span className="brand-text">NATA Today</span>
         </Link>
 
-        {/* 🔥 Hide menu entirely in candidate flow */}
-        {!isCandidateFlow && (
+        {!isCandidateFlow && !isDealerWorkspace ? (
           <>
             <button
               className="nav-menu-button"
@@ -76,7 +77,7 @@ export default function Nav() {
               </Link>
             </nav>
           </>
-        )}
+        ) : null}
       </div>
     </header>
   );
