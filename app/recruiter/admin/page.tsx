@@ -26,6 +26,7 @@ type Recruiter = {
   email?: string | null;
   phone?: string | null;
   title?: string | null;
+  profile_photo_url?: string | null;
   manager_recruiter_id?: string | null;
   notes?: string | null;
   permissions?: PermissionSet | null;
@@ -644,6 +645,7 @@ export default async function RecruiterAdminPage({ searchParams }: RecruiterAdmi
                 <Label text="Slug" name="slug" placeholder="auto if blank" />
                 <Label text="Email" name="email" type="email" required />
                 <Label text="Phone" name="phone" placeholder="+1..." />
+                <Label text="Profile photo URL" name="profile_photo_url" type="url" placeholder="https://..." />
                 <Label text="Title" name="title" placeholder="Recruiter, Agent, Lead" />
                 <label style={labelStyle}>
                   Role
@@ -838,7 +840,11 @@ function RosterGroup({ title, recruiters, loadSnapshots }: { title: string; recr
 
         return (
           <article key={recruiter.id} style={rosterCardStyle}>
-            <div style={avatarStyle}>{initials(recruiter.name)}</div>
+            {recruiter.profile_photo_url ? (
+              <img src={recruiter.profile_photo_url} alt={recruiter.name} style={avatarImageStyle} />
+            ) : (
+              <div style={avatarStyle}>{initials(recruiter.name)}</div>
+            )}
             <div>
               <h4 style={rosterNameStyle}>{recruiter.name}</h4>
               <p style={rosterMetaStyle}>{ROLE_LABELS[role] || role}{recruiter.title ? ` · ${recruiter.title}` : ""}</p>
@@ -920,6 +926,7 @@ const rosterGroupStyle: CSSProperties = { display: "grid", gap: 10, marginTop: 1
 const rosterGroupTitleStyle: CSSProperties = { margin: 0, color: "#facc15", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.12em" };
 const rosterCardStyle: CSSProperties = { display: "grid", gridTemplateColumns: "54px minmax(0, 1fr) auto", gap: 14, alignItems: "center", padding: 14, borderRadius: 20, background: "rgba(2,6,23,0.36)", border: "1px solid rgba(255,255,255,0.08)" };
 const avatarStyle: CSSProperties = { width: 54, height: 54, borderRadius: 16, display: "grid", placeItems: "center", background: "rgba(20,115,255,0.22)", border: "1px solid rgba(147,197,253,0.22)", color: "#dbeafe", fontWeight: 950 };
+const avatarImageStyle: CSSProperties = { width: 54, height: 54, borderRadius: 16, objectFit: "cover", border: "1px solid rgba(147,197,253,0.26)", background: "rgba(15,23,42,0.82)", boxShadow: "0 10px 24px rgba(0,0,0,0.22)" };
 const rosterNameStyle: CSSProperties = { margin: 0, fontSize: 18 };
 const rosterMetaStyle: CSSProperties = { margin: "4px 0 0", color: "#9fb4d6", fontSize: 13 };
 const permissionPillRowStyle: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 };
