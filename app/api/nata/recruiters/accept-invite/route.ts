@@ -1,5 +1,10 @@
+import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+function hashInviteToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,20 +15,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing invite token" }, { status: 400 });
     }
 
+    const tokenHash = hashInviteToken(token);
     const now = new Date().toISOString();
 
     const { data: invite, error: inviteError } = await supabaseAdmin
       .schema("nata")
       .from("recruiter_invites")
-      .select("id,recruiter_id,token,status,expires_at")
-      .eq("token", token)
+      .select("id,recruiter_id,token_hash,status,expires_at,accepted_at")
+      .eq("token_hash", tokenHash)
       .maybeSingle();
 
     if (inviteError || !invite) {
       return NextResponse.json({ error: "Invite not found" }, { status: 404 });
     }
 
-    if (invite.status === "accepted") {
+    if (invite.status === "accepted" || invite.accepted_at) {
       return NextResponse.redirect(new URL("/recruiter/dashboard", request.url));
     }
 
