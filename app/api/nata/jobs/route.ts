@@ -740,6 +740,95 @@ async function triggerMatchRunner(origin: string) {
   }
 }
 
+
+function numberParam(value: string | null, fallback: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.floor(parsed));
+}
+
+function normalizedSearchText(value: unknown) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getRoleCategory(job: any) {
+  const text = normalizedSearchText(`${job.title || ""} ${job.description || ""}`);
+
+  if (text.includes("technician") || text.includes("mechanic") || text.includes("diagnostic")) return "technician";
+  if (text.includes("service advisor") || text.includes("service writer")) return "service-advisor";
+  if (text.includes("sales")) return "sales";
+  if (text.includes("bdc") || text.includes("business development")) return "bdc";
+  if (text.includes("parts")) return "parts";
+  if (text.includes("finance") || text.includes("f&i")) return "finance";
+
+  return "other";
+}
+
+function matchesJobFilters(job: any, filters: {
+  q: string;
+  location: string;
+  role: string;
+  type: string;
+  publishMode: string;
+}) {
+  const normalizedJob = normalizeJob(job);
+  const searchText = normalizedSearchText([
+    job.title,
+    job.description,
+    job.requirements,
+    job.role_hook,
+    Array.isArray(job.responsibilities) ? job.responsibilities.join(" ") : "",
+    Array.isArray(job.fit_signals) ? job.fit_signals.join(" ") : "",
+    job.location,
+    job.public_location,
+    job.public_dealer_name,
+    job.dealer_slug,
+    job.type,
+    job.salary,
+  ].filter(Boolean).join(" "));
+
+  if (filters.q && !searchText.includes(normalizedSearchText(filters.q))) {
+    return false;
+  }
+
+  if (filters.location) {
+    const locationText = normalizedSearchText([
+      job.location,
+      job.public_location,
+      normalizedJob.display_location,
+      job.dealer_slug,
+      job.public_dealer_name,
+    ].filter(Boolean).join(" "));
+
+    if (!locationText.includes(normalizedSearchText(filters.location))) {
+      return false;
+    }
+  }
+
+  if (filters.role && filters.role !== "all" && getRoleCategory(job) !== filters.role) {
+    return false;
+  }
+
+  if (filters.type && filters.type !== "all") {
+    const typeText = normalizedSearchText(job.type || "");
+    if (!typeText.includes(normalizedSearchText(filters.type))) {
+      return false;
+    }
+  }
+
+  if (filters.publishMode && filters.publishMode !== "all") {
+    const isConfidential = job.publish_mode === "confidential";
+    if (filters.publishMode === "confidential" && !isConfidential) return false;
+    if (filters.publishMode === "public" && isConfidential) return false;
+  }
+
+  return true;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const slug = searchParams.get("slug");
@@ -761,6 +850,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ job: normalizeJob(data) });
   }
 
+  const q = clean(searchParams.get("q"));
+  const location = clean(searchParams.get("location"));
+  const role = clean(searchParams.get("role"), "all");
+  const type = clean(searchParams.get("type"), "all");
+  const publishMode = clean(searchParams.get("publishMode"), "all");
+  const requestedLimit = numberParam(searchParams.get("limit"), 25);
+  const limit = Math.min(Math.max(requestedLimit, 1), 100);
+  const offset = numberParam(searchParams.get("offset"), 0);
+
   const { data, error } = await supabaseAdmin
     .schema("nata")
     .from("jobs")
@@ -773,7 +871,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ jobs: (data || []).map(normalizeJob) });
+  const filtered = (data || []).filter((job) =>
+    matchesJobFilters(job, { q, location, role, type, publishMode })
+  );
+
+  const total = filtered.length;
+  const paged = filtered.slice(offset, offset + limit).map(normalizeJob);
+
+  return NextResponse.json({
+    jobs: paged,
+    total,
+    limit,
+    offset,
+    hasMore: offset + limit < total,
+    filters: { q, location, role, type, publishMode },
+  });
 }
 
 export async function POST(request: NextRequest) {
