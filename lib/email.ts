@@ -98,7 +98,7 @@ async function logOutboundEmail(input: {
   threadId?: string | null;
   status: "sent" | "failed";
   providerMessageId?: string | null;
-  providerPayload?: Record<string, unknown>;
+  providerPayload?: unknown;
 }) {
   try {
     const toEmail = normalizeRecipient(input.to);
@@ -211,7 +211,7 @@ export async function sendEmail({
     threadId,
     status: "sent",
     providerMessageId: result.data?.id || null,
-    providerPayload: result.data || {},
+    providerPayload: result.data ? JSON.parse(JSON.stringify(result.data)) : {},
   });
 
   return result.data;
