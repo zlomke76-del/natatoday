@@ -359,7 +359,6 @@ export default async function RecruiterDashboard({
       .schema("nata")
       .from("applications")
       .select("*")
-      .eq("recruiter_id", recruiterId)
       .eq("id", applicationId)
       .eq("recruiter_id", recruiter.id)
       .maybeSingle();
