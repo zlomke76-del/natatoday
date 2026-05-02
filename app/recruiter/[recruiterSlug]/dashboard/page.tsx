@@ -13,6 +13,8 @@ type FitBand = {
   review: number;
 };
 
+type QueueSurface = "candidate" | "interview";
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
@@ -188,7 +190,7 @@ function getFallbackCoaching(roleTitle: string) {
     return ["Add parts lookup, inventory, catalog, OEM, and counter/customer examples."];
   }
 
-  return ["Add role-specific proof, measurable outcomes, and dealership-relevant experience." ];
+  return ["Add role-specific proof, measurable outcomes, and dealership-relevant experience."];
 }
 
 function getResumeUrl(application: AnyRow) {
@@ -223,18 +225,83 @@ function getCandidateInitials(application: AnyRow) {
   return raw.slice(0, 2).toUpperCase();
 }
 
+function hasAnyState(app: AnyRow, states: string[]) {
+  const values = [app.status, app.screening_status, app.virtual_interview_status]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  return values.some((value) => states.includes(value));
+}
+
+function isPassedOrBlocked(app: AnyRow) {
+  return hasAnyState(app, [
+    "not_fit",
+    "passed",
+    "pass",
+    "rejected",
+    "blocked",
+    "disqualified",
+    "withdrawn",
+  ]);
+}
+
+function isDealerScheduled(app: AnyRow) {
+  return (
+    hasAnyState(app, ["dealer_interview_scheduled"]) ||
+    Boolean(app.dealer_interview_at && app.interview_packet_ready)
+  );
+}
+
+function isPacketPending(app: AnyRow) {
+  return Boolean(app.virtual_interview_completed_at && !app.interview_packet_ready);
+}
+
+function isInterviewToComplete(app: AnyRow) {
+  if (app.virtual_interview_completed_at) return false;
+
+  return hasAnyState(app, ["virtual_scheduled", "scheduled"]);
+}
+
+function isWaitingOnCandidate(app: AnyRow) {
+  if (app.virtual_interview_completed_at) return false;
+  if (isInterviewToComplete(app)) return false;
+
+  return hasAnyState(app, ["virtual_invited", "invited"]);
+}
+
+function isCandidateQueueActionable(app: AnyRow) {
+  if (isPassedOrBlocked(app)) return false;
+  if (isDealerScheduled(app)) return false;
+  if (isPacketPending(app)) return false;
+  if (isInterviewToComplete(app)) return false;
+  if (isWaitingOnCandidate(app)) return false;
+
+  return hasAnyState(app, [
+    "new",
+    "submitted",
+    "applied",
+    "screened",
+    "screening_complete",
+    "needs_review",
+    "ready_for_recruiter_decision",
+    "review",
+  ]);
+}
+
 function getNextAction(app: AnyRow, roleTitle: string) {
+  if (isInterviewToComplete(app)) return "Complete virtual interview";
+  if (isWaitingOnCandidate(app)) return "Waiting on candidate to schedule";
+  if (isPacketPending(app)) return "Generate packet";
+  if (isDealerScheduled(app)) return "Ready for dealer";
+  if (isPassedOrBlocked(app)) return "Archived";
+
   const fit = getFitDecision(typeof app.fit_score === "number" ? app.fit_score : null, roleTitle);
 
-  if (!fit.canOpenStudio && app.status !== "virtual_invited" && app.screening_status !== "virtual_invited") {
+  if (!fit.canOpenStudio) {
     return fit.nextAction;
   }
 
-  if (!app.virtual_interview_completed_at) return "Complete virtual interview";
-  if (!app.interview_packet_ready) return "Generate packet";
-  if (!app.dealer_interview_at) return "Schedule dealer interview";
-  if (app.status === "dealer_interview_scheduled") return "Ready for dealer";
-  return "Review candidate";
+  return "Approve or open studio";
 }
 
 function getBadgeStyle(tone: string): React.CSSProperties {
@@ -412,13 +479,21 @@ export default async function RecruiterDashboard({
 
   const openJobs = jobs.filter((job) => job.is_active !== false && !job.filled_at && job.publish_status !== "closed" && job.publish_status !== "filled");
 
+  const interviewQueue = applications.filter(isInterviewToComplete);
+  const candidateQueue = applications.filter(isCandidateQueueActionable);
+  const waitingOnCandidate = applications.filter(isWaitingOnCandidate);
+  const reviewRequired = candidateQueue.filter((app) => hasAnyState(app, ["needs_review", "review"]));
+  const packetPending = applications.filter(isPacketPending);
+  const dealerScheduled = applications.filter(isDealerScheduled);
+  const blocked = applications.filter(isPassedOrBlocked);
+
   const dealers = Array.from(new Set(openJobs.map((job) => label(job.dealer_slug || job.public_dealer_name, "unknown-dealer")))).map((dealerSlug) => {
     const dealerJobs = openJobs.filter((job) => label(job.dealer_slug || job.public_dealer_name, "unknown-dealer") === dealerSlug);
     const dealerJobIds = new Set(dealerJobs.map((job) => job.id));
     const dealerApps = applications.filter((app) => dealerJobIds.has(app.job_id));
-    const readyForDealer = dealerApps.filter((app) => app.status === "dealer_interview_scheduled" && app.dealer_interview_at && app.interview_packet_ready);
-    const needsInterview = dealerApps.filter((app) => !app.virtual_interview_completed_at);
-    const packetPending = dealerApps.filter((app) => app.virtual_interview_completed_at && !app.interview_packet_ready);
+    const readyForDealer = dealerApps.filter(isDealerScheduled);
+    const needsInterview = dealerApps.filter(isInterviewToComplete);
+    const packetPendingForDealer = dealerApps.filter(isPacketPending);
 
     let priority = "Monitor";
     if (dealerJobs.length > 0 && readyForDealer.length === 0) priority = "High";
@@ -430,17 +505,112 @@ export default async function RecruiterDashboard({
       openJobs: dealerJobs.length,
       pipeline: dealerApps.length,
       needsInterview: needsInterview.length,
-      packetPending: packetPending.length,
+      packetPending: packetPendingForDealer.length,
       readyForDealer: readyForDealer.length,
       priority,
     };
   });
 
-  const needsInterview = applications.filter((app) => !app.virtual_interview_completed_at && (app.status === "virtual_invited" || app.screening_status === "virtual_invited"));
-  const reviewRequired = applications.filter((app) => app.status === "needs_review" || app.screening_status === "needs_review");
-  const packetPending = applications.filter((app) => app.virtual_interview_completed_at && !app.interview_packet_ready);
-  const dealerScheduled = applications.filter((app) => app.status === "dealer_interview_scheduled" && app.dealer_interview_at && app.interview_packet_ready);
-  const blocked = applications.filter((app) => app.status === "not_fit" || app.screening_status === "not_fit");
+  function renderApplicationCard(application: AnyRow, surface: QueueSurface) {
+    const job = jobs.find((item) => item.id === application.job_id);
+    const roleTitle = label(job?.title || application.role, "Candidate");
+    const fitScore = typeof application.fit_score === "number" ? application.fit_score : null;
+    const fit = getFitDecision(fitScore, roleTitle);
+    const verificationItems = splitList(application.interview_questions).length ? splitList(application.interview_questions) : getFallbackVerification(roleTitle, fitScore);
+    const coachingItems = splitList(application.verification_items).length ? splitList(application.verification_items) : getFallbackCoaching(roleTitle);
+    const nextAction = getNextAction(application, roleTitle);
+    const canOpenStudio = surface === "interview" || fit.canOpenStudio;
+    const resumeUrl = getResumeUrl(application);
+    const profilePhotoUrl = getProfilePhotoUrl(application);
+
+    return (
+      <article key={application.id} style={candidateCard}>
+        <div style={{ display: "grid", gridTemplateColumns: "104px minmax(0, 1fr) auto", gap: 18, alignItems: "start" }}>
+          <div style={candidateMedia}>
+            {profilePhotoUrl ? (
+              <img
+                src={profilePhotoUrl}
+                alt={`${application.name || "Candidate"} profile`}
+                style={candidatePhoto}
+              />
+            ) : (
+              <div style={candidatePhotoFallback}>{getCandidateInitials(application)}</div>
+            )}
+
+            {resumeUrl ? (
+              <a href={resumeUrl} target="_blank" rel="noreferrer" style={resumeButton}>
+                View resume
+              </a>
+            ) : (
+              <span style={resumeMissing}>No resume</span>
+            )}
+          </div>
+
+          <div>
+            <h2 style={{ margin: 0, fontSize: 24 }}>{application.name || application.email || "Candidate"}</h2>
+            <p style={{ margin: "8px 0 0", color: "#cfe2ff" }}>{roleTitle} · {label(job?.public_dealer_name || job?.dealer_slug, "Dealer pending")}</p>
+            <p style={{ margin: "10px 0 0", color: "#9fb1cc" }}>
+              Status: {application.status || "new"} · Virtual: {application.virtual_interview_status || "not_scheduled"} · Packet: {application.interview_packet_ready ? "ready" : "not ready"} · Dealer: {formatDate(application.dealer_interview_at)}
+            </p>
+            <p style={{ margin: "10px 0 0", color: "#9fb1cc", fontSize: 13 }}>
+              Email: {application.email || "Not provided"} · Phone: {application.phone || "Not provided"}
+            </p>
+          </div>
+          <span style={{ ...scoreBadge, ...getBadgeStyle(fit.tone) }}>
+            Solace Fit {fitScore === null ? "—" : `${fitScore}/100`}<br />{fit.label}
+          </span>
+        </div>
+
+        <div style={supportGrid}>
+          <div style={supportBox}>
+            <strong style={{ color: "#fff" }}>Role threshold</strong>
+            <p style={supportText}>
+              {fit.band.roleKey}: interview ready {fit.band.interviewReady}+ · recruiter review {fit.band.review}-{fit.band.interviewReady - 1} · do not advance below {fit.band.review}.
+            </p>
+          </div>
+          <div style={supportBox}>
+            <strong style={{ color: "#fff" }}>Why this score</strong>
+            <p style={supportText}>{application.screening_summary || "No screening summary has been generated yet."}</p>
+            <p style={{ ...supportText, color: "#fbbf24" }}>Decision: {application.decision_reason || "No decision reason recorded."}</p>
+          </div>
+        </div>
+
+        <div style={supportGrid}>
+          <Checklist title="Recruiter verification" items={verificationItems} />
+          <Checklist title="Candidate support notes" items={coachingItems} />
+        </div>
+
+        <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr auto", gap: 14, alignItems: "center" }}>
+          <p style={{ margin: 0, color: "#fbbf24", fontWeight: 900 }}>Next action: {nextAction}</p>
+          {canOpenStudio ? (
+            <Link href={`/recruiter/${recruiterSlug}/interviews/${application.id}`} className="btn btn-primary">Open studio</Link>
+          ) : (
+            <span style={{ ...pill, ...getBadgeStyle(fit.tone) }}>Review required before studio</span>
+          )}
+        </div>
+
+        {surface === "candidate" ? (
+          <div style={actionPanel}>
+            <form action={approveForInterview} style={actionForm}>
+              <input type="hidden" name="application_id" value={String(application.id)} />
+              <input name="reason" placeholder="Approval note" style={miniInput} />
+              <button className="btn btn-primary" type="submit">Approve + send invite</button>
+            </form>
+            <form action={holdCandidate} style={actionForm}>
+              <input type="hidden" name="application_id" value={String(application.id)} />
+              <input name="reason" placeholder="What proof is missing?" style={miniInput} />
+              <button className="btn btn-secondary" type="submit">Hold / request info</button>
+            </form>
+            <form action={passCandidate} style={actionForm}>
+              <input type="hidden" name="application_id" value={String(application.id)} />
+              <input name="reason" placeholder="Pass reason" style={miniInput} />
+              <button className="btn btn-secondary" type="submit">Pass candidate</button>
+            </form>
+          </div>
+        ) : null}
+      </article>
+    );
+  }
 
   return (
     <main className="shell">
@@ -482,7 +652,7 @@ export default async function RecruiterDashboard({
             ["Open jobs", openJobs.length],
             ["Assigned", applications.length],
             ["Review", reviewRequired.length],
-            ["Interviews", needsInterview.length],
+            ["Interviews", interviewQueue.length],
             ["Ready dealer", dealerScheduled.length],
           ].map(([title, value]) => (
             <div key={String(title)} style={metricCard}>
@@ -490,6 +660,19 @@ export default async function RecruiterDashboard({
               <div style={{ fontSize: 34, fontWeight: 900, marginTop: 8 }}>{value}</div>
             </div>
           ))}
+        </div>
+
+        <div style={noticeGrid}>
+          <div style={noticeCard}>
+            <strong>Waiting on candidate scheduling</strong>
+            <span>{waitingOnCandidate.length}</span>
+            <p>Approved candidates are hidden until they book a time.</p>
+          </div>
+          <div style={noticeCard}>
+            <strong>Actionable candidate queue</strong>
+            <span>{candidateQueue.length}</span>
+            <p>Only candidates requiring Don's decision are shown below.</p>
+          </div>
         </div>
 
         <div className="section-kicker" style={{ marginTop: 48 }}>Dealer Priority Board</div>
@@ -517,7 +700,7 @@ export default async function RecruiterDashboard({
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
           {[
             ["Needs review", reviewRequired.length],
-            ["Interviews to complete", needsInterview.length],
+            ["Interviews to complete", interviewQueue.length],
             ["Packets pending", packetPending.length],
             ["Passed / blocked", blocked.length],
           ].map(([title, value]) => (
@@ -528,109 +711,21 @@ export default async function RecruiterDashboard({
           ))}
         </div>
 
+        <div className="section-kicker" style={{ marginTop: 48 }}>Interviews to Complete</div>
+        <div style={{ display: "grid", gap: 18 }}>
+          {interviewQueue.length === 0 ? (
+            <EmptyState>No scheduled virtual interviews require action right now.</EmptyState>
+          ) : (
+            interviewQueue.map((application) => renderApplicationCard(application, "interview"))
+          )}
+        </div>
+
         <div className="section-kicker" style={{ marginTop: 48 }}>Candidate Queue</div>
         <div style={{ display: "grid", gap: 18 }}>
-          {applications.length === 0 ? (
-            <EmptyState>No assigned candidates are currently waiting for this recruiter.</EmptyState>
+          {candidateQueue.length === 0 ? (
+            <EmptyState>No candidates require a recruiter decision right now. Approved candidates are hidden until they schedule, and passed candidates are archived.</EmptyState>
           ) : (
-            applications.map((application) => {
-              const job = jobs.find((item) => item.id === application.job_id);
-              const roleTitle = label(job?.title || application.role, "Candidate");
-              const fitScore = typeof application.fit_score === "number" ? application.fit_score : null;
-              const fit = getFitDecision(fitScore, roleTitle);
-              const verificationItems = splitList(application.interview_questions).length ? splitList(application.interview_questions) : getFallbackVerification(roleTitle, fitScore);
-              const coachingItems = splitList(application.verification_items).length ? splitList(application.verification_items) : getFallbackCoaching(roleTitle);
-              const nextAction = getNextAction(application, roleTitle);
-              const canOpenStudio = fit.canOpenStudio || application.status === "virtual_invited" || application.screening_status === "virtual_invited";
-              const resumeUrl = getResumeUrl(application);
-              const profilePhotoUrl = getProfilePhotoUrl(application);
-
-              return (
-                <article key={application.id} style={candidateCard}>
-                  <div style={{ display: "grid", gridTemplateColumns: "104px minmax(0, 1fr) auto", gap: 18, alignItems: "start" }}>
-                    <div style={candidateMedia}>
-                      {profilePhotoUrl ? (
-                        <img
-                          src={profilePhotoUrl}
-                          alt={`${application.name || "Candidate"} profile`}
-                          style={candidatePhoto}
-                        />
-                      ) : (
-                        <div style={candidatePhotoFallback}>{getCandidateInitials(application)}</div>
-                      )}
-
-                      {resumeUrl ? (
-                        <a href={resumeUrl} target="_blank" rel="noreferrer" style={resumeButton}>
-                          View resume
-                        </a>
-                      ) : (
-                        <span style={resumeMissing}>No resume</span>
-                      )}
-                    </div>
-
-                    <div>
-                      <h2 style={{ margin: 0, fontSize: 24 }}>{application.name || application.email || "Candidate"}</h2>
-                      <p style={{ margin: "8px 0 0", color: "#cfe2ff" }}>{roleTitle} · {label(job?.public_dealer_name || job?.dealer_slug, "Dealer pending")}</p>
-                      <p style={{ margin: "10px 0 0", color: "#9fb1cc" }}>
-                        Status: {application.status || "new"} · Virtual: {application.virtual_interview_status || "not_scheduled"} · Packet: {application.interview_packet_ready ? "ready" : "not ready"} · Dealer: {formatDate(application.dealer_interview_at)}
-                      </p>
-                      <p style={{ margin: "10px 0 0", color: "#9fb1cc", fontSize: 13 }}>
-                        Email: {application.email || "Not provided"} · Phone: {application.phone || "Not provided"}
-                      </p>
-                    </div>
-                    <span style={{ ...scoreBadge, ...getBadgeStyle(fit.tone) }}>
-                      Solace Fit {fitScore === null ? "—" : `${fitScore}/100`}<br />{fit.label}
-                    </span>
-                  </div>
-
-                  <div style={supportGrid}>
-                    <div style={supportBox}>
-                      <strong style={{ color: "#fff" }}>Role threshold</strong>
-                      <p style={supportText}>
-                        {fit.band.roleKey}: interview ready {fit.band.interviewReady}+ · recruiter review {fit.band.review}-{fit.band.interviewReady - 1} · do not advance below {fit.band.review}.
-                      </p>
-                    </div>
-                    <div style={supportBox}>
-                      <strong style={{ color: "#fff" }}>Why this score</strong>
-                      <p style={supportText}>{application.screening_summary || "No screening summary has been generated yet."}</p>
-                      <p style={{ ...supportText, color: "#fbbf24" }}>Decision: {application.decision_reason || "No decision reason recorded."}</p>
-                    </div>
-                  </div>
-
-                  <div style={supportGrid}>
-                    <Checklist title="Recruiter verification" items={verificationItems} />
-                    <Checklist title="Candidate support notes" items={coachingItems} />
-                  </div>
-
-                  <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr auto", gap: 14, alignItems: "center" }}>
-                    <p style={{ margin: 0, color: "#fbbf24", fontWeight: 900 }}>Next action: {nextAction}</p>
-                    {canOpenStudio ? (
-                      <Link href={`/recruiter/${recruiterSlug}/interviews/${application.id}`} className="btn btn-primary">Open studio</Link>
-                    ) : (
-                      <span style={{ ...pill, ...getBadgeStyle(fit.tone) }}>Review required before studio</span>
-                    )}
-                  </div>
-
-                  <div style={actionPanel}>
-                    <form action={approveForInterview} style={actionForm}>
-                      <input type="hidden" name="application_id" value={String(application.id)} />
-                      <input name="reason" placeholder="Approval note" style={miniInput} />
-                      <button className="btn btn-primary" type="submit">Approve + send invite</button>
-                    </form>
-                    <form action={holdCandidate} style={actionForm}>
-                      <input type="hidden" name="application_id" value={String(application.id)} />
-                      <input name="reason" placeholder="What proof is missing?" style={miniInput} />
-                      <button className="btn btn-secondary" type="submit">Hold / request info</button>
-                    </form>
-                    <form action={passCandidate} style={actionForm}>
-                      <input type="hidden" name="application_id" value={String(application.id)} />
-                      <input name="reason" placeholder="Pass reason" style={miniInput} />
-                      <button className="btn btn-secondary" type="submit">Pass candidate</button>
-                    </form>
-                  </div>
-                </article>
-              );
-            })
+            candidateQueue.map((application) => renderApplicationCard(application, "candidate"))
           )}
         </div>
       </section>
@@ -659,6 +754,23 @@ const headerRow: React.CSSProperties = {
   alignItems: "flex-start",
   gap: 20,
   flexWrap: "wrap",
+};
+
+const noticeGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 14,
+  marginTop: 18,
+};
+
+const noticeCard: React.CSSProperties = {
+  display: "grid",
+  gap: 6,
+  padding: 16,
+  borderRadius: 18,
+  border: "1px solid rgba(96,165,250,0.18)",
+  background: "rgba(37,99,235,0.08)",
+  color: "#dbeafe",
 };
 
 const metricCard: React.CSSProperties = { padding: 20, borderRadius: 20, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)" };
