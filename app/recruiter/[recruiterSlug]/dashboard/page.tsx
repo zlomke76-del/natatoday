@@ -311,6 +311,23 @@ function getBadgeStyle(tone: string): React.CSSProperties {
   return { background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", color: "#cfe2ff" };
 }
 
+function normalizeOperatorRole(value: unknown) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function hasAdminAccess(recruiter: AnyRow) {
+  const role = normalizeOperatorRole(recruiter.role);
+  const permissions = recruiter.permissions && typeof recruiter.permissions === "object"
+    ? recruiter.permissions
+    : {};
+
+  return (
+    role === "admin" ||
+    permissions.can_manage_team === true ||
+    permissions.can_view_all === true
+  );
+}
+
 export default async function RecruiterDashboard({
   params,
 }: {
@@ -476,6 +493,7 @@ export default async function RecruiterDashboard({
 
   const jobs = (jobsData || []) as AnyRow[];
   const applications = (applicationsData || []) as AnyRow[];
+  const canOpenAdmin = hasAdminAccess(recruiter);
 
   const openJobs = jobs.filter((job) => job.is_active !== false && !job.filled_at && job.publish_status !== "closed" && job.publish_status !== "filled");
 
@@ -628,6 +646,16 @@ export default async function RecruiterDashboard({
           </div>
 
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            {canOpenAdmin ? (
+              <Link
+                href="/recruiter/admin"
+                className="btn btn-primary"
+                style={{ whiteSpace: "nowrap" }}
+              >
+                Admin Control Layer →
+              </Link>
+            ) : null}
+
             <Link
               href={`/recruiter/${recruiterSlug}/candidate-pool`}
               className="btn btn-primary"
@@ -671,7 +699,7 @@ export default async function RecruiterDashboard({
           <div style={noticeCard}>
             <strong>Actionable candidate queue</strong>
             <span>{candidateQueue.length}</span>
-            <p>Only candidates requiring Don's decision are shown below.</p>
+            <p>Only candidates requiring recruiter decision are shown below.</p>
           </div>
         </div>
 
