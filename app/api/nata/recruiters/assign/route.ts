@@ -1,68 +1,127 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-function clean(value: FormDataEntryValue | null) {
-  return typeof value === "string" ? value.trim() : "";
-}
+const BACKLOG_THRESHOLD = 10;
+const DON_OVERLOAD_THRESHOLD = 15;
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
+    const body = await request.json();
+    const { applicationId, recruiterId, mode } = body;
 
-    const applicationId = clean(formData.get("applicationId"));
-    const recruiterId = clean(formData.get("recruiterId"));
-
-    if (!applicationId) {
-      return NextResponse.json({ error: "Missing applicationId" }, { status: 400 });
-    }
-
-    if (recruiterId) {
-      const { data: recruiter, error: recruiterError } = await supabaseAdmin
+    // ===== 1. Manual assignment always wins =====
+    if (mode === "manual" && recruiterId) {
+      await supabaseAdmin
         .schema("nata")
-        .from("recruiters")
-        .select("id,status,is_active")
-        .eq("id", recruiterId)
-        .maybeSingle();
+        .from("applications")
+        .update({ recruiter_id: recruiterId })
+        .eq("id", applicationId);
 
-      if (recruiterError) {
-        return NextResponse.json({ error: recruiterError.message }, { status: 500 });
-      }
-
-      if (!recruiter) {
-        return NextResponse.json({ error: "Recruiter not found" }, { status: 404 });
-      }
-
-      if (recruiter.is_active === false || recruiter.status === "suspended" || recruiter.status === "inactive") {
-        return NextResponse.json(
-          { error: "Cannot assign work to inactive or suspended recruiter" },
-          { status: 400 }
-        );
-      }
+      return NextResponse.json({ success: true, mode: "manual" });
     }
 
-    const { error } = await supabaseAdmin
+    // ===== 2. Get backlog =====
+    const { data: backlogApps } = await supabaseAdmin
       .schema("nata")
       .from("applications")
-      .update({
-        recruiter_id: recruiterId || null,
-        assigned_recruiter: recruiterId || null,
-      })
-      .eq("id", applicationId);
+      .select("id")
+      .neq("screening_status", "rejected")
+      .neq("virtual_interview_status", "completed");
 
-    if (error) {
-      console.error("Recruiter assignment failed:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    const backlogCount = backlogApps?.length || 0;
+
+    // ===== 3. Get recruiters =====
+    const { data: recruiters } = await supabaseAdmin
+      .schema("nata")
+      .from("recruiters")
+      .select("id,name,role,status")
+      .eq("status", "active");
+
+    // ===== 4. Get application counts =====
+    const { data: appCounts } = await supabaseAdmin
+      .schema("nata")
+      .from("applications")
+      .select("recruiter_id");
+
+    const loadMap: Record<string, number> = {};
+
+    for (const r of recruiters || []) {
+      loadMap[r.id] = 0;
     }
 
-    return NextResponse.redirect(new URL("/recruiter/admin", request.url), 303);
+    for (const a of appCounts || []) {
+      if (a.recruiter_id) {
+        loadMap[a.recruiter_id] =
+          (loadMap[a.recruiter_id] || 0) + 1;
+      }
+    }
+
+    // ===== 5. Identify Don =====
+    const don = recruiters?.find(r => r.name.includes("Don"));
+
+    const donLoad = don ? loadMap[don.id] || 0 : 0;
+
+    // ===== 6. Decide if auto should run =====
+    const shouldAuto =
+      backlogCount > BACKLOG_THRESHOLD ||
+      donLoad > DON_OVERLOAD_THRESHOLD;
+
+    if (!shouldAuto) {
+      return NextResponse.json({
+        success: true,
+        mode: "no_auto",
+        backlogCount,
+        donLoad,
+      });
+    }
+
+    // ===== 7. Find lowest load recruiter (excluding Don if overloaded) =====
+    const candidates = recruiters?.filter(r => {
+      if (!r.id) return false;
+      if (don && r.id === don.id && donLoad > DON_OVERLOAD_THRESHOLD) {
+        return false;
+      }
+      return true;
+    });
+
+    let best = null;
+    let lowest = Infinity;
+
+    for (const r of candidates || []) {
+      const score = loadMap[r.id] || 0;
+      if (score < lowest) {
+        lowest = score;
+        best = r;
+      }
+    }
+
+    if (!best) {
+      return NextResponse.json({
+        success: false,
+        error: "No recruiter available",
+      });
+    }
+
+    // ===== 8. Assign =====
+    await supabaseAdmin
+      .schema("nata")
+      .from("applications")
+      .update({ recruiter_id: best.id })
+      .eq("id", applicationId);
+
+    return NextResponse.json({
+      success: true,
+      mode: "auto",
+      assignedTo: best.name,
+      backlogCount,
+      donLoad,
+    });
+
   } catch (error) {
-    console.error("POST /api/nata/recruiters/assign failed:", error);
+    console.error("Assignment engine failed:", error);
 
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Recruiter assignment failed",
-      },
+      { error: "Assignment failed" },
       { status: 500 }
     );
   }
