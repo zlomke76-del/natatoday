@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { sendEmail } from "../../../../lib/email";
+import CommunicationsComposerClient from "./CommunicationsComposerClient";
 
 type AnyRow = Record<string, any>;
 
@@ -8,6 +9,26 @@ type CommunicationsCenterProps = {
   recruiter: AnyRow;
   recruiterSlug: string;
   applications: AnyRow[];
+};
+
+type ContactOption = {
+  id: string;
+  type: string;
+  name: string;
+  organization: string;
+  email: string;
+  phone: string;
+  applicationId: string;
+  dealerSlug: string;
+};
+
+type TemplateOption = {
+  id: string;
+  name: string;
+  channel: "email" | "sms";
+  audience: string;
+  subject: string;
+  body: string;
 };
 
 function label(value: unknown, fallback = "—") {
@@ -33,10 +54,27 @@ function formatMessageDate(value: unknown) {
   }
 }
 
+function normalizePhone(value: string) {
+  if (!value) return "";
+
+  const trimmed = value.trim();
+
+  if (trimmed.startsWith("+")) {
+    return trimmed;
+  }
+
+  const digits = trimmed.replace(/\D/g, "");
+
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+
+  return "";
+}
+
 function getRecruiterAlias(recruiter: AnyRow, recruiterSlug: string) {
   return label(
     recruiter.email_alias || recruiter.recruiter_email_alias,
-    `${recruiterSlug}@natatoday.ai`
+    `${recruiterSlug}@natatoday.ai`,
   ).toLowerCase();
 }
 
@@ -56,6 +94,27 @@ function plainToHtml(value: string) {
     .join("");
 }
 
+function getMessagePreview(message: AnyRow) {
+  return label(
+    message.body_text ||
+      message.body ||
+      String(message.body_html || message.html || "").replace(/<[^>]+>/g, " "),
+    "No message body",
+  );
+}
+
+function getMessageAddress(message: AnyRow) {
+  if (message.channel === "sms") {
+    return message.direction === "inbound"
+      ? label(message.from_phone, "Unknown sender")
+      : label(message.to_phone, "Unknown recipient");
+  }
+
+  return message.direction === "inbound"
+    ? label(message.from_email, "Unknown sender")
+    : label(message.to_email, "Unknown recipient");
+}
+
 async function loadMessages(recruiterId: string) {
   const { data, error } = await supabaseAdmin
     .schema("nata")
@@ -63,13 +122,205 @@ async function loadMessages(recruiterId: string) {
     .select("*")
     .eq("recruiter_id", recruiterId)
     .order("created_at", { ascending: false })
-    .limit(18);
+    .limit(30);
 
   if (error) {
     console.error("Failed to load recruiter messages:", error);
   }
 
   return (data || []) as AnyRow[];
+}
+
+function applicationToContact(application: AnyRow): ContactOption | null {
+  const email = label(application.email || application.candidate_email, "");
+  const phone = label(application.phone || application.candidate_phone, "");
+
+  if (!email && !phone) return null;
+
+  return {
+    id: `application:${String(application.id)}`,
+    type: "candidate",
+    name: label(application.name || application.candidate_name || application.email, "Candidate"),
+    organization: label(application.role || application.job_title, ""),
+    email,
+    phone,
+    applicationId: String(application.id || ""),
+    dealerSlug: label(application.dealer_slug, ""),
+  };
+}
+
+async function loadAddressBook(recruiterId: string, applications: AnyRow[]) {
+  const applicationContacts = applications
+    .map(applicationToContact)
+    .filter((contact): contact is ContactOption => Boolean(contact));
+
+  const { data, error } = await supabaseAdmin
+    .schema("nata")
+    .from("contacts")
+    .select("*")
+    .or(`recruiter_id.eq.${recruiterId},recruiter_id.is.null`)
+    .eq("is_active", true)
+    .order("display_name", { ascending: true })
+    .limit(120);
+
+  if (error) {
+    console.error("Failed to load address book contacts:", error);
+  }
+
+  const storedContacts = ((data || []) as AnyRow[]).map((contact) => ({
+    id: String(contact.id),
+    type: label(contact.contact_type, "custom"),
+    name: label(contact.display_name, "Contact"),
+    organization: label(contact.organization, ""),
+    email: label(contact.email, ""),
+    phone: label(contact.phone, ""),
+    applicationId: label(contact.application_id, ""),
+    dealerSlug: label(contact.dealer_slug, ""),
+  }));
+
+  return [...applicationContacts, ...storedContacts];
+}
+
+async function loadTemplates() {
+  const { data, error } = await supabaseAdmin
+    .schema("nata")
+    .from("message_templates")
+    .select("*")
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  if (error) {
+    console.error("Failed to load message templates:", error);
+  }
+
+  return ((data || []) as AnyRow[]).map((template) => ({
+    id: String(template.id),
+    name: label(template.name, "Template"),
+    channel: template.channel === "sms" ? "sms" : "email",
+    audience: label(template.audience, "candidate"),
+    subject: label(template.subject, ""),
+    body: label(template.body, ""),
+  })) as TemplateOption[];
+}
+
+async function logSms(input: {
+  recruiterId: string;
+  applicationId: string | null;
+  dealerSlug: string | null;
+  fromPhone: string | null;
+  toPhone: string | null;
+  body: string;
+  status: "sent" | "failed" | "skipped";
+  providerPayload?: unknown;
+  providerMessageId?: string | null;
+}) {
+  const { error } = await supabaseAdmin.schema("nata").from("messages").insert({
+    recruiter_id: input.recruiterId,
+    application_id: input.applicationId,
+    dealer_slug: input.dealerSlug,
+    direction: "outbound",
+    channel: "sms",
+    status: input.status,
+    body: input.body,
+    body_text: input.body,
+    from_phone: input.fromPhone,
+    to_phone: input.toPhone,
+    provider: "twilio",
+    provider_message_id: input.providerMessageId || null,
+    provider_payload: JSON.parse(JSON.stringify(input.providerPayload || {})),
+    sent_at: input.status === "sent" ? new Date().toISOString() : null,
+  });
+
+  if (error) {
+    console.error("Failed to log outbound SMS:", error);
+  }
+}
+
+async function sendLoggedSms(input: {
+  to: string;
+  body: string;
+  recruiterId: string;
+  applicationId: string | null;
+  dealerSlug: string | null;
+}) {
+  const normalizedTo = normalizePhone(input.to);
+  const from = process.env.TWILIO_PHONE_NUMBER || "";
+
+  if (!normalizedTo) {
+    await logSms({
+      recruiterId: input.recruiterId,
+      applicationId: input.applicationId,
+      dealerSlug: input.dealerSlug,
+      fromPhone: from || null,
+      toPhone: null,
+      body: input.body,
+      status: "skipped",
+      providerPayload: { reason: "missing_or_invalid_phone", originalTo: input.to },
+    });
+
+    return;
+  }
+
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+
+  if (!accountSid || !authToken || !from) {
+    await logSms({
+      recruiterId: input.recruiterId,
+      applicationId: input.applicationId,
+      dealerSlug: input.dealerSlug,
+      fromPhone: from || null,
+      toPhone: normalizedTo,
+      body: input.body,
+      status: "skipped",
+      providerPayload: { reason: "missing_twilio_config" },
+    });
+
+    return;
+  }
+
+  const response = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+    {
+      method: "POST",
+      headers: {
+        Authorization:
+          "Basic " + Buffer.from(`${accountSid}:${authToken}`).toString("base64"),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        To: normalizedTo,
+        From: from,
+        Body: input.body,
+      }),
+    },
+  );
+
+  const rawPayload = await response.text().catch(() => "");
+  let providerPayload: Record<string, any> = {};
+
+  try {
+    providerPayload = rawPayload ? JSON.parse(rawPayload) : {};
+  } catch {
+    providerPayload = { raw: rawPayload };
+  }
+
+  await logSms({
+    recruiterId: input.recruiterId,
+    applicationId: input.applicationId,
+    dealerSlug: input.dealerSlug,
+    fromPhone: from,
+    toPhone: normalizedTo,
+    body: input.body,
+    status: response.ok ? "sent" : "failed",
+    providerPayload,
+    providerMessageId:
+      typeof providerPayload.sid === "string" ? providerPayload.sid : null,
+  });
+
+  if (!response.ok) {
+    console.error("Twilio SMS failed:", response.status, providerPayload);
+  }
 }
 
 export default async function CommunicationsCenter({
@@ -80,39 +331,62 @@ export default async function CommunicationsCenter({
   const recruiterId = String(recruiter.id);
   const alias = getRecruiterAlias(recruiter, recruiterSlug);
   const fromLine = getRecruiterFromLine(recruiter, recruiterSlug);
-  const messages = await loadMessages(recruiterId);
+
+  const [messages, contacts, templates] = await Promise.all([
+    loadMessages(recruiterId),
+    loadAddressBook(recruiterId, applications),
+    loadTemplates(),
+  ]);
+
   const inbox = messages.filter((message) => message.direction === "inbound");
   const outbox = messages.filter((message) => message.direction === "outbound");
 
   async function sendRecruiterMessage(formData: FormData) {
     "use server";
 
+    const channel = clean(formData.get("channel")) === "sms" ? "sms" : "email";
     const applicationId = clean(formData.get("application_id"));
-    const to = clean(formData.get("to"));
+    const dealerSlug = clean(formData.get("dealer_slug"));
+    const toEmail = clean(formData.get("to_email"));
+    const toPhone = clean(formData.get("to_phone"));
     const subject = clean(formData.get("subject"));
     const body = clean(formData.get("body"));
 
-    if (!to || !subject || !body) {
-      throw new Error("Recipient, subject, and message body are required.");
+    if (!body) {
+      throw new Error("Message body is required.");
     }
 
-    await (sendEmail as any)({
-      to,
-      subject,
-      text: body,
-      html: plainToHtml(body),
-      from: fromLine,
-      replyTo: alias,
-      recruiterId,
-      applicationId: applicationId || null,
-    });
+    if (channel === "email") {
+      if (!toEmail || !subject) {
+        throw new Error("Email recipient and subject are required.");
+      }
+
+      await sendEmail({
+        to: toEmail,
+        subject,
+        text: body,
+        html: plainToHtml(body),
+        from: fromLine,
+        replyTo: alias,
+        recruiterId,
+        applicationId: applicationId || null,
+      });
+    } else {
+      if (!toPhone) {
+        throw new Error("SMS recipient phone is required.");
+      }
+
+      await sendLoggedSms({
+        to: toPhone,
+        body,
+        recruiterId,
+        applicationId: applicationId || null,
+        dealerSlug: dealerSlug || null,
+      });
+    }
 
     redirect(`/recruiter/${recruiterSlug}/dashboard`);
   }
-
-  const selectableApplications = applications
-    .filter((application) => application.email)
-    .slice(0, 80);
 
   return (
     <section style={communicationsShell}>
@@ -121,9 +395,13 @@ export default async function CommunicationsCenter({
           <div className="section-kicker" style={{ marginBottom: 10 }}>
             Communications Center
           </div>
-          <h2 style={communicationsTitle}>Inbox + outbox for {label(recruiter.name, "recruiter")}</h2>
+          <h2 style={communicationsTitle}>
+            Inbox + outbox for {label(recruiter.name, "recruiter")}
+          </h2>
           <p style={communicationsCopy}>
-            Messages are recruiter-scoped and attached to candidates when possible. Outbound email sends from {alias} and replies route back into the NATA record when inbound parsing is enabled.
+            Send professional email or SMS from the recruiter identity, use the
+            address book for candidates, dealers, prospects, and custom contacts,
+            and use Solace Rewrite Assist before sending.
           </p>
         </div>
 
@@ -134,53 +412,13 @@ export default async function CommunicationsCenter({
       </div>
 
       <div style={communicationsGrid}>
-        <form action={sendRecruiterMessage} style={composeCard}>
-          <div style={cardTopline}>Send message</div>
-
-          <label style={fieldStyle}>
-            <span>Candidate / application</span>
-            <select name="application_id" style={inputStyle}>
-              <option value="">No application selected</option>
-              {selectableApplications.map((application) => (
-                <option key={String(application.id)} value={String(application.id)}>
-                  {label(application.name || application.email, "Candidate")} · {application.email}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label style={fieldStyle}>
-            <span>To</span>
-            <input
-              name="to"
-              placeholder="candidate@email.com"
-              style={inputStyle}
-            />
-          </label>
-
-          <label style={fieldStyle}>
-            <span>Subject</span>
-            <input
-              name="subject"
-              placeholder="Interview follow-up"
-              style={inputStyle}
-            />
-          </label>
-
-          <label style={fieldStyle}>
-            <span>Message</span>
-            <textarea
-              name="body"
-              placeholder="Write the message Don or the recruiter should send..."
-              rows={7}
-              style={{ ...inputStyle, paddingTop: 12, resize: "vertical" }}
-            />
-          </label>
-
-          <button className="btn btn-primary" type="submit" style={{ border: 0, cursor: "pointer" }}>
-            Send from {alias}
-          </button>
-        </form>
+        <CommunicationsComposerClient
+          action={sendRecruiterMessage}
+          alias={alias}
+          recruiterName={label(recruiter.name, "NATA Recruiter")}
+          contacts={contacts}
+          templates={templates}
+        />
 
         <div style={messageColumn}>
           <MessageList title="Inbox" empty="No inbound replies yet." messages={inbox} />
@@ -214,19 +452,18 @@ function MessageList({
           messages.slice(0, 8).map((message) => (
             <article key={String(message.id)} style={messageRow}>
               <div style={messageMetaRow}>
-                <strong>{label(message.subject, "No subject")}</strong>
+                <strong>{label(message.subject, message.channel === "sms" ? "SMS" : "No subject")}</strong>
                 <span>{formatMessageDate(message.created_at || message.sent_at || message.received_at)}</span>
               </div>
-              <p style={messagePreview}>
-                {label(
-                  message.body_text ||
-                    String(message.body_html || "").replace(/<[^>]+>/g, " "),
-                  "No message body"
-                ).slice(0, 190)}
-              </p>
+              <p style={messagePreview}>{getMessagePreview(message).slice(0, 220)}</p>
               <div style={messageFooter}>
-                <span>{message.direction === "inbound" ? `From ${label(message.from_email)}` : `To ${label(message.to_email)}`}</span>
-                <span>{label(message.status, "logged")}</span>
+                <span>
+                  {message.direction === "inbound" ? "From" : "To"}{" "}
+                  {getMessageAddress(message)}
+                </span>
+                <span>
+                  {label(message.channel, "email")} · {label(message.status, "logged")}
+                </span>
               </div>
             </article>
           ))
@@ -263,7 +500,7 @@ const communicationsTitle: React.CSSProperties = {
 };
 
 const communicationsCopy: React.CSSProperties = {
-  maxWidth: 800,
+  maxWidth: 860,
   margin: "12px 0 0",
   color: "#bfd6f5",
   lineHeight: 1.55,
@@ -282,45 +519,9 @@ const identityCard: React.CSSProperties = {
 
 const communicationsGrid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(320px, 0.86fr) minmax(0, 1.14fr)",
+  gridTemplateColumns: "minmax(360px, 0.94fr) minmax(0, 1.06fr)",
   gap: 18,
   marginTop: 22,
-};
-
-const composeCard: React.CSSProperties = {
-  display: "grid",
-  gap: 12,
-  padding: 18,
-  borderRadius: 22,
-  border: "1px solid rgba(255,255,255,0.1)",
-  background: "rgba(3,10,20,0.36)",
-};
-
-const cardTopline: React.CSSProperties = {
-  color: "#fbbf24",
-  fontWeight: 950,
-  fontSize: 12,
-  letterSpacing: ".14em",
-  textTransform: "uppercase",
-};
-
-const fieldStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 7,
-  color: "#d7e8ff",
-  fontSize: 13,
-  fontWeight: 850,
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  minHeight: 44,
-  borderRadius: 13,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "#07101f",
-  color: "#ffffff",
-  padding: "0 12px",
-  outline: "none",
 };
 
 const messageColumn: React.CSSProperties = {
