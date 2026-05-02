@@ -1,30 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
-import {
-  buildRecruiterInviteUrl,
-  createInviteToken,
-  sendRecruiterInvite,
-} from "../../../../../lib/nataRecruiterInvites";
 
 function clean(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function normalizeRole(value: string) {
   const role = value.toLowerCase();
+
   if (role === "admin") return "admin";
   if (role === "agent") return "agent";
+  if (role === "system") return "system";
   return "recruiter";
 }
 
-function permissionsForRole(role: string) {
-  if (role === "admin") {
+function normalizeStatus(value: string) {
+  const status = value.toLowerCase();
+
+  if (status === "active") return "active";
+  if (status === "suspended") return "suspended";
+  if (status === "inactive") return "inactive";
+  return "invited";
+}
+
+function checked(formData: FormData, name: string) {
+  return formData.get(name) === "on";
+}
+
+function defaultPermissions(role: string) {
+  if (role === "admin" || role === "system") {
     return {
       can_assign: true,
       can_interview: true,
       can_approve: true,
       can_view_all: true,
-      can_manage_team: true,
     };
   }
 
@@ -34,7 +51,6 @@ function permissionsForRole(role: string) {
       can_interview: true,
       can_approve: true,
       can_view_all: false,
-      can_manage_team: false,
     };
   }
 
@@ -43,84 +59,81 @@ function permissionsForRole(role: string) {
     can_interview: false,
     can_approve: false,
     can_view_all: false,
-    can_manage_team: false,
   };
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const formData = await req.formData();
+    const formData = await request.formData();
 
-    const recruiterId = clean(formData.get("recruiterId"));
-    const forceNewToken = clean(formData.get("forceNewToken")) === "true";
+    const id = clean(formData.get("id"));
+    const name = clean(formData.get("name"));
+    const rawSlug = clean(formData.get("slug"));
+    const email = clean(formData.get("email"));
+    const phone = clean(formData.get("phone"));
+    const title = clean(formData.get("title"));
+    const role = normalizeRole(clean(formData.get("role")) || "recruiter");
+    const status = normalizeStatus(clean(formData.get("status")) || "invited");
+    const managerRecruiterId = clean(formData.get("manager_recruiter_id"));
+    const notes = clean(formData.get("notes"));
+    const slug = slugify(rawSlug || name);
 
-    if (!recruiterId) {
-      return NextResponse.json({ error: "Missing recruiterId" }, { status: 400 });
+    if (!name) {
+      return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    const { data: recruiter, error: loadError } = await supabaseAdmin
-      .schema("nata")
-      .from("recruiters")
-      .select("*")
-      .eq("id", recruiterId)
-      .maybeSingle();
-
-    if (loadError) {
-      return NextResponse.json({ error: loadError.message }, { status: 500 });
+    if (!slug) {
+      return NextResponse.json({ error: "Slug is required" }, { status: 400 });
     }
 
-    if (!recruiter) {
-      return NextResponse.json({ error: "Recruiter not found" }, { status: 404 });
-    }
+    const basePermissions = defaultPermissions(role);
+    const permissions = {
+      can_view_all: checked(formData, "can_view_all") || basePermissions.can_view_all,
+      can_assign: checked(formData, "can_assign") || basePermissions.can_assign,
+      can_approve: checked(formData, "can_approve") || basePermissions.can_approve,
+      can_interview: checked(formData, "can_interview") || basePermissions.can_interview,
+    };
 
-    const inviteToken =
-      !forceNewToken && recruiter.invite_token
-        ? recruiter.invite_token
-        : createInviteToken();
+    const isActive = status === "active";
+    const now = new Date().toISOString();
 
-    const inviteUrl = buildRecruiterInviteUrl(inviteToken);
-    const role = normalizeRole(recruiter.role || "recruiter");
-
-    const sendResult = await sendRecruiterInvite({
-      recruiterId: recruiter.id,
-      name: recruiter.name,
-      email: recruiter.email,
-      phone: recruiter.phone,
+    const payload = {
+      name,
+      slug,
+      email: email || null,
+      phone: phone || null,
+      title: title || null,
       role,
-      title: recruiter.title,
-      inviteToken,
-    });
+      status,
+      is_active: isActive,
+      manager_recruiter_id: managerRecruiterId || null,
+      notes: notes || null,
+      permissions,
+      invited_at: status === "invited" ? now : null,
+      activated_at: status === "active" ? now : null,
+      updated_at: now,
+    };
 
-    const { error: updateError } = await supabaseAdmin
-      .schema("nata")
-      .from("recruiters")
-      .update({
-        role,
-        permissions: recruiter.permissions || permissionsForRole(role),
-        status: recruiter.status === "active" ? "active" : "invited",
-        invite_token: inviteToken,
-        invite_url: inviteUrl,
-        invited_at: recruiter.invited_at || new Date().toISOString(),
-        invite_sent_at: new Date().toISOString(),
-        invite_email_status: sendResult.email.sent
-          ? "sent"
-          : sendResult.email.reason || "not_sent",
-        invite_sms_status: sendResult.sms.sent
-          ? "sent"
-          : sendResult.sms.reason || "not_sent",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", recruiter.id);
+    const query = supabaseAdmin.schema("nata").from("recruiters");
 
-    if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    const { error } = id
+      ? await query.update(payload).eq("id", id)
+      : await query.upsert(payload, { onConflict: "slug" });
+
+    if (error) {
+      console.error("Recruiter upsert failed:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.redirect(new URL("/recruiter/admin", req.url));
+    return NextResponse.redirect(new URL("/recruiter/admin", request.url), 303);
   } catch (error) {
-    console.error("POST /api/nata/recruiters/invite failed:", error);
+    console.error("POST /api/nata/recruiters/upsert failed:", error);
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Invite failed" },
+      {
+        error:
+          error instanceof Error ? error.message : "Recruiter onboarding failed",
+      },
       { status: 500 }
     );
   }
