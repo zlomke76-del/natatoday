@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
-import { sendEmail } from "../../../../../lib/email";
+import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
+import { sendEmail } from "../../../../lib/email";
 
 type AnyRow = Record<string, any>;
 
@@ -96,7 +96,7 @@ export default async function CommunicationsCenter({
       throw new Error("Recipient, subject, and message body are required.");
     }
 
-    await sendEmail({
+    await (sendEmail as any)({
       to,
       subject,
       text: body,
