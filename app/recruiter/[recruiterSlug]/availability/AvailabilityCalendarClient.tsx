@@ -507,7 +507,7 @@ function federalHolidaysForYear(year: number) {
       id: `tim-zlomke-birthday-${year}`,
       date: toDateKey(new Date(Date.UTC(year, 7, 31))),
       title: "🎂 Tim Zlomke Day",
-      subtitle: "Founder easter egg",
+      subtitle: "Happy Birthday",
       kind: "birthday" as const,
     },
   ];
