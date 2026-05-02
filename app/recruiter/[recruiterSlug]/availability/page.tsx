@@ -91,6 +91,91 @@ async function loadWeeklyAvailability(recruiterId: string, weekStart: string) {
   return (data || []) as AnyRow[];
 }
 
+function getRangeForWeek(weekStart: string) {
+  const start = new Date(`${weekStart}T00:00:00`);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 7);
+
+  return {
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+  };
+}
+
+async function loadScheduledInterviews(recruiterId: string, weekStart: string) {
+  const { startIso, endIso } = getRangeForWeek(weekStart);
+
+  const bookingQueries = [
+    async () =>
+      supabaseAdmin
+        .schema("nata")
+        .from("interview_bookings")
+        .select("*")
+        .eq("recruiter_id", recruiterId)
+        .gte("start_time", startIso)
+        .lt("start_time", endIso),
+    async () =>
+      supabaseAdmin
+        .schema("nata")
+        .from("interview_bookings")
+        .select("*")
+        .eq("recruiter_id", recruiterId)
+        .gte("starts_at", startIso)
+        .lt("starts_at", endIso),
+    async () =>
+      supabaseAdmin
+        .schema("nata")
+        .from("interview_bookings")
+        .select("*")
+        .eq("recruiter_id", recruiterId)
+        .gte("scheduled_at", startIso)
+        .lt("scheduled_at", endIso),
+    async () =>
+      supabaseAdmin
+        .schema("nata")
+        .from("interview_bookings")
+        .select("*")
+        .eq("recruiter_id", recruiterId),
+  ];
+
+  for (const query of bookingQueries) {
+    const { data, error } = await query();
+
+    if (!error && Array.isArray(data)) {
+      return data as AnyRow[];
+    }
+  }
+
+  const applicationQueries = [
+    async () =>
+      supabaseAdmin
+        .schema("nata")
+        .from("applications")
+        .select("*")
+        .eq("recruiter_id", recruiterId)
+        .gte("virtual_interview_at", startIso)
+        .lt("virtual_interview_at", endIso),
+    async () =>
+      supabaseAdmin
+        .schema("nata")
+        .from("applications")
+        .select("*")
+        .eq("assigned_recruiter_id", recruiterId)
+        .gte("virtual_interview_at", startIso)
+        .lt("virtual_interview_at", endIso),
+  ];
+
+  for (const query of applicationQueries) {
+    const { data, error } = await query();
+
+    if (!error && Array.isArray(data)) {
+      return data as AnyRow[];
+    }
+  }
+
+  return [];
+}
+
 export default async function RecruiterAvailabilityPage({
   params,
   searchParams,
@@ -219,7 +304,10 @@ export default async function RecruiterAvailabilityPage({
     );
   }
 
-  const rows = await loadWeeklyAvailability(String(recruiter.id), weekStart);
+  const [rows, scheduledInterviews] = await Promise.all([
+    loadWeeklyAvailability(String(recruiter.id), weekStart),
+    loadScheduledInterviews(String(recruiter.id), weekStart),
+  ]);
 
   return (
     <main className="shell">
@@ -233,6 +321,7 @@ export default async function RecruiterAvailabilityPage({
           timezone: String(recruiter.timezone || "America/Chicago"),
         }}
         rows={rows}
+        scheduledInterviews={scheduledInterviews}
         weekStart={weekStart}
         previousWeek={previousWeek}
         nextWeek={nextWeek}
