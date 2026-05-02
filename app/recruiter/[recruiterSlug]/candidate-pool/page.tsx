@@ -34,6 +34,9 @@ type Job = {
   publish_mode: string | null;
 };
 
+const MIN_VISIBLE_MATCH_SCORE = 70;
+const MAX_VISIBLE_MATCHES = 5;
+
 const placedStatuses = [
   "placed",
   "hired",
@@ -95,6 +98,7 @@ async function getCandidatePool() {
     .from("candidate_matches")
     .select("*")
     .in("candidate_id", candidateIds)
+    .gte("fit_score", MIN_VISIBLE_MATCH_SCORE)
     .order("fit_score", { ascending: false });
 
   if (matchError) {
@@ -123,12 +127,17 @@ async function getCandidatePool() {
   const jobsById = new Map((jobs || []).map((job) => [job.id, job as Job]));
   const matchesByCandidate = new Map<string, Match[]>();
 
-  for (const match of ((matches || []) as Match[])) {
+  for (const match of (matches || []) as Match[]) {
     if (!matchesByCandidate.has(match.candidate_id)) {
       matchesByCandidate.set(match.candidate_id, []);
     }
 
-    matchesByCandidate.get(match.candidate_id)?.push(match);
+    const currentMatches = matchesByCandidate.get(match.candidate_id) || [];
+
+    if (currentMatches.length < MAX_VISIBLE_MATCHES) {
+      currentMatches.push(match);
+      matchesByCandidate.set(match.candidate_id, currentMatches);
+    }
   }
 
   return safeCandidates.map((candidate) => ({
@@ -162,8 +171,8 @@ export default async function RecruiterCandidatePoolPage({
             <div style={eyebrowStyle}>NATA Candidate Pool</div>
             <h1 style={titleStyle}>Available talent radar.</h1>
             <p style={ledeStyle}>
-              Active candidates who have not been previously placed. Matches are
-              limited to eligible candidates only.
+              Active candidates who have not been previously placed. Only the
+              top {MAX_VISIBLE_MATCHES} eligible matches at or above {MIN_VISIBLE_MATCH_SCORE} are surfaced.
             </p>
           </div>
 
@@ -171,7 +180,7 @@ export default async function RecruiterCandidatePoolPage({
             <div style={guardrailTitleStyle}>Safeguards active</div>
             <div style={guardrailTextStyle}>
               Prior placed candidates are excluded by candidate status and prior
-              application history.
+              application history. No solicitation is triggered from this dashboard.
             </div>
           </div>
         </div>
@@ -179,7 +188,7 @@ export default async function RecruiterCandidatePoolPage({
         <div style={statsGridStyle}>
           <Stat label="Eligible candidates" value={rows.length} />
           <Stat
-            label="Matched candidates"
+            label="Top-match candidates"
             value={rows.filter((row) => row.matches.length > 0).length}
           />
           <Stat
@@ -223,6 +232,9 @@ export default async function RecruiterCandidatePoolPage({
                     <div style={pillRowStyle}>
                       <span style={safePillStyle}>Eligible</span>
                       <span style={statusPillStyle}>{candidate.status}</span>
+                      <span style={thresholdPillStyle}>
+                        Match threshold: {MIN_VISIBLE_MATCH_SCORE}+
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -256,15 +268,15 @@ export default async function RecruiterCandidatePoolPage({
                 </div>
 
                 <div style={matchSectionStyle}>
-                  <div style={sectionTitleStyle}>Nearby role matches</div>
+                  <div style={sectionTitleStyle}>Top eligible role matches</div>
 
                   {matches.length === 0 ? (
                     <div style={noMatchStyle}>
-                      No active 0–100 mile matches recorded yet.
+                      No eligible top-match roles recorded yet.
                     </div>
                   ) : (
                     <div style={{ display: "grid", gap: 10 }}>
-                      {matches.slice(0, 5).map(({ match, job }) => (
+                      {matches.map(({ match, job }) => (
                         <div key={match.id} style={matchCardStyle}>
                           <div>
                             <div style={matchTitleStyle}>
@@ -488,6 +500,16 @@ const statusPillStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 950,
   textTransform: "capitalize",
+};
+
+const thresholdPillStyle: React.CSSProperties = {
+  padding: "6px 9px",
+  borderRadius: 999,
+  background: "rgba(250,204,21,0.12)",
+  border: "1px solid rgba(250,204,21,0.22)",
+  color: "#fef3c7",
+  fontSize: 12,
+  fontWeight: 950,
 };
 
 const actionRowStyle: React.CSSProperties = {
