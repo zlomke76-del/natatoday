@@ -15,6 +15,7 @@ type PageProps = {
     decision?: string;
     candidate?: string;
     schedule?: string;
+    active?: string;
   };
 };
 
@@ -528,6 +529,68 @@ async function loadDashboardData(dealerSlug: string) {
   };
 }
 
+function findActiveAction(
+  activeId: string,
+  readyScheduleCandidates: ReadyScheduleCandidate[],
+  managerCandidates: ManagerCandidate[],
+) {
+  const activeReady = readyScheduleCandidates.find(
+    (candidate) => candidate.applicationId === activeId || candidate.id === activeId,
+  );
+
+  if (activeReady) {
+    return {
+      type: "schedule" as const,
+      candidate: activeReady,
+      index: readyScheduleCandidates.findIndex(
+        (candidate) => candidate.applicationId === activeReady.applicationId,
+      ),
+      total: readyScheduleCandidates.length + managerCandidates.length,
+    };
+  }
+
+  const activeManager = managerCandidates.find(
+    (candidate) => candidate.applicationId === activeId || candidate.id === activeId,
+  );
+
+  if (activeManager) {
+    return {
+      type: "decision" as const,
+      candidate: activeManager,
+      index:
+        readyScheduleCandidates.length +
+        managerCandidates.findIndex(
+          (candidate) => candidate.applicationId === activeManager.applicationId,
+        ),
+      total: readyScheduleCandidates.length + managerCandidates.length,
+    };
+  }
+
+  const firstReady = readyScheduleCandidates[0];
+
+  if (firstReady) {
+    return {
+      type: "schedule" as const,
+      candidate: firstReady,
+      index: 0,
+      total: readyScheduleCandidates.length + managerCandidates.length,
+    };
+  }
+
+  const firstManager = managerCandidates[0];
+
+  if (firstManager) {
+    return {
+      type: "decision" as const,
+      candidate: firstManager,
+      index: readyScheduleCandidates.length,
+      total: readyScheduleCandidates.length + managerCandidates.length,
+    };
+  }
+
+  return null;
+}
+
 export default async function DealerDashboardPage({
   params,
   searchParams,
@@ -587,6 +650,12 @@ export default async function DealerDashboardPage({
     openJobs,
     filledJobs,
   } = await loadDashboardData(params.dealerSlug);
+
+  const activeAction = findActiveAction(
+    searchParams?.active ? decodeURIComponent(searchParams.active) : "",
+    readyScheduleCandidates,
+    managerCandidates,
+  );
 
   async function submitHiringRequest(formData: FormData) {
     "use server";
@@ -1119,8 +1188,10 @@ export default async function DealerDashboardPage({
           </section>
 
           <InterviewCoordinationPanel
+            dealerSlug={params.dealerSlug}
             readyScheduleCandidates={readyScheduleCandidates}
             managerCandidates={managerCandidates}
+            activeApplicationId={activeAction?.candidate.applicationId || ""}
           />
         </div>
 
@@ -1396,289 +1467,45 @@ export default async function DealerDashboardPage({
           )}
         </section>
 
-        <section style={{ marginTop: 40 }}>
-          <div className="eyebrow">Next action cards</div>
+        <section id="next-action" style={{ marginTop: 40, scrollMarginTop: 120 }}>
+          <div className="eyebrow">Next action workspace</div>
 
-          {managerCandidates.length > 0 ? (
+          {activeAction ? (
             <div style={{ display: "grid", gap: 14, marginTop: 16 }}>
-              {managerCandidates.map((candidate) => (
-                <article
-                  key={candidate.id}
-                  id={`interview-${candidate.applicationId}`}
-                  style={{
-                    padding: 22,
-                    borderRadius: 24,
-                    background:
-                      "linear-gradient(145deg, rgba(255,255,255,0.065), rgba(255,255,255,0.035))",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "96px minmax(0, 1fr) auto",
-                      gap: 18,
-                      alignItems: "center",
-                    }}
-                  >
-                    <CandidatePhoto
-                      url={candidate.photoUrl}
-                      name={candidate.name}
-                    />
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 18,
+                  background: "rgba(20,115,255,0.08)",
+                  border: "1px solid rgba(96,165,250,0.16)",
+                  color: "#bfd6f5",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <strong style={{ color: "#fff" }}>
+                  Action {activeAction.index + 1} of {activeAction.total}
+                </strong>
+                <span>
+                  One action is open at a time. Use the queue above to switch
+                  candidates.
+                </span>
+              </div>
 
-                    <div>
-                      <h3
-                        style={{
-                          margin: 0,
-                          color: "#fff",
-                          fontSize: 28,
-                          letterSpacing: "-0.04em",
-                          lineHeight: 1,
-                        }}
-                      >
-                        {candidate.name}
-                      </h3>
-
-                      <p style={{ margin: "8px 0 0", color: "#bfd6f5" }}>
-                        {candidate.role} ·{" "}
-                        {formatInterviewTime(candidate.dealerInterviewAt)}
-                      </p>
-
-                      <p
-                        style={{
-                          color: "#9fb4d6",
-                          lineHeight: 1.55,
-                          margin: "10px 0 0",
-                        }}
-                      >
-                        {candidate.summary}
-                      </p>
-                    </div>
-
-                    <div
-                      style={{ display: "grid", gap: 8, justifyItems: "end" }}
-                    >
-                      <StatusBadge status="Packet ready · interview scheduled" />
-                      {candidate.fitScore !== null ? (
-                        <span
-                          style={{
-                            padding: "8px 10px",
-                            borderRadius: 999,
-                            background: "rgba(251,191,36,0.12)",
-                            border: "1px solid rgba(251,191,36,0.22)",
-                            color: "#fbbf24",
-                            fontSize: 12,
-                            fontWeight: 950,
-                          }}
-                        >
-                          Fit score {candidate.fitScore}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 8,
-                      marginTop: 12,
-                    }}
-                  >
-                    {candidate.notes.map((note) => (
-                      <span
-                        key={note}
-                        style={{
-                          padding: "8px 10px",
-                          borderRadius: 999,
-                          background: "rgba(255,255,255,0.055)",
-                          border: "1px solid rgba(255,255,255,0.09)",
-                          color: "#d7e8ff",
-                          fontSize: 13,
-                        }}
-                      >
-                        {note}
-                      </span>
-                    ))}
-                  </div>
-
-                  <details
-                    style={{
-                      marginTop: 16,
-                      padding: 16,
-                      borderRadius: 18,
-                      background: "rgba(255,255,255,0.045)",
-                      border: "1px solid rgba(255,255,255,0.09)",
-                    }}
-                  >
-                    <summary
-                      style={{
-                        color: "#fff",
-                        fontWeight: 900,
-                        cursor: "pointer",
-                      }}
-                    >
-                      View interview packet
-                    </summary>
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns:
-                          "160px minmax(0, 0.75fr) minmax(0, 1.15fr)",
-                        gap: 12,
-                        marginTop: 14,
-                        alignItems: "stretch",
-                      }}
-                    >
-                      <PacketIdentityBlock
-                        name={candidate.name}
-                        role={candidate.role}
-                        photoUrl={candidate.photoUrl}
-                        fitScore={candidate.fitScore}
-                      />
-                      <ResumeBlock url={candidate.resumeUrl} />
-                      <QuestionBlock questions={candidate.interviewQuestions} />
-                    </div>
-
-                    <div style={{ marginTop: 12 }}>
-                      <PacketBlock
-                        title="NATA notes"
-                        copy={candidate.nataNotes}
-                      />
-                    </div>
-
-                    <div style={{ marginTop: 14 }}>
-                      <strong style={{ color: "#fff" }}>
-                        Verify during interview
-                      </strong>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: 8,
-                          marginTop: 10,
-                        }}
-                      >
-                        {candidate.verificationItems.map((item) => (
-                          <span
-                            key={item}
-                            style={{
-                              padding: "8px 10px",
-                              borderRadius: 999,
-                              background: "rgba(255,255,255,0.055)",
-                              border: "1px solid rgba(255,255,255,0.09)",
-                              color: "#d7e8ff",
-                              fontSize: 13,
-                            }}
-                          >
-                            {item}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </details>
-
-                  <form
-                    action={submitInterviewDecision}
-                    style={{
-                      marginTop: 16,
-                      padding: 16,
-                      borderRadius: 18,
-                      background: "rgba(255,255,255,0.04)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                    }}
-                  >
-                    <input
-                      type="hidden"
-                      name="job_id"
-                      value={candidate.jobId}
-                    />
-                    <input
-                      type="hidden"
-                      name="application_id"
-                      value={candidate.applicationId}
-                    />
-                    <input
-                      type="hidden"
-                      name="candidate_name"
-                      value={candidate.name}
-                    />
-
-                    <h4
-                      style={{
-                        margin: "0 0 12px",
-                        color: "#fff",
-                        fontSize: 18,
-                      }}
-                    >
-                      Interview outcome
-                    </h4>
-
-                    <div className="grid-2" style={{ gap: 14 }}>
-                      <Field label="Outcome">
-                        <select
-                          name="outcome"
-                          required
-                          defaultValue=""
-                          style={inputStyle}
-                        >
-                          <option value="" disabled>
-                            Select outcome
-                          </option>
-                          <option value="hired">Hired</option>
-                          <option value="not_hired">Not hired</option>
-                          <option value="keep_warm">Keep warm</option>
-                          <option value="no_show">No-show</option>
-                          <option value="needs_followup">
-                            Needs follow-up
-                          </option>
-                        </select>
-                      </Field>
-
-                      <Field label="Manager / interviewer">
-                        <input
-                          name="interviewer_name"
-                          placeholder="Example: Sales Manager"
-                          required
-                          style={inputStyle}
-                        />
-                      </Field>
-                    </div>
-
-                    <div style={{ marginTop: 14 }}>
-                      <Field label="Why?">
-                        <textarea
-                          name="decision_reason"
-                          rows={3}
-                          placeholder="Required. Briefly document the reason for the decision."
-                          required
-                          style={inputStyle}
-                        />
-                      </Field>
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: 14,
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <span style={{ color: "#9fb4d6", fontSize: 13 }}>
-                        Hired closes the public listing. Other outcomes keep the
-                        role open.
-                      </span>
-                      <button className="btn btn-primary" type="submit">
-                        Save decision
-                      </button>
-                    </div>
-                  </form>
-                </article>
-              ))}
+              {activeAction.type === "schedule" ? (
+                <ScheduleCandidateCard
+                  candidate={activeAction.candidate}
+                  dealerSlug={params.dealerSlug}
+                />
+              ) : (
+                <DecisionCandidateCard
+                  candidate={activeAction.candidate}
+                  submitInterviewDecision={submitInterviewDecision}
+                />
+              )}
             </div>
           ) : (
             <div
@@ -1692,28 +1519,431 @@ export default async function DealerDashboardPage({
               }}
             >
               <h3 style={{ margin: 0, color: "#fff", fontSize: 24 }}>
-                No decision cards are ready yet.
+                No action cards are ready.
               </h3>
               <p style={{ margin: "10px 0 0", lineHeight: 1.6 }}>
                 NATA Today is still screening candidates, completing virtual
                 interviews, requesting a manager interview time, or preparing
-                interview packets. Candidates appear here for decision only when
-                the packet is ready and the interview is scheduled.
+                interview packets. Candidates appear here only when dealer
+                action is required.
               </p>
             </div>
           )}
         </section>
+
       </section>
     </main>
   );
 }
 
+function ScheduleCandidateCard({
+  candidate,
+  dealerSlug,
+}: {
+  candidate: ReadyScheduleCandidate;
+  dealerSlug: string;
+}) {
+  return (
+    <article
+      id={`schedule-${candidate.applicationId}`}
+      style={{
+        padding: 22,
+        borderRadius: 24,
+        background:
+          "linear-gradient(145deg, rgba(251,191,36,0.105), rgba(255,255,255,0.035))",
+        border: "1px solid rgba(251,191,36,0.22)",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "96px minmax(0, 1fr) auto",
+          gap: 18,
+          alignItems: "center",
+        }}
+      >
+        <CandidatePhoto url={candidate.photoUrl} name={candidate.name} />
+
+        <div>
+          <h3
+            style={{
+              margin: 0,
+              color: "#fff",
+              fontSize: 28,
+              letterSpacing: "-0.04em",
+              lineHeight: 1,
+            }}
+          >
+            {candidate.name}
+          </h3>
+
+          <p style={{ margin: "8px 0 0", color: "#bfd6f5" }}>
+            {candidate.role} · Ready for manager interview time
+          </p>
+
+          <p
+            style={{
+              color: "#9fb4d6",
+              lineHeight: 1.55,
+              margin: "10px 0 0",
+            }}
+          >
+            {candidate.summary}
+          </p>
+        </div>
+
+        <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+          <StatusBadge status="Packet ready · schedule needed" />
+          {candidate.fitScore !== null ? (
+            <span
+              style={{
+                padding: "8px 10px",
+                borderRadius: 999,
+                background: "rgba(251,191,36,0.12)",
+                border: "1px solid rgba(251,191,36,0.22)",
+                color: "#fbbf24",
+                fontSize: 12,
+                fontWeight: 950,
+              }}
+            >
+              Fit score {candidate.fitScore}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <details
+        style={{
+          marginTop: 16,
+          padding: 16,
+          borderRadius: 18,
+          background: "rgba(255,255,255,0.045)",
+          border: "1px solid rgba(255,255,255,0.09)",
+        }}
+      >
+        <summary
+          style={{
+            color: "#fff",
+            fontWeight: 900,
+            cursor: "pointer",
+          }}
+        >
+          View recommendation packet
+        </summary>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "160px minmax(0, 0.75fr) minmax(0, 1.15fr)",
+            gap: 12,
+            marginTop: 14,
+            alignItems: "stretch",
+          }}
+        >
+          <PacketIdentityBlock
+            name={candidate.name}
+            role={candidate.role}
+            photoUrl={candidate.photoUrl}
+            fitScore={candidate.fitScore}
+          />
+          <ResumeBlock url={candidate.resumeUrl} />
+          <QuestionBlock questions={candidate.interviewQuestions} />
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <PacketBlock title="NATA recommendation" copy={candidate.nataNotes} />
+        </div>
+      </details>
+
+      <form
+        method="POST"
+        action={`/api/nata/applications/${candidate.applicationId}/schedule-dealer-interview`}
+        style={{
+          marginTop: 16,
+          padding: 16,
+          borderRadius: 18,
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <input type="hidden" name="dealer_slug" value={dealerSlug} />
+
+        <h4 style={{ margin: "0 0 12px", color: "#fff", fontSize: 18 }}>
+          Select optimal manager interview time
+        </h4>
+
+        <div className="grid-2" style={{ gap: 14 }}>
+          <Field label="Interview date">
+            <input name="interview_date" type="date" required style={inputStyle} />
+          </Field>
+
+          <Field label="Interview time">
+            <input name="interview_time" type="time" required style={inputStyle} />
+          </Field>
+
+          <Field label="Manager / interviewer">
+            <input
+              name="manager_name"
+              placeholder="Example: Sales Manager"
+              required
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field label="Interview location">
+            <input
+              name="interview_location"
+              placeholder="Example: Sales office"
+              style={inputStyle}
+            />
+          </Field>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <Field label="Optional note for candidate">
+            <textarea
+              name="dealer_schedule_note"
+              rows={3}
+              placeholder="Example: Please arrive 10 minutes early and ask for the sales manager."
+              style={inputStyle}
+            />
+          </Field>
+        </div>
+
+        <div
+          style={{
+            marginTop: 14,
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ color: "#9fb4d6", fontSize: 13 }}>
+            Confirming a time moves this candidate into the decision workspace
+            and notifies the candidate.
+          </span>
+          <button className="btn btn-primary" type="submit">
+            Confirm interview time
+          </button>
+        </div>
+      </form>
+    </article>
+  );
+}
+
+function DecisionCandidateCard({
+  candidate,
+  submitInterviewDecision,
+}: {
+  candidate: ManagerCandidate;
+  submitInterviewDecision: (formData: FormData) => Promise<void>;
+}) {
+  return (
+    <article
+      id={`interview-${candidate.applicationId}`}
+      style={{
+        padding: 22,
+        borderRadius: 24,
+        background:
+          "linear-gradient(145deg, rgba(255,255,255,0.065), rgba(255,255,255,0.035))",
+        border: "1px solid rgba(255,255,255,0.12)",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "96px minmax(0, 1fr) auto",
+          gap: 18,
+          alignItems: "center",
+        }}
+      >
+        <CandidatePhoto url={candidate.photoUrl} name={candidate.name} />
+
+        <div>
+          <h3
+            style={{
+              margin: 0,
+              color: "#fff",
+              fontSize: 28,
+              letterSpacing: "-0.04em",
+              lineHeight: 1,
+            }}
+          >
+            {candidate.name}
+          </h3>
+
+          <p style={{ margin: "8px 0 0", color: "#bfd6f5" }}>
+            {candidate.role} · {formatInterviewTime(candidate.dealerInterviewAt)}
+          </p>
+
+          <p
+            style={{
+              color: "#9fb4d6",
+              lineHeight: 1.55,
+              margin: "10px 0 0",
+            }}
+          >
+            {candidate.summary}
+          </p>
+        </div>
+
+        <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+          <StatusBadge status="Packet ready · interview scheduled" />
+          {candidate.fitScore !== null ? (
+            <span
+              style={{
+                padding: "8px 10px",
+                borderRadius: 999,
+                background: "rgba(251,191,36,0.12)",
+                border: "1px solid rgba(251,191,36,0.22)",
+                color: "#fbbf24",
+                fontSize: 12,
+                fontWeight: 950,
+              }}
+            >
+              Fit score {candidate.fitScore}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <details
+        style={{
+          marginTop: 16,
+          padding: 16,
+          borderRadius: 18,
+          background: "rgba(255,255,255,0.045)",
+          border: "1px solid rgba(255,255,255,0.09)",
+        }}
+      >
+        <summary
+          style={{
+            color: "#fff",
+            fontWeight: 900,
+            cursor: "pointer",
+          }}
+        >
+          View interview packet
+        </summary>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "160px minmax(0, 0.75fr) minmax(0, 1.15fr)",
+            gap: 12,
+            marginTop: 14,
+            alignItems: "stretch",
+          }}
+        >
+          <PacketIdentityBlock
+            name={candidate.name}
+            role={candidate.role}
+            photoUrl={candidate.photoUrl}
+            fitScore={candidate.fitScore}
+          />
+          <ResumeBlock url={candidate.resumeUrl} />
+          <QuestionBlock questions={candidate.interviewQuestions} />
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <PacketBlock title="NATA notes" copy={candidate.nataNotes} />
+        </div>
+      </details>
+
+      <form
+        action={submitInterviewDecision}
+        style={{
+          marginTop: 16,
+          padding: 16,
+          borderRadius: 18,
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        <input type="hidden" name="job_id" value={candidate.jobId} />
+        <input
+          type="hidden"
+          name="application_id"
+          value={candidate.applicationId}
+        />
+        <input type="hidden" name="candidate_name" value={candidate.name} />
+
+        <h4 style={{ margin: "0 0 12px", color: "#fff", fontSize: 18 }}>
+          Interview outcome
+        </h4>
+
+        <div className="grid-2" style={{ gap: 14 }}>
+          <Field label="Outcome">
+            <select name="outcome" required defaultValue="" style={inputStyle}>
+              <option value="" disabled>
+                Select outcome
+              </option>
+              <option value="hired">Hired</option>
+              <option value="not_hired">Not hired</option>
+              <option value="keep_warm">Keep warm</option>
+              <option value="no_show">No-show</option>
+              <option value="needs_followup">Needs follow-up</option>
+            </select>
+          </Field>
+
+          <Field label="Manager / interviewer">
+            <input
+              name="interviewer_name"
+              placeholder="Example: Sales Manager"
+              required
+              style={inputStyle}
+            />
+          </Field>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <Field label="Why?">
+            <textarea
+              name="decision_reason"
+              rows={3}
+              placeholder="Required. Briefly document the reason for the decision."
+              required
+              style={inputStyle}
+            />
+          </Field>
+        </div>
+
+        <div
+          style={{
+            marginTop: 14,
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ color: "#9fb4d6", fontSize: 13 }}>
+            Hired closes the public listing. Other outcomes keep the role open.
+          </span>
+          <button className="btn btn-primary" type="submit">
+            Save decision
+          </button>
+        </div>
+      </form>
+    </article>
+  );
+}
+
 function InterviewCoordinationPanel({
+  dealerSlug,
   readyScheduleCandidates,
   managerCandidates,
+  activeApplicationId,
 }: {
+  dealerSlug: string;
   readyScheduleCandidates: ReadyScheduleCandidate[];
   managerCandidates: ManagerCandidate[];
+  activeApplicationId: string;
 }) {
   const upcoming = managerCandidates.slice(0, 4);
   const ready = readyScheduleCandidates.slice(0, 4);
@@ -1748,8 +1978,8 @@ function InterviewCoordinationPanel({
       </h2>
 
       <p style={{ color: "#cfe2ff", lineHeight: 1.6, marginTop: 12 }}>
-        This is your next-action stack. Click a card to jump directly to the
-        action: schedule the interview or record the manager decision.
+        This is your next-action queue. Click a card to load exactly one
+        action below: schedule the interview or record the manager decision.
       </p>
 
       <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
@@ -1764,7 +1994,10 @@ function InterviewCoordinationPanel({
                 photoUrl={candidate.photoUrl}
                 meta="Packet ready · select manager time"
                 tone="schedule"
-                href={`#schedule-${candidate.applicationId}`}
+                href={`/dealer/${dealerSlug}/dashboard?active=${encodeURIComponent(
+                  candidate.applicationId,
+                )}#next-action`}
+                active={activeApplicationId === candidate.applicationId}
               />
             ))}
           </>
@@ -1781,7 +2014,10 @@ function InterviewCoordinationPanel({
                 photoUrl={candidate.photoUrl}
                 meta={formatInterviewTime(candidate.dealerInterviewAt)}
                 tone="scheduled"
-                href={`#interview-${candidate.applicationId}`}
+                href={`/dealer/${dealerSlug}/dashboard?active=${encodeURIComponent(
+                  candidate.applicationId,
+                )}#next-action`}
+                active={activeApplicationId === candidate.applicationId}
               />
             ))}
           </>
@@ -1814,6 +2050,7 @@ function MiniCandidateCard({
   meta,
   tone,
   href,
+  active,
 }: {
   name: string;
   role: string;
@@ -1821,6 +2058,7 @@ function MiniCandidateCard({
   meta: string;
   tone: "schedule" | "scheduled";
   href: string;
+  active: boolean;
 }) {
   return (
     <a
@@ -1836,10 +2074,12 @@ function MiniCandidateCard({
           tone === "schedule"
             ? "rgba(251,191,36,0.12)"
             : "rgba(34,197,94,0.10)",
-        border:
-          tone === "schedule"
+        border: active
+          ? "1px solid rgba(147,197,253,0.72)"
+          : tone === "schedule"
             ? "1px solid rgba(251,191,36,0.22)"
             : "1px solid rgba(34,197,94,0.18)",
+        boxShadow: active ? "0 0 0 3px rgba(59,130,246,0.18)" : "none",
         textDecoration: "none",
       }}
     >
@@ -1868,7 +2108,9 @@ function MiniCandidateCard({
           {meta}
         </span>
       </div>
-      <span style={{ color: "#93c5fd", fontWeight: 950 }}>Open →</span>
+      <span style={{ color: "#93c5fd", fontWeight: 950 }}>
+        {active ? "Active" : "Open →"}
+      </span>
     </a>
   );
 }
