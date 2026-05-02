@@ -13,46 +13,46 @@ const roles = [
 const steps = [
   {
     number: "01",
-    title: "Candidates come in",
-    copy: "Applicants, referrals, walk-ins, technician leads, and campaigns feed into one organized pipeline instead of scattered inboxes.",
+    title: "Candidates enter one system",
+    copy: "Applicants, referrals, walk-ins, technician leads, and campaigns are captured and structured into a single controlled pipeline — not scattered across inboxes.",
   },
   {
     number: "02",
-    title: "We filter and qualify",
-    copy: "We review fit, communication, availability, certification level, and role readiness before your managers spend time.",
+    title: "Only qualified candidates move forward",
+    copy: "Each candidate is reviewed, pre-screened, and evaluated for role fit, communication, availability, and certification level before your team ever sees them.",
   },
   {
     number: "03",
-    title: "Readiness becomes clear",
-    copy: "Training progress, interview readiness, service experience, and certification signals are visible before handoff.",
+    title: "Readiness is established before the interview",
+    copy: "Candidates arrive with visible readiness signals — training progress, service experience, certification level, and role alignment — before the conversation begins.",
   },
   {
     number: "04",
-    title: "You meet prepared candidates",
-    copy: "Your team gets a clean shortlist with context — not a pile of unknown applicants or unqualified technician leads.",
+    title: "Managers meet candidates worth hiring",
+    copy: "Your team is not filtering or guessing. They are confirming fit with candidates who have already been prepared for the role.",
   },
 ];
 
 const proofCards = [
   {
-    title: "Technician pipeline support",
-    copy: "Hard-to-find service talent is organized by experience, certification level, availability, and fit before your store invests manager time.",
+    title: "Technician pipeline control",
+    copy: "Hard-to-find service talent is organized by certification level, experience, availability, and role fit before your store invests time.",
   },
   {
-    title: "Less manager time wasted",
-    copy: "Your team is not chasing every applicant or guessing who is serious. They focus on candidates worth meeting.",
+    title: "Manager time protected",
+    copy: "Your team is not chasing applicants or sorting through noise. They focus only on candidates who have earned the interview.",
   },
   {
     title: "Interviews become decisions",
-    copy: "The interview is no longer the first filter. It becomes the point where your dealership confirms the right fit.",
+    copy: "The interview is no longer the first filter. It becomes the moment your dealership confirms the right hire.",
   },
 ];
 
 const metrics = [
-  { value: "24", label: "candidates in pipeline" },
-  { value: "8", label: "ready for interview" },
-  { value: "5", label: "technician candidates tracked" },
-  { value: "3", label: "certification levels visible" },
+  { value: "60–80%", label: "reduction in unqualified interviews" },
+  { value: "Faster", label: "time-to-fill on critical roles" },
+  { value: "Full", label: "technician pipeline visibility" },
+  { value: "More", label: "manager time spent on hiring decisions" },
 ];
 
 export default function Home() {
@@ -67,6 +67,7 @@ export default function Home() {
     <main className="shell">
       <Nav />
 
+      {/* HERO */}
       <section className="hero hero-bg">
         <div className="hero-overlay" />
 
@@ -75,12 +76,14 @@ export default function Home() {
             <div className="eyebrow">Automotive recruiting + training</div>
 
             <h1>
-              Stop sorting through applicants.{" "}
-              <span className="accent">Start meeting the right ones.</span>
+              NATA Today removes the friction of hiring.{" "}
+              <span className="accent">
+                You only meet candidates worth your time.
+              </span>
             </h1>
 
             <p className="lede">
-              NATA Today helps dealerships recruit, screen, and prepare harder-to-find talent — from sales and BDC to service advisors and technicians — before your managers spend time chasing applicants.
+              Candidates are screened, evaluated, and prepared before your managers ever get involved — so your team spends time making hiring decisions, not sorting through applicants.
             </p>
 
             <div className="hero-actions">
@@ -103,14 +106,15 @@ export default function Home() {
         </div>
       </section>
 
+      {/* PROCESS */}
       <section id="system" className="process-section">
         <div className="wrap">
           <div className="section-kicker">Where the work gets removed</div>
 
           <div className="process-hero">
-            <h2>You don’t sort candidates. You meet the ones that matter.</h2>
+            <h2>You don’t sort candidates. You meet the right ones.</h2>
             <p>
-              The dealership still makes the hiring decision — but only after candidates have been reviewed, organized, and prepared. For technicians, that means certification level, service experience, availability, and readiness are visible before anyone burns time on the wrong conversation.
+              The dealership still makes the hiring decision — but only after candidates have been screened, organized, and prepared. For technicians, certification level, service experience, and readiness are visible before any time is spent.
             </p>
           </div>
 
@@ -123,8 +127,6 @@ export default function Home() {
           <div className="process-grid">
             {steps.map((step) => (
               <article className="process-card" key={step.number}>
-                
-                {/* IMAGE HEADER */}
                 <div className="process-image-wrap">
                   <img
                     src={imageMap[step.number]}
@@ -139,16 +141,40 @@ export default function Home() {
               </article>
             ))}
           </div>
+
+          {/* CONTRAST BLOCK */}
+          <div className="contrast-block">
+            <div className="contrast-col">
+              <h4>Without NATA Today</h4>
+              <ul>
+                <li>Managers sort through applicants</li>
+                <li>Interviews are the first filter</li>
+                <li>Time is spent on the wrong candidates</li>
+              </ul>
+            </div>
+
+            <div className="contrast-col highlight">
+              <h4>With NATA Today</h4>
+              <ul>
+                <li>Candidates are filtered before you see them</li>
+                <li>Interviews confirm, not discover</li>
+                <li>Manager time is protected and focused</li>
+              </ul>
+            </div>
+          </div>
         </div>
       </section>
 
+      {/* OUTCOMES */}
       <section id="outcomes" className="outcome-section">
         <div className="wrap">
           <div className="outcome-heading">
-            <div className="section-kicker dark">What changes for the dealer</div>
-            <h2>A cleaner pipeline. Less noise. Better hires.</h2>
+            <div className="section-kicker dark">
+              What changes for the dealer
+            </div>
+            <h2>Fewer interviews. Better conversations. Faster hires.</h2>
             <p>
-              NATA Today does not add another tool to manage. It removes the work that slows hiring down — especially when the open role is a technician and every missed fit costs the service department real capacity.
+              NATA Today is not another tool to manage. It removes the work that slows hiring down — especially when technician roles directly impact service capacity and revenue.
             </p>
           </div>
 
@@ -175,7 +201,7 @@ export default function Home() {
               <span>Dealer-ready recruiting</span>
               <h3>Stop starting from zero with every applicant.</h3>
               <p>
-                Your team gets candidates who have already been organized, screened, prepared, and matched to the role — including technician certification level when that is what matters most.
+                Your team gets candidates who have already been screened, prepared, and matched to the role — including technician certification and readiness when it matters most.
               </p>
             </div>
             <Link className="btn btn-primary" href="/dealer-demo">
@@ -185,6 +211,7 @@ export default function Home() {
         </div>
       </section>
 
+      {/* FOOTER */}
       <footer className="footer">
         <div className="wrap">NATA Today · Powered by clarity</div>
       </footer>
