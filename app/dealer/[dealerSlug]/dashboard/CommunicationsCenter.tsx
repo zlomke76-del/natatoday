@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation";
-import { sendEmail } from "../../../../lib/email";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
 type AnyRow = Record<string, any>;
