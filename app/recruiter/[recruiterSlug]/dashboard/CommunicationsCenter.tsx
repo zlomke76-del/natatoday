@@ -59,9 +59,7 @@ function normalizePhone(value: string) {
 
   const trimmed = value.trim();
 
-  if (trimmed.startsWith("+")) {
-    return trimmed;
-  }
+  if (trimmed.startsWith("+")) return trimmed;
 
   const digits = trimmed.replace(/\D/g, "");
 
@@ -257,7 +255,6 @@ async function sendLoggedSms(input: {
       status: "skipped",
       providerPayload: { reason: "missing_or_invalid_phone", originalTo: input.to },
     });
-
     return;
   }
 
@@ -275,7 +272,6 @@ async function sendLoggedSms(input: {
       status: "skipped",
       providerPayload: { reason: "missing_twilio_config" },
     });
-
     return;
   }
 
@@ -339,7 +335,7 @@ export default async function CommunicationsCenter({
   ]);
 
   const inbox = messages.filter((message) => message.direction === "inbound");
-  const outbox = messages.filter((message) => message.direction === "outbound");
+  const sent = messages.filter((message) => message.direction === "outbound");
 
   async function sendRecruiterMessage(formData: FormData) {
     "use server";
@@ -370,6 +366,10 @@ export default async function CommunicationsCenter({
         replyTo: alias,
         recruiterId,
         applicationId: applicationId || null,
+        signatureName: label(recruiter.name, "NATA Recruiting Team"),
+        signatureTitle: label(recruiter.title || recruiter.role, "Recruiting Operations"),
+        signatureEmail: alias,
+        signaturePhone: label(recruiter.phone, ""),
       });
     } else {
       if (!toPhone) {
@@ -396,7 +396,7 @@ export default async function CommunicationsCenter({
             Communications Center
           </div>
           <h2 style={communicationsTitle}>
-            Inbox + outbox for {label(recruiter.name, "recruiter")}
+            Inbox + sent for {label(recruiter.name, "recruiter")}
           </h2>
           <p style={communicationsCopy}>
             Send professional email or SMS from the recruiter identity, use the
@@ -422,7 +422,7 @@ export default async function CommunicationsCenter({
 
         <div style={messageColumn}>
           <MessageList title="Inbox" empty="No inbound replies yet." messages={inbox} />
-          <MessageList title="Outbox" empty="No outbound messages logged yet." messages={outbox} />
+          <MessageList title="Sent" empty="No sent messages logged yet." messages={sent} />
         </div>
       </div>
     </section>
