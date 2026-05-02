@@ -1,9 +1,11 @@
+import type { ReactNode, CSSProperties } from "react";
 import { redirect } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
 import Nav from "../../../components/Nav";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { hasDealerAccess } from "../../../../lib/dealerAccess";
 import ActionNotice from "./ActionNotice";
+import CommunicationsCenter from "./CommunicationsCenter";
 
 type PageProps = {
   params: {
@@ -138,10 +140,6 @@ function getCandidateName(application: AnyRow) {
       application.email ||
       "Candidate",
   );
-}
-
-function getCandidateEmail(application: AnyRow) {
-  return String(application.email || application.candidate_email || "");
 }
 
 function getApplicationSummary(application: AnyRow) {
@@ -595,6 +593,8 @@ export default async function DealerDashboardPage({
   params,
   searchParams,
 }: PageProps) {
+  noStore();
+
   const dealerName = formatDealerName(params.dealerSlug);
 
   if (!hasDealerAccess(params.dealerSlug)) {
@@ -602,16 +602,7 @@ export default async function DealerDashboardPage({
       <main className="shell">
         <Nav />
         <section className="wrap" style={{ padding: "70px 0 110px" }}>
-          <div
-            style={{
-              maxWidth: 760,
-              padding: 34,
-              borderRadius: 30,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background:
-                "linear-gradient(145deg, rgba(20,115,255,0.13), rgba(255,255,255,0.045))",
-            }}
-          >
+          <div style={secureAccessCardStyle}>
             <div className="eyebrow">Secure Dealer Access</div>
             <h1 style={{ fontSize: "clamp(44px,6vw,72px)", lineHeight: 0.95 }}>
               Access required.
@@ -629,6 +620,7 @@ export default async function DealerDashboardPage({
       </main>
     );
   }
+
   const dealerLocation = getDealerLocation(params.dealerSlug);
   const requestSubmitted = searchParams?.request === "submitted";
   const requestClosed = searchParams?.request === "closed";
@@ -878,15 +870,7 @@ export default async function DealerDashboardPage({
       <Nav />
 
       <section className="wrap" style={{ padding: "46px 0 90px" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 24,
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={pageHeaderStyle}>
           <div style={{ maxWidth: 760 }}>
             <div className="eyebrow">Dealer Operating View</div>
 
@@ -902,15 +886,7 @@ export default async function DealerDashboardPage({
             </p>
           </div>
 
-          <div
-            style={{
-              padding: 18,
-              borderRadius: 20,
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              minWidth: 240,
-            }}
-          >
+          <div style={accountCardStyle}>
             <strong style={{ color: "#fff", display: "block" }}>
               {dealerName}
             </strong>
@@ -955,237 +931,10 @@ export default async function DealerDashboardPage({
           />
         ) : null}
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 0.95fr) minmax(360px, 0.75fr)",
-            gap: 22,
-            marginTop: 34,
-            alignItems: "start",
-          }}
-        >
-          <section
-            style={{
-              padding: 28,
-              borderRadius: 26,
-              background:
-                "linear-gradient(145deg, rgba(20,115,255,0.14), rgba(255,255,255,0.045))",
-              border: "1px solid rgba(255,255,255,0.12)",
-            }}
-          >
-            <div className="eyebrow" style={{ marginBottom: 12 }}>
-              New hiring request
-            </div>
-
-            <h2
-              style={{
-                margin: 0,
-                color: "#fff",
-                fontSize: 34,
-                lineHeight: 1,
-                letterSpacing: "-0.045em",
-              }}
-            >
-              Tell us what you need filled.
-            </h2>
-
-            <p style={{ color: "#bfd6f5", lineHeight: 1.6, marginTop: 12 }}>
-              Submit the role, pay range, urgency, visibility preference, and
-              notes. NATA Today formats the post, handles publication, and opens
-              the candidate pipeline.
-            </p>
-
-            <form action={submitHiringRequest} style={{ marginTop: 24 }}>
-              <div className="grid-2" style={{ gap: 16 }}>
-                <Field label="Role needed">
-                  <select
-                    name="role"
-                    defaultValue=""
-                    required
-                    style={inputStyle}
-                  >
-                    <option value="" disabled>
-                      Select role
-                    </option>
-                    {roleOptions.map((role) => (
-                      <option key={role} value={role}>
-                        {role}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-
-                <Field label="Priority">
-                  <select
-                    name="priority"
-                    defaultValue="Standard"
-                    style={inputStyle}
-                  >
-                    {priorityOptions.map((priority) => (
-                      <option key={priority} value={priority}>
-                        {priority}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-
-                <Field label="Target pay range">
-                  <input
-                    name="payRange"
-                    placeholder="Example: $55,000 - $95,000 per year"
-                    style={inputStyle}
-                  />
-                </Field>
-
-                <Field label="Need by">
-                  <input name="needBy" type="date" style={inputStyle} />
-                </Field>
-
-                <Field label="Publishing mode">
-                  <select
-                    name="publish_mode"
-                    defaultValue="public"
-                    style={inputStyle}
-                  >
-                    <option value="public">Public dealership posting</option>
-                    <option value="confidential">Confidential search</option>
-                  </select>
-                </Field>
-              </div>
-
-              <details style={drawerStyle}>
-                <summary style={drawerSummaryStyle}>
-                  Interview POC and preferred windows
-                </summary>
-
-                <p style={{ color: "#bfd6f5", lineHeight: 1.5, margin: "12px 0 0" }}>
-                  Add the manager contact now so scheduling is fast when a
-                  recommendation packet is ready.
-                </p>
-
-                <div className="grid-2" style={{ gap: 16, marginTop: 14 }}>
-                  <Field label="Primary interview POC">
-                    <input
-                      name="interview_poc_name"
-                      placeholder="Example: Sales Manager"
-                      style={inputStyle}
-                    />
-                  </Field>
-
-                  <Field label="POC title">
-                    <input
-                      name="interview_poc_title"
-                      placeholder="Example: General Sales Manager"
-                      style={inputStyle}
-                    />
-                  </Field>
-
-                  <Field label="POC phone">
-                    <input
-                      name="interview_poc_phone"
-                      placeholder="+1..."
-                      style={inputStyle}
-                    />
-                  </Field>
-
-                  <Field label="POC email">
-                    <input
-                      name="interview_poc_email"
-                      type="email"
-                      placeholder="manager@dealer.com"
-                      style={inputStyle}
-                    />
-                  </Field>
-
-                  <Field label="Backup POC">
-                    <input
-                      name="backup_interview_poc_name"
-                      placeholder="Optional backup contact"
-                      style={inputStyle}
-                    />
-                  </Field>
-
-                  <Field label="Backup phone">
-                    <input
-                      name="backup_interview_poc_phone"
-                      placeholder="+1..."
-                      style={inputStyle}
-                    />
-                  </Field>
-
-                  <Field label="Backup email">
-                    <input
-                      name="backup_interview_poc_email"
-                      type="email"
-                      placeholder="backup@dealer.com"
-                      style={inputStyle}
-                    />
-                  </Field>
-                </div>
-
-                <div style={{ marginTop: 14 }}>
-                  <Field label="Preferred interview windows">
-                    <textarea
-                      name="preferred_interview_windows"
-                      rows={3}
-                      placeholder="Example: Tuesdays and Thursdays, 2–5 PM. Saturdays before noon if urgent."
-                      style={inputStyle}
-                    />
-                  </Field>
-                </div>
-              </details>
-
-              <details style={drawerStyle}>
-                <summary style={drawerSummaryStyle}>Suggested pay ranges</summary>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                    gap: 8,
-                    marginTop: 12,
-                    color: "#cfe2ff",
-                    lineHeight: 1.55,
-                    fontSize: 14,
-                  }}
-                >
-                  {Object.entries(paySuggestions).map(([role, pay]) => (
-                    <span key={role}>
-                      {role}: <strong style={{ color: "#fff" }}>{pay}</strong>
-                    </span>
-                  ))}
-                </div>
-              </details>
-
-              <div style={{ marginTop: 18 }}>
-                <Field label="Notes for this request">
-                  <textarea
-                    name="notes"
-                    rows={4}
-                    placeholder="Example: Need strong closers, Saturday availability, Spanish preferred, dealership experience helpful."
-                    style={inputStyle}
-                  />
-                </Field>
-              </div>
-
-              <div
-                style={{
-                  marginTop: 22,
-                  display: "flex",
-                  gap: 12,
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                }}
-              >
-                <button className="btn btn-primary" type="submit">
-                  Send request to NATA team
-                </button>
-
-                <span style={{ color: "#9fb4d6", fontSize: 14 }}>
-                  Your team does not need to build or review the public post.
-                </span>
-              </div>
-            </form>
-          </section>
+        <div style={topGridStyle}>
+          <HiringRequestPanel
+            submitHiringRequest={submitHiringRequest}
+          />
 
           <InterviewCoordinationPanel
             dealerSlug={params.dealerSlug}
@@ -1195,297 +944,24 @@ export default async function DealerDashboardPage({
           />
         </div>
 
-        <section style={{ marginTop: 40 }}>
-          <div className="eyebrow">Open requests</div>
+        <OpenRequestsSection
+          openJobs={openJobs}
+          applications={applications}
+          closeHiringRequest={closeHiringRequest}
+        />
 
-          {openJobs.length > 0 ? (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 16,
-                marginTop: 16,
-              }}
-            >
-              {openJobs.map((job) => {
-                const jobApplications = applications.filter(
-                  (application) =>
-                    String(application.job_id) === String(job.id),
-                );
-                const readyCount = jobApplications.filter((application) =>
-                  MANAGER_VISIBLE_STATUSES.has(
-                    getApplicationStatus(application),
-                  ),
-                ).length;
-
-                return (
-                  <details
-                    key={job.id}
-                    style={{
-                      padding: 18,
-                      borderRadius: 24,
-                      background: "rgba(255,255,255,0.05)",
-                      border: "1px solid rgba(255,255,255,0.1)",
-                    }}
-                  >
-                    <summary
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 14,
-                        alignItems: "flex-start",
-                        cursor: "pointer",
-                        listStyle: "none",
-                      }}
-                    >
-                      <div>
-                        <h3
-                          style={{
-                            margin: 0,
-                            color: "#fff",
-                            fontSize: 24,
-                            lineHeight: 1,
-                            letterSpacing: "-0.035em",
-                          }}
-                        >
-                          {job.title || "Open role"}
-                        </h3>
-                        <p style={{ margin: "8px 0 0", color: "#bfd6f5" }}>
-                          {job.salary || "Compensation reviewed by NATA"}
-                        </p>
-                      </div>
-
-                      <span
-                        style={{
-                          padding: "8px 10px",
-                          borderRadius: 999,
-                          background: "rgba(251,191,36,0.14)",
-                          color: "#fbbf24",
-                          fontSize: 12,
-                          fontWeight: 900,
-                        }}
-                      >
-                        {job.priority || "Active"}
-                      </span>
-                    </summary>
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(3, 1fr)",
-                        gap: 10,
-                        marginTop: 18,
-                      }}
-                    >
-                      <Metric
-                        label="Candidates"
-                        value={jobApplications.length}
-                      />
-                      <Metric label="Ready" value={readyCount} />
-                      <Metric
-                        label="Status"
-                        value={job.publish_status || "published"}
-                      />
-                    </div>
-
-                    <p style={{ color: "#9fb4d6", margin: "16px 0 0" }}>
-                      {readyCount > 0
-                        ? "Manager-ready candidates are shown below."
-                        : "NATA Today is screening and preparing candidates before handoff."}
-                    </p>
-
-                    <form
-                      action={closeHiringRequest}
-                      style={{
-                        marginTop: 18,
-                        paddingTop: 16,
-                        borderTop: "1px solid rgba(255,255,255,0.09)",
-                        display: "grid",
-                        gap: 10,
-                      }}
-                    >
-                      <input
-                        type="hidden"
-                        name="job_id"
-                        value={String(job.id)}
-                      />
-                      <input
-                        type="hidden"
-                        name="job_title"
-                        value={String(job.title || "Hiring request")}
-                      />
-
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns:
-                            "minmax(0, 0.72fr) minmax(0, 1fr)",
-                          gap: 10,
-                          alignItems: "start",
-                        }}
-                      >
-                        <Field label="Remove reason">
-                          <select
-                            name="closed_reason"
-                            defaultValue="walk_in_candidate"
-                            style={inputStyle}
-                          >
-                            <option value="walk_in_candidate">
-                              Filled by walk-in candidate
-                            </option>
-                            <option value="internal_hire">
-                              Filled internally
-                            </option>
-                            <option value="role_paused">Role paused</option>
-                            <option value="no_longer_needed">
-                              No longer needed
-                            </option>
-                          </select>
-                        </Field>
-
-                        <Field label="Optional note">
-                          <input
-                            name="filled_note"
-                            placeholder="Example: Walk-in candidate accepted offer today."
-                            style={inputStyle}
-                          />
-                        </Field>
-                      </div>
-
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 12,
-                          alignItems: "center",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <span style={{ color: "#9fb4d6", fontSize: 13 }}>
-                          Removes this request from the open board and records
-                          the closure.
-                        </span>
-                        <button
-                          className="btn btn-secondary"
-                          type="submit"
-                          style={{ border: "1px solid rgba(255,255,255,0.18)" }}
-                        >
-                          Remove request
-                        </button>
-                      </div>
-                    </form>
-                  </details>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState copy="No open requests are active for this dealership yet." />
-          )}
-        </section>
-
-        <section style={{ marginTop: 40 }}>
-          <div className="eyebrow">Filled requests</div>
-
-          {filledJobs.length > 0 ? (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                gap: 16,
-                marginTop: 16,
-              }}
-            >
-              {filledJobs.map((job) => {
-                const hiredDecision = decisions.find(
-                  (decision) =>
-                    String(decision.job_id) === String(job.id) &&
-                    String(decision.outcome) === "hired",
-                );
-                const application = applications.find(
-                  (item) =>
-                    String(item.id) === String(hiredDecision?.application_id),
-                );
-
-                return (
-                  <article
-                    key={job.id}
-                    style={{
-                      padding: 22,
-                      borderRadius: 24,
-                      background: "rgba(34,197,94,0.08)",
-                      border: "1px solid rgba(34,197,94,0.18)",
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        padding: "7px 10px",
-                        borderRadius: 999,
-                        background: "rgba(34,197,94,0.14)",
-                        color: "#86efac",
-                        fontSize: 12,
-                        fontWeight: 950,
-                        letterSpacing: "0.08em",
-                        textTransform: "uppercase",
-                      }}
-                    >
-                      Filled
-                    </span>
-
-                    <h3
-                      style={{
-                        margin: "16px 0 0",
-                        color: "#fff",
-                        fontSize: 24,
-                        lineHeight: 1,
-                        letterSpacing: "-0.035em",
-                      }}
-                    >
-                      {job.title || "Filled role"}
-                    </h3>
-
-                    <p style={{ margin: "10px 0 0", color: "#cfe2ff" }}>
-                      Filled by{" "}
-                      <strong style={{ color: "#fff" }}>
-                        {application
-                          ? getCandidateName(application)
-                          : "documented hire"}
-                      </strong>
-                    </p>
-
-                    <p style={{ color: "#9fb4d6", lineHeight: 1.55 }}>
-                      {hiredDecision?.decision_reason ||
-                        job.filled_note ||
-                        "Decision documented."}
-                    </p>
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState copy="No filled requests have been documented yet." />
-          )}
-        </section>
+        <FilledRequestsSection
+          filledJobs={filledJobs}
+          decisions={decisions}
+          applications={applications}
+        />
 
         <section id="next-action" style={{ marginTop: 40, scrollMarginTop: 120 }}>
           <div className="eyebrow">Next action workspace</div>
 
           {activeAction ? (
             <div style={{ display: "grid", gap: 14, marginTop: 16 }}>
-              <div
-                style={{
-                  padding: 14,
-                  borderRadius: 18,
-                  background: "rgba(20,115,255,0.08)",
-                  border: "1px solid rgba(96,165,250,0.16)",
-                  color: "#bfd6f5",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                }}
-              >
+              <div style={nextActionNoticeStyle}>
                 <strong style={{ color: "#fff" }}>
                   Action {activeAction.index + 1} of {activeAction.total}
                 </strong>
@@ -1508,31 +984,350 @@ export default async function DealerDashboardPage({
               )}
             </div>
           ) : (
-            <div
-              style={{
-                marginTop: 16,
-                padding: 28,
-                borderRadius: 24,
-                background: "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.1)",
-                color: "#cfe2ff",
-              }}
-            >
-              <h3 style={{ margin: 0, color: "#fff", fontSize: 24 }}>
-                No action cards are ready.
-              </h3>
-              <p style={{ margin: "10px 0 0", lineHeight: 1.6 }}>
-                NATA Today is still screening candidates, completing virtual
-                interviews, requesting a manager interview time, or preparing
-                interview packets. Candidates appear here only when dealer
-                action is required.
-              </p>
-            </div>
+            <EmptyState copy="No action cards are ready. NATA Today is still screening candidates, completing virtual interviews, requesting a manager interview time, or preparing interview packets. Candidates appear here only when dealer action is required." />
           )}
         </section>
 
+        <section style={{ marginTop: 40 }}>
+          <div className="eyebrow">Communications</div>
+          <CommunicationsCenter dealerSlug={params.dealerSlug} />
+        </section>
       </section>
     </main>
+  );
+}
+
+function HiringRequestPanel({
+  submitHiringRequest,
+}: {
+  submitHiringRequest: (formData: FormData) => Promise<void>;
+}) {
+  return (
+    <section style={panelStyle}>
+      <div className="eyebrow" style={{ marginBottom: 12 }}>
+        New hiring request
+      </div>
+
+      <h2 style={panelTitleStyle}>Tell us what you need filled.</h2>
+
+      <p style={panelCopyStyle}>
+        Submit the role, pay range, urgency, visibility preference, and notes.
+        NATA Today formats the post, handles publication, and opens the
+        candidate pipeline.
+      </p>
+
+      <form action={submitHiringRequest} style={{ marginTop: 24 }}>
+        <div className="grid-2" style={{ gap: 16 }}>
+          <Field label="Role needed">
+            <select name="role" defaultValue="" required style={inputStyle}>
+              <option value="" disabled>
+                Select role
+              </option>
+              {roleOptions.map((role) => (
+                <option key={role} value={role}>
+                  {role}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Priority">
+            <select name="priority" defaultValue="Standard" style={inputStyle}>
+              {priorityOptions.map((priority) => (
+                <option key={priority} value={priority}>
+                  {priority}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Target pay range">
+            <input
+              name="payRange"
+              placeholder="Example: $55,000 - $95,000 per year"
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field label="Need by">
+            <input name="needBy" type="date" style={inputStyle} />
+          </Field>
+
+          <Field label="Publishing mode">
+            <select name="publish_mode" defaultValue="public" style={inputStyle}>
+              <option value="public">Public dealership posting</option>
+              <option value="confidential">Confidential search</option>
+            </select>
+          </Field>
+        </div>
+
+        <details style={drawerStyle}>
+          <summary style={drawerSummaryStyle}>
+            Interview POC and preferred windows
+          </summary>
+
+          <p style={{ color: "#bfd6f5", lineHeight: 1.5, margin: "12px 0 0" }}>
+            Add the manager contact now so scheduling is fast when a
+            recommendation packet is ready.
+          </p>
+
+          <div className="grid-2" style={{ gap: 16, marginTop: 14 }}>
+            <Field label="Primary interview POC">
+              <input
+                name="interview_poc_name"
+                placeholder="Example: Sales Manager"
+                style={inputStyle}
+              />
+            </Field>
+
+            <Field label="POC title">
+              <input
+                name="interview_poc_title"
+                placeholder="Example: General Sales Manager"
+                style={inputStyle}
+              />
+            </Field>
+
+            <Field label="POC phone">
+              <input name="interview_poc_phone" placeholder="+1..." style={inputStyle} />
+            </Field>
+
+            <Field label="POC email">
+              <input
+                name="interview_poc_email"
+                type="email"
+                placeholder="manager@dealer.com"
+                style={inputStyle}
+              />
+            </Field>
+
+            <Field label="Backup POC">
+              <input
+                name="backup_interview_poc_name"
+                placeholder="Optional backup contact"
+                style={inputStyle}
+              />
+            </Field>
+
+            <Field label="Backup phone">
+              <input name="backup_interview_poc_phone" placeholder="+1..." style={inputStyle} />
+            </Field>
+
+            <Field label="Backup email">
+              <input
+                name="backup_interview_poc_email"
+                type="email"
+                placeholder="backup@dealer.com"
+                style={inputStyle}
+              />
+            </Field>
+          </div>
+
+          <div style={{ marginTop: 14 }}>
+            <Field label="Preferred interview windows">
+              <textarea
+                name="preferred_interview_windows"
+                rows={3}
+                placeholder="Example: Tuesdays and Thursdays, 2–5 PM. Saturdays before noon if urgent."
+                style={inputStyle}
+              />
+            </Field>
+          </div>
+        </details>
+
+        <details style={drawerStyle}>
+          <summary style={drawerSummaryStyle}>Suggested pay ranges</summary>
+          <div style={suggestionGridStyle}>
+            {Object.entries(paySuggestions).map(([role, pay]) => (
+              <span key={role}>
+                {role}: <strong style={{ color: "#fff" }}>{pay}</strong>
+              </span>
+            ))}
+          </div>
+        </details>
+
+        <div style={{ marginTop: 18 }}>
+          <Field label="Notes for this request">
+            <textarea
+              name="notes"
+              rows={4}
+              placeholder="Example: Need strong closers, Saturday availability, Spanish preferred, dealership experience helpful."
+              style={inputStyle}
+            />
+          </Field>
+        </div>
+
+        <div style={formFooterStyle}>
+          <button className="btn btn-primary" type="submit">
+            Send request to NATA team
+          </button>
+
+          <span style={{ color: "#9fb4d6", fontSize: 14 }}>
+            Your team does not need to build or review the public post.
+          </span>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function OpenRequestsSection({
+  openJobs,
+  applications,
+  closeHiringRequest,
+}: {
+  openJobs: AnyRow[];
+  applications: AnyRow[];
+  closeHiringRequest: (formData: FormData) => Promise<void>;
+}) {
+  return (
+    <section style={{ marginTop: 40 }}>
+      <div className="eyebrow">Open requests</div>
+
+      {openJobs.length > 0 ? (
+        <div style={twoColumnGridStyle}>
+          {openJobs.map((job) => {
+            const jobApplications = applications.filter(
+              (application) => String(application.job_id) === String(job.id),
+            );
+            const readyCount = jobApplications.filter((application) =>
+              MANAGER_VISIBLE_STATUSES.has(getApplicationStatus(application)),
+            ).length;
+
+            return (
+              <details key={job.id} style={requestCardStyle}>
+                <summary style={requestSummaryStyle}>
+                  <div>
+                    <h3 style={requestTitleStyle}>{job.title || "Open role"}</h3>
+                    <p style={{ margin: "8px 0 0", color: "#bfd6f5" }}>
+                      {job.salary || "Compensation reviewed by NATA"}
+                    </p>
+                  </div>
+
+                  <span style={priorityBadgeStyle}>{job.priority || "Active"}</span>
+                </summary>
+
+                <div style={metricGridStyle}>
+                  <Metric label="Candidates" value={jobApplications.length} />
+                  <Metric label="Ready" value={readyCount} />
+                  <Metric label="Status" value={job.publish_status || "published"} />
+                </div>
+
+                <p style={{ color: "#9fb4d6", margin: "16px 0 0" }}>
+                  {readyCount > 0
+                    ? "Manager-ready candidates are shown below."
+                    : "NATA Today is screening and preparing candidates before handoff."}
+                </p>
+
+                <form action={closeHiringRequest} style={closeFormStyle}>
+                  <input type="hidden" name="job_id" value={String(job.id)} />
+                  <input
+                    type="hidden"
+                    name="job_title"
+                    value={String(job.title || "Hiring request")}
+                  />
+
+                  <div style={closeGridStyle}>
+                    <Field label="Remove reason">
+                      <select
+                        name="closed_reason"
+                        defaultValue="walk_in_candidate"
+                        style={inputStyle}
+                      >
+                        <option value="walk_in_candidate">
+                          Filled by walk-in candidate
+                        </option>
+                        <option value="internal_hire">Filled internally</option>
+                        <option value="role_paused">Role paused</option>
+                        <option value="no_longer_needed">No longer needed</option>
+                      </select>
+                    </Field>
+
+                    <Field label="Optional note">
+                      <input
+                        name="filled_note"
+                        placeholder="Example: Walk-in candidate accepted offer today."
+                        style={inputStyle}
+                      />
+                    </Field>
+                  </div>
+
+                  <div style={closeFooterStyle}>
+                    <span style={{ color: "#9fb4d6", fontSize: 13 }}>
+                      Removes this request from the open board and records the
+                      closure.
+                    </span>
+                    <button
+                      className="btn btn-secondary"
+                      type="submit"
+                      style={{ border: "1px solid rgba(255,255,255,0.18)" }}
+                    >
+                      Remove request
+                    </button>
+                  </div>
+                </form>
+              </details>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyState copy="No open requests are active for this dealership yet." />
+      )}
+    </section>
+  );
+}
+
+function FilledRequestsSection({
+  filledJobs,
+  decisions,
+  applications,
+}: {
+  filledJobs: AnyRow[];
+  decisions: AnyRow[];
+  applications: AnyRow[];
+}) {
+  return (
+    <section style={{ marginTop: 40 }}>
+      <div className="eyebrow">Filled requests</div>
+
+      {filledJobs.length > 0 ? (
+        <div style={twoColumnGridStyle}>
+          {filledJobs.map((job) => {
+            const hiredDecision = decisions.find(
+              (decision) =>
+                String(decision.job_id) === String(job.id) &&
+                String(decision.outcome) === "hired",
+            );
+            const application = applications.find(
+              (item) => String(item.id) === String(hiredDecision?.application_id),
+            );
+
+            return (
+              <article key={job.id} style={filledCardStyle}>
+                <span style={filledBadgeStyle}>Filled</span>
+
+                <h3 style={filledTitleStyle}>{job.title || "Filled role"}</h3>
+
+                <p style={{ margin: "10px 0 0", color: "#cfe2ff" }}>
+                  Filled by{" "}
+                  <strong style={{ color: "#fff" }}>
+                    {application ? getCandidateName(application) : "documented hire"}
+                  </strong>
+                </p>
+
+                <p style={{ color: "#9fb4d6", lineHeight: 1.55 }}>
+                  {hiredDecision?.decision_reason ||
+                    job.filled_note ||
+                    "Decision documented."}
+                </p>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyState copy="No filled requests have been documented yet." />
+      )}
+    </section>
   );
 }
 
@@ -1544,134 +1339,23 @@ function ScheduleCandidateCard({
   dealerSlug: string;
 }) {
   return (
-    <article
-      id={`schedule-${candidate.applicationId}`}
-      style={{
-        padding: 22,
-        borderRadius: 24,
-        background:
-          "linear-gradient(145deg, rgba(251,191,36,0.105), rgba(255,255,255,0.035))",
-        border: "1px solid rgba(251,191,36,0.22)",
-      }}
-    >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "96px minmax(0, 1fr) auto",
-          gap: 18,
-          alignItems: "center",
-        }}
-      >
-        <CandidatePhoto url={candidate.photoUrl} name={candidate.name} />
+    <article id={`schedule-${candidate.applicationId}`} style={scheduleCardStyle}>
+      <CandidateHeader
+        candidate={candidate}
+        subline={`${candidate.role} · Ready for manager interview time`}
+        status="Packet ready · schedule needed"
+      />
 
-        <div>
-          <h3
-            style={{
-              margin: 0,
-              color: "#fff",
-              fontSize: 28,
-              letterSpacing: "-0.04em",
-              lineHeight: 1,
-            }}
-          >
-            {candidate.name}
-          </h3>
-
-          <p style={{ margin: "8px 0 0", color: "#bfd6f5" }}>
-            {candidate.role} · Ready for manager interview time
-          </p>
-
-          <p
-            style={{
-              color: "#9fb4d6",
-              lineHeight: 1.55,
-              margin: "10px 0 0",
-            }}
-          >
-            {candidate.summary}
-          </p>
-        </div>
-
-        <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
-          <StatusBadge status="Packet ready · schedule needed" />
-          {candidate.fitScore !== null ? (
-            <span
-              style={{
-                padding: "8px 10px",
-                borderRadius: 999,
-                background: "rgba(251,191,36,0.12)",
-                border: "1px solid rgba(251,191,36,0.22)",
-                color: "#fbbf24",
-                fontSize: 12,
-                fontWeight: 950,
-              }}
-            >
-              Fit score {candidate.fitScore}
-            </span>
-          ) : null}
-        </div>
-      </div>
-
-      <details
-        style={{
-          marginTop: 16,
-          padding: 16,
-          borderRadius: 18,
-          background: "rgba(255,255,255,0.045)",
-          border: "1px solid rgba(255,255,255,0.09)",
-        }}
-      >
-        <summary
-          style={{
-            color: "#fff",
-            fontWeight: 900,
-            cursor: "pointer",
-          }}
-        >
-          View recommendation packet
-        </summary>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "160px minmax(0, 0.75fr) minmax(0, 1.15fr)",
-            gap: 12,
-            marginTop: 14,
-            alignItems: "stretch",
-          }}
-        >
-          <PacketIdentityBlock
-            name={candidate.name}
-            role={candidate.role}
-            photoUrl={candidate.photoUrl}
-            fitScore={candidate.fitScore}
-          />
-          <ResumeBlock url={candidate.resumeUrl} />
-          <QuestionBlock questions={candidate.interviewQuestions} />
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          <PacketBlock title="NATA recommendation" copy={candidate.nataNotes} />
-        </div>
-      </details>
+      <PacketDetails candidate={candidate} title="View recommendation packet" notesTitle="NATA recommendation" />
 
       <form
         method="POST"
         action={`/api/nata/applications/${candidate.applicationId}/schedule-dealer-interview`}
-        style={{
-          marginTop: 16,
-          padding: 16,
-          borderRadius: 18,
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.08)",
-        }}
+        style={embeddedFormStyle}
       >
         <input type="hidden" name="dealer_slug" value={dealerSlug} />
 
-        <h4 style={{ margin: "0 0 12px", color: "#fff", fontSize: 18 }}>
-          Select optimal manager interview time
-        </h4>
+        <h4 style={formTitleStyle}>Select optimal manager interview time</h4>
 
         <div className="grid-2" style={{ gap: 14 }}>
           <Field label="Interview date">
@@ -1711,16 +1395,7 @@ function ScheduleCandidateCard({
           </Field>
         </div>
 
-        <div
-          style={{
-            marginTop: 14,
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={formFooterBetweenStyle}>
           <span style={{ color: "#9fb4d6", fontSize: 13 }}>
             Confirming a time moves this candidate into the decision workspace
             and notifies the candidate.
@@ -1742,139 +1417,21 @@ function DecisionCandidateCard({
   submitInterviewDecision: (formData: FormData) => Promise<void>;
 }) {
   return (
-    <article
-      id={`interview-${candidate.applicationId}`}
-      style={{
-        padding: 22,
-        borderRadius: 24,
-        background:
-          "linear-gradient(145deg, rgba(255,255,255,0.065), rgba(255,255,255,0.035))",
-        border: "1px solid rgba(255,255,255,0.12)",
-      }}
-    >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "96px minmax(0, 1fr) auto",
-          gap: 18,
-          alignItems: "center",
-        }}
-      >
-        <CandidatePhoto url={candidate.photoUrl} name={candidate.name} />
+    <article id={`interview-${candidate.applicationId}`} style={decisionCardStyle}>
+      <CandidateHeader
+        candidate={candidate}
+        subline={`${candidate.role} · ${formatInterviewTime(candidate.dealerInterviewAt)}`}
+        status="Packet ready · interview scheduled"
+      />
 
-        <div>
-          <h3
-            style={{
-              margin: 0,
-              color: "#fff",
-              fontSize: 28,
-              letterSpacing: "-0.04em",
-              lineHeight: 1,
-            }}
-          >
-            {candidate.name}
-          </h3>
+      <PacketDetails candidate={candidate} title="View interview packet" notesTitle="NATA notes" />
 
-          <p style={{ margin: "8px 0 0", color: "#bfd6f5" }}>
-            {candidate.role} · {formatInterviewTime(candidate.dealerInterviewAt)}
-          </p>
-
-          <p
-            style={{
-              color: "#9fb4d6",
-              lineHeight: 1.55,
-              margin: "10px 0 0",
-            }}
-          >
-            {candidate.summary}
-          </p>
-        </div>
-
-        <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
-          <StatusBadge status="Packet ready · interview scheduled" />
-          {candidate.fitScore !== null ? (
-            <span
-              style={{
-                padding: "8px 10px",
-                borderRadius: 999,
-                background: "rgba(251,191,36,0.12)",
-                border: "1px solid rgba(251,191,36,0.22)",
-                color: "#fbbf24",
-                fontSize: 12,
-                fontWeight: 950,
-              }}
-            >
-              Fit score {candidate.fitScore}
-            </span>
-          ) : null}
-        </div>
-      </div>
-
-      <details
-        style={{
-          marginTop: 16,
-          padding: 16,
-          borderRadius: 18,
-          background: "rgba(255,255,255,0.045)",
-          border: "1px solid rgba(255,255,255,0.09)",
-        }}
-      >
-        <summary
-          style={{
-            color: "#fff",
-            fontWeight: 900,
-            cursor: "pointer",
-          }}
-        >
-          View interview packet
-        </summary>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "160px minmax(0, 0.75fr) minmax(0, 1.15fr)",
-            gap: 12,
-            marginTop: 14,
-            alignItems: "stretch",
-          }}
-        >
-          <PacketIdentityBlock
-            name={candidate.name}
-            role={candidate.role}
-            photoUrl={candidate.photoUrl}
-            fitScore={candidate.fitScore}
-          />
-          <ResumeBlock url={candidate.resumeUrl} />
-          <QuestionBlock questions={candidate.interviewQuestions} />
-        </div>
-
-        <div style={{ marginTop: 12 }}>
-          <PacketBlock title="NATA notes" copy={candidate.nataNotes} />
-        </div>
-      </details>
-
-      <form
-        action={submitInterviewDecision}
-        style={{
-          marginTop: 16,
-          padding: 16,
-          borderRadius: 18,
-          background: "rgba(255,255,255,0.04)",
-          border: "1px solid rgba(255,255,255,0.08)",
-        }}
-      >
+      <form action={submitInterviewDecision} style={embeddedFormStyle}>
         <input type="hidden" name="job_id" value={candidate.jobId} />
-        <input
-          type="hidden"
-          name="application_id"
-          value={candidate.applicationId}
-        />
+        <input type="hidden" name="application_id" value={candidate.applicationId} />
         <input type="hidden" name="candidate_name" value={candidate.name} />
 
-        <h4 style={{ margin: "0 0 12px", color: "#fff", fontSize: 18 }}>
-          Interview outcome
-        </h4>
+        <h4 style={formTitleStyle}>Interview outcome</h4>
 
         <div className="grid-2" style={{ gap: 14 }}>
           <Field label="Outcome">
@@ -1912,16 +1469,7 @@ function DecisionCandidateCard({
           </Field>
         </div>
 
-        <div
-          style={{
-            marginTop: 14,
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={formFooterBetweenStyle}>
           <span style={{ color: "#9fb4d6", fontSize: 13 }}>
             Hired closes the public listing. Other outcomes keep the role open.
           </span>
@@ -1931,6 +1479,68 @@ function DecisionCandidateCard({
         </div>
       </form>
     </article>
+  );
+}
+
+function CandidateHeader({
+  candidate,
+  subline,
+  status,
+}: {
+  candidate: ReadyScheduleCandidate | ManagerCandidate;
+  subline: string;
+  status: string;
+}) {
+  return (
+    <div style={candidateHeaderStyle}>
+      <CandidatePhoto url={candidate.photoUrl} name={candidate.name} />
+
+      <div>
+        <h3 style={candidateNameStyle}>{candidate.name}</h3>
+
+        <p style={{ margin: "8px 0 0", color: "#bfd6f5" }}>{subline}</p>
+
+        <p style={candidateSummaryStyle}>{candidate.summary}</p>
+      </div>
+
+      <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+        <StatusBadge status={status} />
+        {candidate.fitScore !== null ? (
+          <span style={fitBadgeStyle}>Fit score {candidate.fitScore}</span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function PacketDetails({
+  candidate,
+  title,
+  notesTitle,
+}: {
+  candidate: ReadyScheduleCandidate | ManagerCandidate;
+  title: string;
+  notesTitle: string;
+}) {
+  return (
+    <details style={packetDetailsStyle}>
+      <summary style={packetSummaryStyle}>{title}</summary>
+
+      <div style={packetGridStyle}>
+        <PacketIdentityBlock
+          name={candidate.name}
+          role={candidate.role}
+          photoUrl={candidate.photoUrl}
+          fitScore={candidate.fitScore}
+        />
+        <ResumeBlock url={candidate.resumeUrl} />
+        <QuestionBlock questions={candidate.interviewQuestions} />
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <PacketBlock title={notesTitle} copy={candidate.nataNotes} />
+      </div>
+    </details>
   );
 }
 
@@ -1950,28 +1560,12 @@ function InterviewCoordinationPanel({
   const totalActions = ready.length + upcoming.length;
 
   return (
-    <aside
-      style={{
-        padding: 24,
-        borderRadius: 26,
-        background:
-          "linear-gradient(145deg, rgba(251,191,36,0.105), rgba(20,115,255,0.075))",
-        border: "1px solid rgba(251,191,36,0.2)",
-      }}
-    >
+    <aside style={coordinationPanelStyle}>
       <div className="eyebrow" style={{ marginBottom: 12 }}>
         Interview coordination
       </div>
 
-      <h2
-        style={{
-          margin: 0,
-          color: "#fff",
-          fontSize: 30,
-          lineHeight: 1,
-          letterSpacing: "-0.04em",
-        }}
-      >
+      <h2 style={coordinationTitleStyle}>
         {totalActions > 0
           ? `${totalActions} interview action${totalActions === 1 ? "" : "s"} need attention.`
           : "No interview actions pending."}
@@ -2024,16 +1618,7 @@ function InterviewCoordinationPanel({
         ) : null}
 
         {totalActions === 0 ? (
-          <div
-            style={{
-              padding: 16,
-              borderRadius: 18,
-              background: "rgba(255,255,255,0.055)",
-              border: "1px solid rgba(255,255,255,0.09)",
-              color: "#bfd6f5",
-              lineHeight: 1.5,
-            }}
-          >
+          <div style={emptyMiniCardStyle}>
             No candidate is currently waiting on dealer scheduling or manager
             decision.
           </div>
@@ -2064,12 +1649,7 @@ function MiniCandidateCard({
     <a
       href={href}
       style={{
-        display: "grid",
-        gridTemplateColumns: "56px minmax(0, 1fr) auto",
-        gap: 12,
-        alignItems: "center",
-        padding: 12,
-        borderRadius: 18,
+        ...miniCandidateCardBaseStyle,
         background:
           tone === "schedule"
             ? "rgba(251,191,36,0.12)"
@@ -2080,29 +1660,16 @@ function MiniCandidateCard({
             ? "1px solid rgba(251,191,36,0.22)"
             : "1px solid rgba(34,197,94,0.18)",
         boxShadow: active ? "0 0 0 3px rgba(59,130,246,0.18)" : "none",
-        textDecoration: "none",
       }}
     >
       <CandidatePhoto url={photoUrl} name={name} size={56} radius={16} />
       <div>
         <strong style={{ color: "#fff", display: "block" }}>{name}</strong>
+        <span style={miniRoleStyle}>{role}</span>
         <span
           style={{
-            color: "#bfd6f5",
-            display: "block",
-            marginTop: 3,
-            fontSize: 13,
-          }}
-        >
-          {role}
-        </span>
-        <span
-          style={{
+            ...miniMetaStyle,
             color: tone === "schedule" ? "#fde68a" : "#86efac",
-            display: "block",
-            marginTop: 5,
-            fontSize: 12,
-            fontWeight: 900,
           }}
         >
           {meta}
@@ -2120,7 +1687,7 @@ function Field({
   children,
 }: {
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <label>
@@ -2130,42 +1697,9 @@ function Field({
   );
 }
 
-function ReviewPill({ title, copy }: { title: string; copy: string }) {
-  return (
-    <div
-      style={{
-        padding: 14,
-        borderRadius: 16,
-        background: "rgba(255,255,255,0.045)",
-        border: "1px solid rgba(255,255,255,0.09)",
-      }}
-    >
-      <strong style={{ color: "#fff", display: "block" }}>{title}</strong>
-      <span
-        style={{
-          color: "#bfd6f5",
-          display: "block",
-          marginTop: 4,
-          fontSize: 13,
-          lineHeight: 1.4,
-        }}
-      >
-        {copy}
-      </span>
-    </div>
-  );
-}
-
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div
-      style={{
-        padding: 14,
-        borderRadius: 16,
-        background: "rgba(255,255,255,0.045)",
-        border: "1px solid rgba(255,255,255,0.09)",
-      }}
-    >
+    <div style={metricStyle}>
       <strong style={{ display: "block", color: "#fff", fontSize: 20 }}>
         {value}
       </strong>
@@ -2177,20 +1711,7 @@ function Metric({ label, value }: { label: string; value: string | number }) {
 }
 
 function EmptyState({ copy }: { copy: string }) {
-  return (
-    <div
-      style={{
-        marginTop: 16,
-        padding: 24,
-        borderRadius: 22,
-        background: "rgba(255,255,255,0.05)",
-        border: "1px solid rgba(255,255,255,0.1)",
-        color: "#cfe2ff",
-      }}
-    >
-      {copy}
-    </div>
-  );
+  return <div style={emptyStateStyle}>{copy}</div>;
 }
 
 function CandidatePhoto({
@@ -2254,43 +1775,13 @@ function PacketIdentityBlock({
   fitScore: number | null;
 }) {
   return (
-    <div
-      style={{
-        padding: 14,
-        borderRadius: 16,
-        background: "rgba(5,10,18,0.5)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        display: "grid",
-        gap: 10,
-        justifyItems: "center",
-        textAlign: "center",
-      }}
-    >
+    <div style={packetIdentityStyle}>
       <CandidatePhoto url={photoUrl} name={name} />
       <div>
         <strong style={{ color: "#fff", display: "block" }}>{name}</strong>
-        <span
-          style={{
-            color: "#bfd6f5",
-            display: "block",
-            marginTop: 4,
-            fontSize: 12,
-          }}
-        >
-          {role}
-        </span>
+        <span style={packetRoleStyle}>{role}</span>
         {fitScore !== null ? (
-          <span
-            style={{
-              color: "#fbbf24",
-              display: "block",
-              marginTop: 6,
-              fontSize: 12,
-              fontWeight: 900,
-            }}
-          >
-            Fit score {fitScore}
-          </span>
+          <span style={packetFitStyle}>Fit score {fitScore}</span>
         ) : null}
       </div>
     </div>
@@ -2299,40 +1790,14 @@ function PacketIdentityBlock({
 
 function ResumeBlock({ url }: { url: string }) {
   return (
-    <div
-      style={{
-        padding: 14,
-        borderRadius: 16,
-        background: "rgba(5,10,18,0.5)",
-        border: "1px solid rgba(255,255,255,0.08)",
-      }}
-    >
+    <div style={packetBoxStyle}>
       <strong style={{ color: "#fff", display: "block" }}>Resume</strong>
       {url ? (
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          style={{
-            display: "inline-flex",
-            marginTop: 10,
-            color: "#93c5fd",
-            fontWeight: 900,
-            textDecoration: "none",
-          }}
-        >
+        <a href={url} target="_blank" rel="noreferrer" style={resumeLinkStyle}>
           Open resume →
         </a>
       ) : (
-        <span
-          style={{
-            color: "#bfd6f5",
-            display: "block",
-            marginTop: 6,
-            fontSize: 13,
-            lineHeight: 1.45,
-          }}
-        >
+        <span style={packetMutedTextStyle}>
           Resume is not attached. Candidate remains off the board until packet
           is ready.
         </span>
@@ -2343,26 +1808,11 @@ function ResumeBlock({ url }: { url: string }) {
 
 function QuestionBlock({ questions }: { questions: string[] }) {
   return (
-    <div
-      style={{
-        padding: 14,
-        borderRadius: 16,
-        background: "rgba(5,10,18,0.5)",
-        border: "1px solid rgba(255,255,255,0.08)",
-      }}
-    >
+    <div style={packetBoxStyle}>
       <strong style={{ color: "#fff", display: "block" }}>
         Suggested manager questions
       </strong>
-      <ol
-        style={{
-          margin: "8px 0 0",
-          paddingLeft: 18,
-          color: "#bfd6f5",
-          fontSize: 13,
-          lineHeight: 1.45,
-        }}
-      >
+      <ol style={questionListStyle}>
         {questions.map((question) => (
           <li key={question} style={{ marginTop: 6 }}>
             {question}
@@ -2375,54 +1825,430 @@ function QuestionBlock({ questions }: { questions: string[] }) {
 
 function PacketBlock({ title, copy }: { title: string; copy: string }) {
   return (
-    <div
-      style={{
-        padding: 14,
-        borderRadius: 16,
-        background: "rgba(5,10,18,0.5)",
-        border: "1px solid rgba(255,255,255,0.08)",
-      }}
-    >
+    <div style={packetBoxStyle}>
       <strong style={{ color: "#fff", display: "block" }}>{title}</strong>
-      <span
-        style={{
-          color: "#bfd6f5",
-          display: "block",
-          marginTop: 6,
-          fontSize: 13,
-          lineHeight: 1.45,
-        }}
-      >
-        {copy}
-      </span>
+      <span style={packetMutedTextStyle}>{copy}</span>
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        minWidth: 174,
-        minHeight: 42,
-        padding: "0 14px",
-        borderRadius: 999,
-        fontSize: 12,
-        fontWeight: 950,
-        letterSpacing: "0.04em",
-        textAlign: "center",
-        background: "rgba(34,197,94,0.14)",
-        border: "1px solid rgba(34,197,94,0.28)",
-        color: "#86efac",
-      }}
-    >
-      {status}
-    </span>
-  );
+  return <span style={statusBadgeStyle}>{status}</span>;
 }
+
+const secureAccessCardStyle: CSSProperties = {
+  maxWidth: 760,
+  padding: 34,
+  borderRadius: 30,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background:
+    "linear-gradient(145deg, rgba(20,115,255,0.13), rgba(255,255,255,0.045))",
+};
+
+const pageHeaderStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 24,
+  alignItems: "flex-start",
+  flexWrap: "wrap",
+};
+
+const accountCardStyle: CSSProperties = {
+  padding: 18,
+  borderRadius: 20,
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.12)",
+  minWidth: 240,
+};
+
+const topGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 0.95fr) minmax(360px, 0.75fr)",
+  gap: 22,
+  marginTop: 34,
+  alignItems: "start",
+};
+
+const panelStyle: CSSProperties = {
+  padding: 28,
+  borderRadius: 26,
+  background:
+    "linear-gradient(145deg, rgba(20,115,255,0.14), rgba(255,255,255,0.045))",
+  border: "1px solid rgba(255,255,255,0.12)",
+};
+
+const panelTitleStyle: CSSProperties = {
+  margin: 0,
+  color: "#fff",
+  fontSize: 34,
+  lineHeight: 1,
+  letterSpacing: "-0.045em",
+};
+
+const panelCopyStyle: CSSProperties = {
+  color: "#bfd6f5",
+  lineHeight: 1.6,
+  marginTop: 12,
+};
+
+const suggestionGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 8,
+  marginTop: 12,
+  color: "#cfe2ff",
+  lineHeight: 1.55,
+  fontSize: 14,
+};
+
+const formFooterStyle: CSSProperties = {
+  marginTop: 22,
+  display: "flex",
+  gap: 12,
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
+const formFooterBetweenStyle: CSSProperties = {
+  marginTop: 14,
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const twoColumnGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 16,
+  marginTop: 16,
+};
+
+const requestCardStyle: CSSProperties = {
+  padding: 18,
+  borderRadius: 24,
+  background: "rgba(255,255,255,0.05)",
+  border: "1px solid rgba(255,255,255,0.1)",
+};
+
+const requestSummaryStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 14,
+  alignItems: "flex-start",
+  cursor: "pointer",
+  listStyle: "none",
+};
+
+const requestTitleStyle: CSSProperties = {
+  margin: 0,
+  color: "#fff",
+  fontSize: 24,
+  lineHeight: 1,
+  letterSpacing: "-0.035em",
+};
+
+const priorityBadgeStyle: CSSProperties = {
+  padding: "8px 10px",
+  borderRadius: 999,
+  background: "rgba(251,191,36,0.14)",
+  color: "#fbbf24",
+  fontSize: 12,
+  fontWeight: 900,
+};
+
+const metricGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, 1fr)",
+  gap: 10,
+  marginTop: 18,
+};
+
+const closeFormStyle: CSSProperties = {
+  marginTop: 18,
+  paddingTop: 16,
+  borderTop: "1px solid rgba(255,255,255,0.09)",
+  display: "grid",
+  gap: 10,
+};
+
+const closeGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 0.72fr) minmax(0, 1fr)",
+  gap: 10,
+  alignItems: "start",
+};
+
+const closeFooterStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const filledCardStyle: CSSProperties = {
+  padding: 22,
+  borderRadius: 24,
+  background: "rgba(34,197,94,0.08)",
+  border: "1px solid rgba(34,197,94,0.18)",
+};
+
+const filledBadgeStyle: CSSProperties = {
+  display: "inline-flex",
+  padding: "7px 10px",
+  borderRadius: 999,
+  background: "rgba(34,197,94,0.14)",
+  color: "#86efac",
+  fontSize: 12,
+  fontWeight: 950,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+};
+
+const filledTitleStyle: CSSProperties = {
+  margin: "16px 0 0",
+  color: "#fff",
+  fontSize: 24,
+  lineHeight: 1,
+  letterSpacing: "-0.035em",
+};
+
+const nextActionNoticeStyle: CSSProperties = {
+  padding: 14,
+  borderRadius: 18,
+  background: "rgba(20,115,255,0.08)",
+  border: "1px solid rgba(96,165,250,0.16)",
+  color: "#bfd6f5",
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const scheduleCardStyle: CSSProperties = {
+  padding: 22,
+  borderRadius: 24,
+  background:
+    "linear-gradient(145deg, rgba(251,191,36,0.105), rgba(255,255,255,0.035))",
+  border: "1px solid rgba(251,191,36,0.22)",
+};
+
+const decisionCardStyle: CSSProperties = {
+  padding: 22,
+  borderRadius: 24,
+  background:
+    "linear-gradient(145deg, rgba(255,255,255,0.065), rgba(255,255,255,0.035))",
+  border: "1px solid rgba(255,255,255,0.12)",
+};
+
+const candidateHeaderStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "96px minmax(0, 1fr) auto",
+  gap: 18,
+  alignItems: "center",
+};
+
+const candidateNameStyle: CSSProperties = {
+  margin: 0,
+  color: "#fff",
+  fontSize: 28,
+  letterSpacing: "-0.04em",
+  lineHeight: 1,
+};
+
+const candidateSummaryStyle: CSSProperties = {
+  color: "#9fb4d6",
+  lineHeight: 1.55,
+  margin: "10px 0 0",
+};
+
+const fitBadgeStyle: CSSProperties = {
+  padding: "8px 10px",
+  borderRadius: 999,
+  background: "rgba(251,191,36,0.12)",
+  border: "1px solid rgba(251,191,36,0.22)",
+  color: "#fbbf24",
+  fontSize: 12,
+  fontWeight: 950,
+};
+
+const packetDetailsStyle: CSSProperties = {
+  marginTop: 16,
+  padding: 16,
+  borderRadius: 18,
+  background: "rgba(255,255,255,0.045)",
+  border: "1px solid rgba(255,255,255,0.09)",
+};
+
+const packetSummaryStyle: CSSProperties = {
+  color: "#fff",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const packetGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "160px minmax(0, 0.75fr) minmax(0, 1.15fr)",
+  gap: 12,
+  marginTop: 14,
+  alignItems: "stretch",
+};
+
+const embeddedFormStyle: CSSProperties = {
+  marginTop: 16,
+  padding: 16,
+  borderRadius: 18,
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid rgba(255,255,255,0.08)",
+};
+
+const formTitleStyle: CSSProperties = {
+  margin: "0 0 12px",
+  color: "#fff",
+  fontSize: 18,
+};
+
+const coordinationPanelStyle: CSSProperties = {
+  padding: 24,
+  borderRadius: 26,
+  background:
+    "linear-gradient(145deg, rgba(251,191,36,0.105), rgba(20,115,255,0.075))",
+  border: "1px solid rgba(251,191,36,0.2)",
+};
+
+const coordinationTitleStyle: CSSProperties = {
+  margin: 0,
+  color: "#fff",
+  fontSize: 30,
+  lineHeight: 1,
+  letterSpacing: "-0.04em",
+};
+
+const emptyMiniCardStyle: CSSProperties = {
+  padding: 16,
+  borderRadius: 18,
+  background: "rgba(255,255,255,0.055)",
+  border: "1px solid rgba(255,255,255,0.09)",
+  color: "#bfd6f5",
+  lineHeight: 1.5,
+};
+
+const miniCandidateCardBaseStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "56px minmax(0, 1fr) auto",
+  gap: 12,
+  alignItems: "center",
+  padding: 12,
+  borderRadius: 18,
+  textDecoration: "none",
+};
+
+const miniRoleStyle: CSSProperties = {
+  color: "#bfd6f5",
+  display: "block",
+  marginTop: 3,
+  fontSize: 13,
+};
+
+const miniMetaStyle: CSSProperties = {
+  display: "block",
+  marginTop: 5,
+  fontSize: 12,
+  fontWeight: 900,
+};
+
+const metricStyle: CSSProperties = {
+  padding: 14,
+  borderRadius: 16,
+  background: "rgba(255,255,255,0.045)",
+  border: "1px solid rgba(255,255,255,0.09)",
+};
+
+const emptyStateStyle: CSSProperties = {
+  marginTop: 16,
+  padding: 24,
+  borderRadius: 22,
+  background: "rgba(255,255,255,0.05)",
+  border: "1px solid rgba(255,255,255,0.1)",
+  color: "#cfe2ff",
+};
+
+const packetIdentityStyle: CSSProperties = {
+  padding: 14,
+  borderRadius: 16,
+  background: "rgba(5,10,18,0.5)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  display: "grid",
+  gap: 10,
+  justifyItems: "center",
+  textAlign: "center",
+};
+
+const packetRoleStyle: CSSProperties = {
+  color: "#bfd6f5",
+  display: "block",
+  marginTop: 4,
+  fontSize: 12,
+};
+
+const packetFitStyle: CSSProperties = {
+  color: "#fbbf24",
+  display: "block",
+  marginTop: 6,
+  fontSize: 12,
+  fontWeight: 900,
+};
+
+const packetBoxStyle: CSSProperties = {
+  padding: 14,
+  borderRadius: 16,
+  background: "rgba(5,10,18,0.5)",
+  border: "1px solid rgba(255,255,255,0.08)",
+};
+
+const resumeLinkStyle: CSSProperties = {
+  display: "inline-flex",
+  marginTop: 10,
+  color: "#93c5fd",
+  fontWeight: 900,
+  textDecoration: "none",
+};
+
+const packetMutedTextStyle: CSSProperties = {
+  color: "#bfd6f5",
+  display: "block",
+  marginTop: 6,
+  fontSize: 13,
+  lineHeight: 1.45,
+};
+
+const questionListStyle: CSSProperties = {
+  margin: "8px 0 0",
+  paddingLeft: 18,
+  color: "#bfd6f5",
+  fontSize: 13,
+  lineHeight: 1.45,
+};
+
+const statusBadgeStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minWidth: 174,
+  minHeight: 42,
+  padding: "0 14px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 950,
+  letterSpacing: "0.04em",
+  textAlign: "center",
+  background: "rgba(34,197,94,0.14)",
+  border: "1px solid rgba(34,197,94,0.28)",
+  color: "#86efac",
+};
 
 const drawerStyle = {
   marginTop: 16,
