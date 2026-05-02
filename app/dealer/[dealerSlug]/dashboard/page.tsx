@@ -984,21 +984,14 @@ export default async function DealerDashboardPage({
                 </Field>
               </div>
 
-              <div
-                style={{
-                  marginTop: 18,
-                  padding: 16,
-                  borderRadius: 18,
-                  background: "rgba(20,115,255,0.08)",
-                  border: "1px solid rgba(96,165,250,0.16)",
-                }}
-              >
-                <div className="eyebrow" style={{ marginBottom: 10 }}>
-                  Interview coordination
-                </div>
-                <p style={{ color: "#bfd6f5", lineHeight: 1.5, margin: 0 }}>
-                  Tell us who should coordinate manager interviews for this role.
-                  This reduces back-and-forth when a recommendation packet is ready.
+              <details style={drawerStyle}>
+                <summary style={drawerSummaryStyle}>
+                  Interview POC and preferred windows
+                </summary>
+
+                <p style={{ color: "#bfd6f5", lineHeight: 1.5, margin: "12px 0 0" }}>
+                  Add the manager contact now so scheduling is fast when a
+                  recommendation packet is ready.
                 </p>
 
                 <div className="grid-2" style={{ gap: 16, marginTop: 14 }}>
@@ -1071,27 +1064,19 @@ export default async function DealerDashboardPage({
                     />
                   </Field>
                 </div>
-              </div>
+              </details>
 
-              <div
-                style={{
-                  marginTop: 16,
-                  padding: 16,
-                  borderRadius: 18,
-                  background: "rgba(255,255,255,0.055)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  color: "#cfe2ff",
-                  lineHeight: 1.55,
-                  fontSize: 14,
-                }}
-              >
-                <strong style={{ color: "#fff" }}>Suggested pay ranges:</strong>
+              <details style={drawerStyle}>
+                <summary style={drawerSummaryStyle}>Suggested pay ranges</summary>
                 <div
                   style={{
                     display: "grid",
                     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                     gap: 8,
-                    marginTop: 10,
+                    marginTop: 12,
+                    color: "#cfe2ff",
+                    lineHeight: 1.55,
+                    fontSize: 14,
                   }}
                 >
                   {Object.entries(paySuggestions).map(([role, pay]) => (
@@ -1100,7 +1085,7 @@ export default async function DealerDashboardPage({
                     </span>
                   ))}
                 </div>
-              </div>
+              </details>
 
               <div style={{ marginTop: 18 }}>
                 <Field label="Notes for this request">
@@ -1163,21 +1148,23 @@ export default async function DealerDashboardPage({
                 ).length;
 
                 return (
-                  <article
+                  <details
                     key={job.id}
                     style={{
-                      padding: 22,
+                      padding: 18,
                       borderRadius: 24,
                       background: "rgba(255,255,255,0.05)",
                       border: "1px solid rgba(255,255,255,0.1)",
                     }}
                   >
-                    <div
+                    <summary
                       style={{
                         display: "flex",
                         justifyContent: "space-between",
                         gap: 14,
                         alignItems: "flex-start",
+                        cursor: "pointer",
+                        listStyle: "none",
                       }}
                     >
                       <div>
@@ -1209,7 +1196,7 @@ export default async function DealerDashboardPage({
                       >
                         {job.priority || "Active"}
                       </span>
-                    </div>
+                    </summary>
 
                     <div
                       style={{
@@ -1316,7 +1303,7 @@ export default async function DealerDashboardPage({
                         </button>
                       </div>
                     </form>
-                  </article>
+                  </details>
                 );
               })}
             </div>
@@ -1410,13 +1397,14 @@ export default async function DealerDashboardPage({
         </section>
 
         <section style={{ marginTop: 40 }}>
-          <div className="eyebrow">Manager interview board</div>
+          <div className="eyebrow">Next action cards</div>
 
           {managerCandidates.length > 0 ? (
             <div style={{ display: "grid", gap: 14, marginTop: 16 }}>
               {managerCandidates.map((candidate) => (
                 <article
                   key={candidate.id}
+                  id={`interview-${candidate.applicationId}`}
                   style={{
                     padding: 22,
                     borderRadius: 24,
@@ -1704,7 +1692,7 @@ export default async function DealerDashboardPage({
               }}
             >
               <h3 style={{ margin: 0, color: "#fff", fontSize: 24 }}>
-                No manager interviews are ready yet.
+                No decision cards are ready yet.
               </h3>
               <p style={{ margin: "10px 0 0", lineHeight: 1.6 }}>
                 NATA Today is still screening candidates, completing virtual
@@ -1760,8 +1748,8 @@ function InterviewCoordinationPanel({
       </h2>
 
       <p style={{ color: "#cfe2ff", lineHeight: 1.6, marginTop: 12 }}>
-        Recommendation packets that need a manager time appear here first.
-        Scheduled interviews stay visible until a decision is recorded.
+        This is your next-action stack. Click a card to jump directly to the
+        action: schedule the interview or record the manager decision.
       </p>
 
       <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
@@ -1776,6 +1764,7 @@ function InterviewCoordinationPanel({
                 photoUrl={candidate.photoUrl}
                 meta="Packet ready · select manager time"
                 tone="schedule"
+                href={`#schedule-${candidate.applicationId}`}
               />
             ))}
           </>
@@ -1792,6 +1781,7 @@ function InterviewCoordinationPanel({
                 photoUrl={candidate.photoUrl}
                 meta={formatInterviewTime(candidate.dealerInterviewAt)}
                 tone="scheduled"
+                href={`#interview-${candidate.applicationId}`}
               />
             ))}
           </>
@@ -1823,18 +1813,21 @@ function MiniCandidateCard({
   photoUrl,
   meta,
   tone,
+  href,
 }: {
   name: string;
   role: string;
   photoUrl: string;
   meta: string;
   tone: "schedule" | "scheduled";
+  href: string;
 }) {
   return (
-    <div
+    <a
+      href={href}
       style={{
         display: "grid",
-        gridTemplateColumns: "56px minmax(0, 1fr)",
+        gridTemplateColumns: "56px minmax(0, 1fr) auto",
         gap: 12,
         alignItems: "center",
         padding: 12,
@@ -1847,6 +1840,7 @@ function MiniCandidateCard({
           tone === "schedule"
             ? "1px solid rgba(251,191,36,0.22)"
             : "1px solid rgba(34,197,94,0.18)",
+        textDecoration: "none",
       }}
     >
       <CandidatePhoto url={photoUrl} name={name} size={56} radius={16} />
@@ -1874,7 +1868,8 @@ function MiniCandidateCard({
           {meta}
         </span>
       </div>
-    </div>
+      <span style={{ color: "#93c5fd", fontWeight: 950 }}>Open →</span>
+    </a>
   );
 }
 
@@ -2186,6 +2181,21 @@ function StatusBadge({ status }: { status: string }) {
     </span>
   );
 }
+
+const drawerStyle = {
+  marginTop: 16,
+  padding: 14,
+  borderRadius: 18,
+  background: "rgba(255,255,255,0.045)",
+  border: "1px solid rgba(255,255,255,0.1)",
+} as const;
+
+const drawerSummaryStyle = {
+  color: "#fff",
+  fontWeight: 950,
+  cursor: "pointer",
+  listStyle: "none",
+} as const;
 
 const miniSectionTitleStyle = {
   color: "#facc15",
