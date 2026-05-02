@@ -598,6 +598,22 @@ export default async function DealerDashboardPage({
     const notes = cleanFormValue(formData.get("notes"));
     const publishMode =
       cleanFormValue(formData.get("publish_mode")) || "public";
+    const interviewPocName = cleanFormValue(formData.get("interview_poc_name"));
+    const interviewPocTitle = cleanFormValue(formData.get("interview_poc_title"));
+    const interviewPocPhone = cleanFormValue(formData.get("interview_poc_phone"));
+    const interviewPocEmail = cleanFormValue(formData.get("interview_poc_email"));
+    const backupInterviewPocName = cleanFormValue(
+      formData.get("backup_interview_poc_name"),
+    );
+    const backupInterviewPocPhone = cleanFormValue(
+      formData.get("backup_interview_poc_phone"),
+    );
+    const backupInterviewPocEmail = cleanFormValue(
+      formData.get("backup_interview_poc_email"),
+    );
+    const preferredInterviewWindows = cleanFormValue(
+      formData.get("preferred_interview_windows"),
+    );
 
     if (!title) {
       throw new Error(
@@ -634,6 +650,14 @@ export default async function DealerDashboardPage({
         publish_mode: publishMode,
         publish_status: "published",
         is_active: true,
+        interview_poc_name: interviewPocName || null,
+        interview_poc_title: interviewPocTitle || null,
+        interview_poc_phone: interviewPocPhone || null,
+        interview_poc_email: interviewPocEmail || null,
+        backup_interview_poc_name: backupInterviewPocName || null,
+        backup_interview_poc_phone: backupInterviewPocPhone || null,
+        backup_interview_poc_email: backupInterviewPocEmail || null,
+        preferred_interview_windows: preferredInterviewWindows || null,
       }),
     });
 
@@ -865,7 +889,7 @@ export default async function DealerDashboardPage({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(0, 0.9fr) minmax(360px, 0.7fr)",
+            gridTemplateColumns: "minmax(0, 0.95fr) minmax(360px, 0.75fr)",
             gap: 22,
             marginTop: 34,
             alignItems: "start",
@@ -962,6 +986,95 @@ export default async function DealerDashboardPage({
 
               <div
                 style={{
+                  marginTop: 18,
+                  padding: 16,
+                  borderRadius: 18,
+                  background: "rgba(20,115,255,0.08)",
+                  border: "1px solid rgba(96,165,250,0.16)",
+                }}
+              >
+                <div className="eyebrow" style={{ marginBottom: 10 }}>
+                  Interview coordination
+                </div>
+                <p style={{ color: "#bfd6f5", lineHeight: 1.5, margin: 0 }}>
+                  Tell us who should coordinate manager interviews for this role.
+                  This reduces back-and-forth when a recommendation packet is ready.
+                </p>
+
+                <div className="grid-2" style={{ gap: 16, marginTop: 14 }}>
+                  <Field label="Primary interview POC">
+                    <input
+                      name="interview_poc_name"
+                      placeholder="Example: Sales Manager"
+                      style={inputStyle}
+                    />
+                  </Field>
+
+                  <Field label="POC title">
+                    <input
+                      name="interview_poc_title"
+                      placeholder="Example: General Sales Manager"
+                      style={inputStyle}
+                    />
+                  </Field>
+
+                  <Field label="POC phone">
+                    <input
+                      name="interview_poc_phone"
+                      placeholder="+1..."
+                      style={inputStyle}
+                    />
+                  </Field>
+
+                  <Field label="POC email">
+                    <input
+                      name="interview_poc_email"
+                      type="email"
+                      placeholder="manager@dealer.com"
+                      style={inputStyle}
+                    />
+                  </Field>
+
+                  <Field label="Backup POC">
+                    <input
+                      name="backup_interview_poc_name"
+                      placeholder="Optional backup contact"
+                      style={inputStyle}
+                    />
+                  </Field>
+
+                  <Field label="Backup phone">
+                    <input
+                      name="backup_interview_poc_phone"
+                      placeholder="+1..."
+                      style={inputStyle}
+                    />
+                  </Field>
+
+                  <Field label="Backup email">
+                    <input
+                      name="backup_interview_poc_email"
+                      type="email"
+                      placeholder="backup@dealer.com"
+                      style={inputStyle}
+                    />
+                  </Field>
+                </div>
+
+                <div style={{ marginTop: 14 }}>
+                  <Field label="Preferred interview windows">
+                    <textarea
+                      name="preferred_interview_windows"
+                      rows={3}
+                      placeholder="Example: Tuesdays and Thursdays, 2–5 PM. Saturdays before noon if urgent."
+                      style={inputStyle}
+                    />
+                  </Field>
+                </div>
+              </div>
+
+              <div
+                style={{
                   marginTop: 16,
                   padding: 16,
                   borderRadius: 18,
@@ -1020,51 +1133,10 @@ export default async function DealerDashboardPage({
             </form>
           </section>
 
-          <aside
-            style={{
-              padding: 24,
-              borderRadius: 26,
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.12)",
-            }}
-          >
-            <div className="eyebrow" style={{ marginBottom: 12 }}>
-              Manager board rule
-            </div>
-
-            <h2
-              style={{
-                margin: 0,
-                color: "#fff",
-                fontSize: 30,
-                lineHeight: 1,
-                letterSpacing: "-0.04em",
-              }}
-            >
-              You only see candidates when it is time to act.
-            </h2>
-
-            <p style={{ color: "#cfe2ff", lineHeight: 1.6 }}>
-              Candidates do not appear on the dealer board while NATA Today is
-              still screening, completing the virtual interview, scheduling the
-              manager interview, or preparing the packet.
-            </p>
-
-            <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
-              <ReviewPill
-                title="Packet ready"
-                copy="Resume, NATA notes, suggested manager questions, and verification items are prepared."
-              />
-              <ReviewPill
-                title="Interview scheduled"
-                copy="A manager interview time exists before the candidate appears here."
-              />
-              <ReviewPill
-                title="Human decision required"
-                copy="The manager submits outcome and why after the interview."
-              />
-            </div>
-          </aside>
+          <InterviewCoordinationPanel
+            readyScheduleCandidates={readyScheduleCandidates}
+            managerCandidates={managerCandidates}
+          />
         </div>
 
         <section style={{ marginTop: 40 }}>
@@ -1334,264 +1406,6 @@ export default async function DealerDashboardPage({
             </div>
           ) : (
             <EmptyState copy="No filled requests have been documented yet." />
-          )}
-        </section>
-
-        <section style={{ marginTop: 40 }}>
-          <div className="eyebrow">Ready for dealer scheduling</div>
-
-          {readyScheduleCandidates.length > 0 ? (
-            <div style={{ display: "grid", gap: 14, marginTop: 16 }}>
-              {readyScheduleCandidates.map((candidate) => (
-                <article
-                  key={candidate.id}
-                  style={{
-                    padding: 22,
-                    borderRadius: 24,
-                    background:
-                      "linear-gradient(145deg, rgba(251,191,36,0.105), rgba(255,255,255,0.035))",
-                    border: "1px solid rgba(251,191,36,0.22)",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "96px minmax(0, 1fr) auto",
-                      gap: 18,
-                      alignItems: "center",
-                    }}
-                  >
-                    <CandidatePhoto
-                      url={candidate.photoUrl}
-                      name={candidate.name}
-                    />
-
-                    <div>
-                      <h3
-                        style={{
-                          margin: 0,
-                          color: "#fff",
-                          fontSize: 28,
-                          letterSpacing: "-0.04em",
-                          lineHeight: 1,
-                        }}
-                      >
-                        {candidate.name}
-                      </h3>
-
-                      <p style={{ margin: "8px 0 0", color: "#bfd6f5" }}>
-                        {candidate.role} · Ready for manager interview time
-                      </p>
-
-                      <p
-                        style={{
-                          color: "#9fb4d6",
-                          lineHeight: 1.55,
-                          margin: "10px 0 0",
-                        }}
-                      >
-                        {candidate.summary}
-                      </p>
-                    </div>
-
-                    <div
-                      style={{ display: "grid", gap: 8, justifyItems: "end" }}
-                    >
-                      <StatusBadge status="Packet ready · schedule needed" />
-                      {candidate.fitScore !== null ? (
-                        <span
-                          style={{
-                            padding: "8px 10px",
-                            borderRadius: 999,
-                            background: "rgba(251,191,36,0.12)",
-                            border: "1px solid rgba(251,191,36,0.22)",
-                            color: "#fbbf24",
-                            fontSize: 12,
-                            fontWeight: 950,
-                          }}
-                        >
-                          Fit score {candidate.fitScore}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <details
-                    style={{
-                      marginTop: 16,
-                      padding: 16,
-                      borderRadius: 18,
-                      background: "rgba(255,255,255,0.045)",
-                      border: "1px solid rgba(255,255,255,0.09)",
-                    }}
-                  >
-                    <summary
-                      style={{
-                        color: "#fff",
-                        fontWeight: 900,
-                        cursor: "pointer",
-                      }}
-                    >
-                      View recommendation packet
-                    </summary>
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns:
-                          "160px minmax(0, 0.75fr) minmax(0, 1.15fr)",
-                        gap: 12,
-                        marginTop: 14,
-                        alignItems: "stretch",
-                      }}
-                    >
-                      <PacketIdentityBlock
-                        name={candidate.name}
-                        role={candidate.role}
-                        photoUrl={candidate.photoUrl}
-                        fitScore={candidate.fitScore}
-                      />
-                      <ResumeBlock url={candidate.resumeUrl} />
-                      <QuestionBlock questions={candidate.interviewQuestions} />
-                    </div>
-
-                    <div style={{ marginTop: 12 }}>
-                      <PacketBlock
-                        title="NATA recommendation"
-                        copy={candidate.nataNotes}
-                      />
-                    </div>
-
-                    <div style={{ marginTop: 14 }}>
-                      <strong style={{ color: "#fff" }}>
-                        Verify during manager interview
-                      </strong>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: 8,
-                          marginTop: 10,
-                        }}
-                      >
-                        {candidate.verificationItems.map((item) => (
-                          <span
-                            key={item}
-                            style={{
-                              padding: "8px 10px",
-                              borderRadius: 999,
-                              background: "rgba(255,255,255,0.055)",
-                              border: "1px solid rgba(255,255,255,0.09)",
-                              color: "#d7e8ff",
-                              fontSize: 13,
-                            }}
-                          >
-                            {item}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </details>
-
-                  <form
-                    method="POST"
-                    action={`/api/nata/applications/${candidate.applicationId}/schedule-dealer-interview`}
-                    style={{
-                      marginTop: 16,
-                      padding: 16,
-                      borderRadius: 18,
-                      background: "rgba(255,255,255,0.04)",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                    }}
-                  >
-                    <input
-                      type="hidden"
-                      name="dealer_slug"
-                      value={params.dealerSlug}
-                    />
-
-                    <h4
-                      style={{
-                        margin: "0 0 12px",
-                        color: "#fff",
-                        fontSize: 18,
-                      }}
-                    >
-                      Select optimal manager interview time
-                    </h4>
-
-                    <div className="grid-2" style={{ gap: 14 }}>
-                      <Field label="Interview date">
-                        <input
-                          name="interview_date"
-                          type="date"
-                          required
-                          style={inputStyle}
-                        />
-                      </Field>
-
-                      <Field label="Interview time">
-                        <input
-                          name="interview_time"
-                          type="time"
-                          required
-                          style={inputStyle}
-                        />
-                      </Field>
-
-                      <Field label="Manager / interviewer">
-                        <input
-                          name="manager_name"
-                          placeholder="Example: Sales Manager"
-                          required
-                          style={inputStyle}
-                        />
-                      </Field>
-
-                      <Field label="Interview location">
-                        <input
-                          name="interview_location"
-                          placeholder="Example: Sales office"
-                          style={inputStyle}
-                        />
-                      </Field>
-                    </div>
-
-                    <div style={{ marginTop: 14 }}>
-                      <Field label="Optional note for candidate">
-                        <textarea
-                          name="dealer_schedule_note"
-                          rows={3}
-                          placeholder="Example: Please arrive 10 minutes early and ask for the sales manager."
-                          style={inputStyle}
-                        />
-                      </Field>
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: 14,
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <span style={{ color: "#9fb4d6", fontSize: 13 }}>
-                        Confirming a time moves this candidate onto the manager
-                        interview board and notifies the candidate.
-                      </span>
-                      <button className="btn btn-primary" type="submit">
-                        Confirm interview time
-                      </button>
-                    </div>
-                  </form>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <EmptyState copy="No candidates are waiting for dealer interview scheduling." />
           )}
         </section>
 
@@ -1906,6 +1720,164 @@ export default async function DealerDashboardPage({
   );
 }
 
+function InterviewCoordinationPanel({
+  readyScheduleCandidates,
+  managerCandidates,
+}: {
+  readyScheduleCandidates: ReadyScheduleCandidate[];
+  managerCandidates: ManagerCandidate[];
+}) {
+  const upcoming = managerCandidates.slice(0, 4);
+  const ready = readyScheduleCandidates.slice(0, 4);
+  const totalActions = ready.length + upcoming.length;
+
+  return (
+    <aside
+      style={{
+        padding: 24,
+        borderRadius: 26,
+        background:
+          "linear-gradient(145deg, rgba(251,191,36,0.105), rgba(20,115,255,0.075))",
+        border: "1px solid rgba(251,191,36,0.2)",
+      }}
+    >
+      <div className="eyebrow" style={{ marginBottom: 12 }}>
+        Interview coordination
+      </div>
+
+      <h2
+        style={{
+          margin: 0,
+          color: "#fff",
+          fontSize: 30,
+          lineHeight: 1,
+          letterSpacing: "-0.04em",
+        }}
+      >
+        {totalActions > 0
+          ? `${totalActions} interview action${totalActions === 1 ? "" : "s"} need attention.`
+          : "No interview actions pending."}
+      </h2>
+
+      <p style={{ color: "#cfe2ff", lineHeight: 1.6, marginTop: 12 }}>
+        Recommendation packets that need a manager time appear here first.
+        Scheduled interviews stay visible until a decision is recorded.
+      </p>
+
+      <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
+        {ready.length > 0 ? (
+          <>
+            <div style={miniSectionTitleStyle}>Ready to schedule</div>
+            {ready.map((candidate) => (
+              <MiniCandidateCard
+                key={candidate.id}
+                name={candidate.name}
+                role={candidate.role}
+                photoUrl={candidate.photoUrl}
+                meta="Packet ready · select manager time"
+                tone="schedule"
+              />
+            ))}
+          </>
+        ) : null}
+
+        {upcoming.length > 0 ? (
+          <>
+            <div style={miniSectionTitleStyle}>Upcoming interviews</div>
+            {upcoming.map((candidate) => (
+              <MiniCandidateCard
+                key={candidate.id}
+                name={candidate.name}
+                role={candidate.role}
+                photoUrl={candidate.photoUrl}
+                meta={formatInterviewTime(candidate.dealerInterviewAt)}
+                tone="scheduled"
+              />
+            ))}
+          </>
+        ) : null}
+
+        {totalActions === 0 ? (
+          <div
+            style={{
+              padding: 16,
+              borderRadius: 18,
+              background: "rgba(255,255,255,0.055)",
+              border: "1px solid rgba(255,255,255,0.09)",
+              color: "#bfd6f5",
+              lineHeight: 1.5,
+            }}
+          >
+            No candidate is currently waiting on dealer scheduling or manager
+            decision.
+          </div>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
+function MiniCandidateCard({
+  name,
+  role,
+  photoUrl,
+  meta,
+  tone,
+}: {
+  name: string;
+  role: string;
+  photoUrl: string;
+  meta: string;
+  tone: "schedule" | "scheduled";
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "56px minmax(0, 1fr)",
+        gap: 12,
+        alignItems: "center",
+        padding: 12,
+        borderRadius: 18,
+        background:
+          tone === "schedule"
+            ? "rgba(251,191,36,0.12)"
+            : "rgba(34,197,94,0.10)",
+        border:
+          tone === "schedule"
+            ? "1px solid rgba(251,191,36,0.22)"
+            : "1px solid rgba(34,197,94,0.18)",
+      }}
+    >
+      <CandidatePhoto url={photoUrl} name={name} size={56} radius={16} />
+      <div>
+        <strong style={{ color: "#fff", display: "block" }}>{name}</strong>
+        <span
+          style={{
+            color: "#bfd6f5",
+            display: "block",
+            marginTop: 3,
+            fontSize: 13,
+          }}
+        >
+          {role}
+        </span>
+        <span
+          style={{
+            color: tone === "schedule" ? "#fde68a" : "#86efac",
+            display: "block",
+            marginTop: 5,
+            fontSize: 12,
+            fontWeight: 900,
+          }}
+        >
+          {meta}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function Field({
   label,
   children,
@@ -1984,7 +1956,17 @@ function EmptyState({ copy }: { copy: string }) {
   );
 }
 
-function CandidatePhoto({ url, name }: { url: string; name: string }) {
+function CandidatePhoto({
+  url,
+  name,
+  size = 92,
+  radius = 24,
+}: {
+  url: string;
+  name: string;
+  size?: number;
+  radius?: number;
+}) {
   const initials = name
     .split(/\s+/)
     .filter(Boolean)
@@ -1996,16 +1978,16 @@ function CandidatePhoto({ url, name }: { url: string; name: string }) {
   return (
     <div
       style={{
-        width: 92,
-        height: 92,
-        borderRadius: 24,
+        width: size,
+        height: size,
+        borderRadius: radius,
         overflow: "hidden",
         background: "rgba(20,115,255,0.14)",
         border: "1px solid rgba(147,197,253,0.24)",
         display: "grid",
         placeItems: "center",
         color: "#dbeafe",
-        fontSize: 26,
+        fontSize: Math.max(16, Math.round(size * 0.28)),
         fontWeight: 950,
       }}
     >
@@ -2204,6 +2186,15 @@ function StatusBadge({ status }: { status: string }) {
     </span>
   );
 }
+
+const miniSectionTitleStyle = {
+  color: "#facc15",
+  fontSize: 12,
+  fontWeight: 950,
+  letterSpacing: "0.14em",
+  textTransform: "uppercase",
+  marginTop: 4,
+} as const;
 
 const inputStyle = {
   width: "100%",
