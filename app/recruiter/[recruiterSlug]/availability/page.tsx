@@ -274,7 +274,7 @@ export default async function RecruiterAvailabilityPage({
       .schema("nata")
       .from("recruiter_weekly_availability")
       .upsert(payload, {
-        onConflict: "recruiter_id,week_start,day_of_week",
+        onConflict: "recruiter_id,week_start,day_of_week,block_index",
       });
 
     if (error) {
