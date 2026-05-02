@@ -13,15 +13,42 @@ type InvitePageProps = {
 export default async function RecruiterInvitePage({ params }: InvitePageProps) {
   const token = params.token;
 
-  const { data: recruiter, error } = await supabaseAdmin
+  const { data: invite, error } = await supabaseAdmin
     .schema("nata")
-    .from("recruiters")
-    .select("id,name,email,phone,title,role,status,invite_token,activated_at")
-    .eq("invite_token", token)
+    .from("recruiter_invites")
+    .select(
+      `
+      id,
+      token,
+      status,
+      expires_at,
+      accepted_at,
+      recruiters (
+        id,
+        name,
+        slug,
+        email,
+        phone,
+        title,
+        role,
+        status,
+        activated_at
+      )
+    `
+    )
+    .eq("token", token)
     .maybeSingle();
 
-  const invalid = error || !recruiter;
-  const alreadyActive = recruiter?.status === "active" || recruiter?.activated_at;
+  const recruiter = Array.isArray(invite?.recruiters)
+    ? invite?.recruiters[0]
+    : invite?.recruiters;
+
+  const invalid = error || !invite || !recruiter;
+  const expired =
+    invite?.expires_at && new Date(invite.expires_at).getTime() < Date.now();
+  const alreadyAccepted = invite?.status === "accepted" || invite?.accepted_at;
+  const alreadyActive =
+    recruiter?.status === "active" || recruiter?.activated_at;
 
   return (
     <main style={pageStyle}>
@@ -35,15 +62,31 @@ export default async function RecruiterInvitePage({ params }: InvitePageProps) {
               This recruiter invite is invalid, expired, or has been replaced.
               Contact Don for a fresh invite.
             </p>
-            <Link href="/careers" style={secondaryButtonStyle}>Return to NATA Today</Link>
+            <Link href="/careers" style={secondaryButtonStyle}>
+              Return to NATA Today
+            </Link>
           </>
-        ) : alreadyActive ? (
+        ) : expired ? (
+          <>
+            <h1 style={titleStyle}>Invite expired.</h1>
+            <p style={copyStyle}>
+              This invite is no longer active. Contact Don for a fresh recruiter
+              invite.
+            </p>
+            <Link href="/careers" style={secondaryButtonStyle}>
+              Return to NATA Today
+            </Link>
+          </>
+        ) : alreadyAccepted || alreadyActive ? (
           <>
             <h1 style={titleStyle}>Workspace already active.</h1>
             <p style={copyStyle}>
               {recruiter.name}, your recruiter workspace is already active.
             </p>
-            <Link href={`/recruiter/${slugFromName(recruiter.name)}/dashboard`} style={primaryButtonStyle}>
+            <Link
+              href={`/recruiter/${recruiter.slug}/dashboard`}
+              style={primaryButtonStyle}
+            >
               Open workspace
             </Link>
           </>
@@ -51,20 +94,36 @@ export default async function RecruiterInvitePage({ params }: InvitePageProps) {
           <>
             <h1 style={titleStyle}>Activate your recruiter workspace.</h1>
             <p style={copyStyle}>
-              Don invited you to join NATA Today as <strong>{recruiter.role}</strong>
+              Don invited you to join NATA Today as{" "}
+              <strong>{recruiter.role}</strong>
               {recruiter.title ? ` (${recruiter.title})` : ""}.
             </p>
 
             <div style={profileBoxStyle}>
-              <div><strong>Name:</strong> {recruiter.name}</div>
-              <div><strong>Email:</strong> {recruiter.email || "Not provided"}</div>
-              <div><strong>Phone:</strong> {recruiter.phone || "Not provided"}</div>
-              <div><strong>Access:</strong> Assigned work only unless Don grants admin permissions.</div>
+              <div>
+                <strong>Name:</strong> {recruiter.name}
+              </div>
+              <div>
+                <strong>Email:</strong> {recruiter.email || "Not provided"}
+              </div>
+              <div>
+                <strong>Phone:</strong> {recruiter.phone || "Not provided"}
+              </div>
+              <div>
+                <strong>Access:</strong> Assigned work only unless Don grants
+                admin permissions.
+              </div>
             </div>
 
-            <form method="POST" action="/api/nata/recruiters/accept-invite" style={{ marginTop: 20 }}>
+            <form
+              method="POST"
+              action="/api/nata/recruiters/accept-invite"
+              style={{ marginTop: 20 }}
+            >
               <input type="hidden" name="token" value={token} />
-              <button type="submit" style={primaryButtonStyle}>Activate workspace</button>
+              <button type="submit" style={primaryButtonStyle}>
+                Activate workspace
+              </button>
             </form>
           </>
         )}
@@ -73,19 +132,12 @@ export default async function RecruiterInvitePage({ params }: InvitePageProps) {
   );
 }
 
-function slugFromName(name: string | null) {
-  return String(name || "don")
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
 const pageStyle: React.CSSProperties = {
   minHeight: "100vh",
   display: "grid",
   placeItems: "center",
-  background: "radial-gradient(circle at 20% 0%, rgba(20,115,255,0.24), transparent 34%), #07111f",
+  background:
+    "radial-gradient(circle at 20% 0%, rgba(20,115,255,0.24), transparent 34%), #07111f",
   color: "#fff",
   padding: 24,
 };
