@@ -103,6 +103,7 @@ export async function POST(request: NextRequest) {
     const email = clean(formData.get("email")).toLowerCase();
     const phone = clean(formData.get("phone"));
     const title = clean(formData.get("title"));
+    const profilePhotoUrl = clean(formData.get("profile_photo_url"));
     const role = normalizeRole(clean(formData.get("role"), "recruiter"));
     const managerRecruiterId = clean(formData.get("manager_recruiter_id")) || null;
     const notes = clean(formData.get("notes"));
@@ -129,6 +130,8 @@ export async function POST(request: NextRequest) {
       return redirectToAdmin(request, { invite: "already_active" });
     }
 
+    const now = new Date().toISOString();
+
     const { data: recruiter, error: upsertError } = await supabaseAdmin
       .schema("nata")
       .from("recruiters")
@@ -139,14 +142,15 @@ export async function POST(request: NextRequest) {
           email,
           phone: phone || null,
           title: title || null,
+          profile_photo_url: profilePhotoUrl || null,
           role,
           manager_recruiter_id: managerRecruiterId,
           notes: notes || null,
           permissions,
           status: "invited",
           is_active: false,
-          invited_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          invited_at: now,
+          updated_at: now,
         },
         { onConflict: "slug" }
       )
@@ -165,7 +169,7 @@ export async function POST(request: NextRequest) {
     await supabaseAdmin
       .schema("nata")
       .from("recruiter_invites")
-      .update({ status: "revoked", revoked_at: new Date().toISOString() })
+      .update({ status: "revoked", revoked_at: now, updated_at: now })
       .eq("recruiter_id", recruiter.id)
       .eq("status", "pending");
 
