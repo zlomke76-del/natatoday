@@ -4,6 +4,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import Nav from "../../../components/Nav";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { buildCandidateScheduleUrl, sendInterviewInvite } from "../../../../lib/nataNotifications";
+import CommunicationsCenter from "./CommunicationsCenter";
 
 type AnyRow = Record<string, any>;
 
@@ -756,6 +757,13 @@ export default async function RecruiterDashboard({
             candidateQueue.map((application) => renderApplicationCard(application, "candidate"))
           )}
         </div>
+
+        <div className="section-kicker" style={{ marginTop: 48 }}>Communications</div>
+        <CommunicationsCenter
+          recruiter={recruiter}
+          recruiterSlug={recruiterSlug}
+          applications={applications}
+        />
       </section>
     </main>
   );
