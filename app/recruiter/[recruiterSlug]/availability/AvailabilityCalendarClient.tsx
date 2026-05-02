@@ -32,6 +32,15 @@ type ScheduledInterview = {
   meetingUrl: string;
 };
 
+type CalendarHoliday = {
+  id: string;
+  date: string;
+  dayOfWeek: number;
+  title: string;
+  subtitle: string;
+  kind: "federal" | "birthday";
+};
+
 type Props = {
   recruiter: RecruiterPayload;
   rows: AnyRow[];
@@ -371,6 +380,157 @@ function normalizeScheduledInterviews(rows: AnyRow[]): ScheduledInterview[] {
     .filter(Boolean) as ScheduledInterview[];
 }
 
+
+function toDateKey(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function observedDate(year: number, monthIndex: number, day: number) {
+  const date = new Date(Date.UTC(year, monthIndex, day));
+  const dayOfWeek = date.getUTCDay();
+
+  if (dayOfWeek === 6) {
+    date.setUTCDate(date.getUTCDate() - 1);
+  }
+
+  if (dayOfWeek === 0) {
+    date.setUTCDate(date.getUTCDate() + 1);
+  }
+
+  return toDateKey(date);
+}
+
+function nthWeekdayOfMonth(
+  year: number,
+  monthIndex: number,
+  weekday: number,
+  occurrence: number
+) {
+  const date = new Date(Date.UTC(year, monthIndex, 1));
+  const firstWeekday = date.getUTCDay();
+  const offset = (weekday - firstWeekday + 7) % 7;
+  date.setUTCDate(1 + offset + (occurrence - 1) * 7);
+
+  return toDateKey(date);
+}
+
+function lastWeekdayOfMonth(year: number, monthIndex: number, weekday: number) {
+  const date = new Date(Date.UTC(year, monthIndex + 1, 0));
+
+  while (date.getUTCDay() !== weekday) {
+    date.setUTCDate(date.getUTCDate() - 1);
+  }
+
+  return toDateKey(date);
+}
+
+function federalHolidaysForYear(year: number) {
+  return [
+    {
+      id: `new-years-${year}`,
+      date: observedDate(year, 0, 1),
+      title: "New Year’s Day",
+      subtitle: "Federal holiday",
+      kind: "federal" as const,
+    },
+    {
+      id: `mlk-${year}`,
+      date: nthWeekdayOfMonth(year, 0, 1, 3),
+      title: "Martin Luther King Jr. Day",
+      subtitle: "Federal holiday",
+      kind: "federal" as const,
+    },
+    {
+      id: `washington-${year}`,
+      date: nthWeekdayOfMonth(year, 1, 1, 3),
+      title: "Washington’s Birthday",
+      subtitle: "Federal holiday",
+      kind: "federal" as const,
+    },
+    {
+      id: `memorial-${year}`,
+      date: lastWeekdayOfMonth(year, 4, 1),
+      title: "Memorial Day",
+      subtitle: "Federal holiday",
+      kind: "federal" as const,
+    },
+    {
+      id: `juneteenth-${year}`,
+      date: observedDate(year, 5, 19),
+      title: "Juneteenth",
+      subtitle: "Federal holiday",
+      kind: "federal" as const,
+    },
+    {
+      id: `independence-${year}`,
+      date: observedDate(year, 6, 4),
+      title: "Independence Day",
+      subtitle: "Federal holiday",
+      kind: "federal" as const,
+    },
+    {
+      id: `labor-${year}`,
+      date: nthWeekdayOfMonth(year, 8, 1, 1),
+      title: "Labor Day",
+      subtitle: "Federal holiday",
+      kind: "federal" as const,
+    },
+    {
+      id: `columbus-${year}`,
+      date: nthWeekdayOfMonth(year, 9, 1, 2),
+      title: "Columbus Day",
+      subtitle: "Federal holiday",
+      kind: "federal" as const,
+    },
+    {
+      id: `veterans-${year}`,
+      date: observedDate(year, 10, 11),
+      title: "Veterans Day",
+      subtitle: "Federal holiday",
+      kind: "federal" as const,
+    },
+    {
+      id: `thanksgiving-${year}`,
+      date: nthWeekdayOfMonth(year, 10, 4, 4),
+      title: "Thanksgiving Day",
+      subtitle: "Federal holiday",
+      kind: "federal" as const,
+    },
+    {
+      id: `christmas-${year}`,
+      date: observedDate(year, 11, 25),
+      title: "Christmas Day",
+      subtitle: "Federal holiday",
+      kind: "federal" as const,
+    },
+    {
+      id: `tim-zlomke-birthday-${year}`,
+      date: toDateKey(new Date(Date.UTC(year, 7, 31))),
+      title: "🎂 Tim Zlomke Day",
+      subtitle: "Founder easter egg",
+      kind: "birthday" as const,
+    },
+  ];
+}
+
+function holidaysForVisibleWeek(weekStart: string): CalendarHoliday[] {
+  const start = new Date(`${weekStart}T00:00:00`);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+
+  const years = new Set([start.getUTCFullYear(), end.getUTCFullYear()]);
+  const startKey = weekStart;
+  const endKey = toDateKey(end);
+
+  return Array.from(years)
+    .flatMap((year) => federalHolidaysForYear(year))
+    .filter((holiday) => holiday.date >= startKey && holiday.date <= endKey)
+    .map((holiday) => ({
+      ...holiday,
+      dayOfWeek: new Date(`${holiday.date}T00:00:00`).getDay(),
+    }));
+}
+
 export default function AvailabilityCalendarClient({
   recruiter,
   rows,
@@ -402,6 +562,10 @@ export default function AvailabilityCalendarClient({
   const normalizedInterviews = useMemo(() => {
     return normalizeScheduledInterviews(scheduledInterviews);
   }, [scheduledInterviews]);
+
+  const visibleHolidays = useMemo(() => {
+    return holidaysForVisibleWeek(weekStart);
+  }, [weekStart]);
 
   const availableDayCount = useMemo(() => {
     return days.filter((day) =>
@@ -550,6 +714,11 @@ export default function AvailabilityCalendarClient({
               <span>scheduled</span>
             </div>
 
+            <div style={miniStat}>
+              <strong>{visibleHolidays.length}</strong>
+              <span>holidays</span>
+            </div>
+
             <label style={timezoneField}>
               <span style={labelStyle}>Timezone</span>
               <select
@@ -588,6 +757,7 @@ export default function AvailabilityCalendarClient({
           <div style={legend}>
             <span style={legendAvailable}>Available block</span>
             <span style={legendBooked}>Scheduled interview</span>
+            <span style={legendHoliday}>Holiday</span>
             <span style={legendClosed}>No blocks</span>
           </div>
         </div>
@@ -605,6 +775,9 @@ export default function AvailabilityCalendarClient({
               );
               const dayInterviews = normalizedInterviews.filter(
                 (interview) => interview.dayOfWeek === day.value
+              );
+              const dayHolidays = visibleHolidays.filter(
+                (holiday) => holiday.dayOfWeek === day.value
               );
 
               return (
@@ -626,6 +799,7 @@ export default function AvailabilityCalendarClient({
                   <small>
                     {dayBlocks.length} block{dayBlocks.length === 1 ? "" : "s"}
                     {dayInterviews.length ? ` · ${dayInterviews.length} booked` : ""}
+                    {dayHolidays.length ? ` · ${dayHolidays.length} holiday` : ""}
                   </small>
                 </button>
               );
@@ -646,6 +820,9 @@ export default function AvailabilityCalendarClient({
               );
               const dayInterviews = normalizedInterviews.filter(
                 (interview) => interview.dayOfWeek === day.value
+              );
+              const dayHolidays = visibleHolidays.filter(
+                (holiday) => holiday.dayOfWeek === day.value
               );
 
               return (
@@ -689,6 +866,19 @@ export default function AvailabilityCalendarClient({
                       <span>Click to add a block</span>
                     </span>
                   )}
+
+                  {dayHolidays.map((holiday, index) => (
+                    <span
+                      key={holiday.id}
+                      style={{
+                        ...holidayBlock,
+                        top: `${14 + index * 58}px`,
+                      }}
+                    >
+                      <strong>{holiday.title}</strong>
+                      <span>{holiday.subtitle}</span>
+                    </span>
+                  ))}
 
                   {dayInterviews.map((interview, index) => (
                     <span
@@ -752,6 +942,28 @@ export default function AvailabilityCalendarClient({
               </button>
             </div>
           </div>
+
+          {visibleHolidays.filter((holiday) => holiday.dayOfWeek === selectedDay).length > 0 ? (
+            <div style={holidayList}>
+              {visibleHolidays
+                .filter((holiday) => holiday.dayOfWeek === selectedDay)
+                .map((holiday) => (
+                  <article
+                    key={holiday.id}
+                    style={{
+                      ...holidayListItem,
+                      borderColor:
+                        holiday.kind === "birthday"
+                          ? "rgba(244,114,182,0.4)"
+                          : "rgba(96,165,250,0.26)",
+                    }}
+                  >
+                    <strong>{holiday.title}</strong>
+                    <span>{holiday.subtitle}</span>
+                  </article>
+                ))}
+            </div>
+          ) : null}
 
           {normalizedInterviews.filter((interview) => interview.dayOfWeek === selectedDay).length > 0 ? (
             <div style={scheduledList}>
@@ -1299,6 +1511,49 @@ const emptyEditor: React.CSSProperties = {
   color: "#dbeafe",
 };
 
+
+
+const holidayBlock: React.CSSProperties = {
+  position: "absolute",
+  left: 10,
+  right: 10,
+  minHeight: 48,
+  display: "grid",
+  gap: 2,
+  padding: 10,
+  borderRadius: 14,
+  border: "1px solid rgba(96,165,250,0.36)",
+  background:
+    "linear-gradient(180deg, rgba(59,130,246,0.24), rgba(30,64,175,0.18))",
+  color: "#dbeafe",
+  zIndex: 9,
+};
+
+const holidayList: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+  marginBottom: 14,
+};
+
+const holidayListItem: React.CSSProperties = {
+  display: "grid",
+  gap: 4,
+  padding: 12,
+  borderRadius: 16,
+  border: "1px solid rgba(96,165,250,0.26)",
+  background: "rgba(59,130,246,0.1)",
+  color: "#dbeafe",
+};
+
+const legendHoliday: React.CSSProperties = {
+  padding: "8px 11px",
+  borderRadius: 999,
+  background: "rgba(59,130,246,0.14)",
+  border: "1px solid rgba(96,165,250,0.28)",
+  color: "#bfdbfe",
+  fontSize: 12,
+  fontWeight: 900,
+};
 
 const scheduledInterviewBlock: React.CSSProperties = {
   position: "absolute",
