@@ -7,6 +7,7 @@ type JobContext = {
   id: string;
   title: string | null;
   slug: string | null;
+  dealer_id?: string | null;
   dealer_slug: string | null;
   location: string | null;
   type: string | null;
@@ -284,7 +285,7 @@ export async function POST(request: NextRequest) {
       .schema("nata")
       .from("jobs")
       .select(
-        "id,title,slug,dealer_slug,location,type,salary,description,requirements,role_hook,responsibilities,fit_signals,process_note,publish_mode,public_dealer_name,public_location,confidential_note,is_active,publish_status"
+        "id,dealer_id,title,slug,dealer_slug,location,type,salary,description,requirements,role_hook,responsibilities,fit_signals,process_note,publish_mode,public_dealer_name,public_location,confidential_note,is_active,publish_status"
       )
       .eq("id", jobId)
       .eq("is_active", true)
@@ -293,6 +294,39 @@ export async function POST(request: NextRequest) {
 
     if (jobError || !job) {
       return NextResponse.json({ error: "Job not found." }, { status: 404 });
+    }
+
+    let dealerAssignedRecruiter: { id: string; name: string | null } | null = null;
+
+    if ((job as JobContext).dealer_id) {
+      const { data: dealer } = await supabaseAdmin
+        .schema("nata")
+        .from("dealers")
+        .select("assigned_recruiter_id")
+        .eq("id", (job as JobContext).dealer_id)
+        .maybeSingle();
+
+      if (dealer?.assigned_recruiter_id) {
+        const { data: recruiter } = await supabaseAdmin
+          .schema("nata")
+          .from("recruiters")
+          .select("id,name,status,is_active")
+          .eq("id", dealer.assigned_recruiter_id)
+          .maybeSingle();
+
+        if (
+          recruiter &&
+          recruiter.is_active !== false &&
+          recruiter.status !== "suspended" &&
+          recruiter.status !== "inactive" &&
+          recruiter.status !== "invited"
+        ) {
+          dealerAssignedRecruiter = {
+            id: recruiter.id,
+            name: recruiter.name || null,
+          };
+        }
+      }
     }
 
     const folder = `${job.slug || job.id}/${email.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
@@ -350,6 +384,8 @@ export async function POST(request: NextRequest) {
         screening_summary: initialScreen.screeningSummary,
         decision_reason: initialScreen.decisionReason,
         virtual_interview_url: virtualInterviewUrl,
+        recruiter_id: dealerAssignedRecruiter?.id || null,
+        assigned_recruiter: dealerAssignedRecruiter?.name || null,
       })
       .select("*")
       .single();
