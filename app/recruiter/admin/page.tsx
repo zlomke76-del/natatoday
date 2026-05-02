@@ -42,6 +42,7 @@ type AssignmentRow = {
   status: string | null;
   screening_status?: string | null;
   recruiter_id: string | null;
+  assigned_recruiter?: string | null;
   fit_score: number | null;
   job_id?: string | null;
   created_at?: string | null;
@@ -51,6 +52,24 @@ type AssignmentRow = {
     public_dealer_name?: string | null;
     dealer_slug?: string | null;
   } | null;
+};
+
+type BookingRow = {
+  id: string;
+  recruiter_id: string | null;
+  status: string | null;
+  starts_at?: string | null;
+};
+
+type LoadSnapshot = {
+  recruiterId: string;
+  assignedCount: number;
+  interviewCount: number;
+  loadScore: number;
+};
+
+type RecruiterAdminPageProps = {
+  searchParams?: Record<string, string | string[] | undefined>;
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -149,13 +168,80 @@ function countPendingInterviews(applications: AssignmentRow[], recruiterId: stri
   }).length;
 }
 
+function isInterviewBacklog(application: AssignmentRow) {
+  const status = normalizeText(application.status).toLowerCase();
+  const screening = normalizeText(application.screening_status).toLowerCase();
+  const virtualStatus = normalizeText(application.virtual_interview_status).toLowerCase();
+
+  if (status === "not_fit" || screening === "not_fit" || screening === "rejected") return false;
+  if (virtualStatus === "completed" || status === "virtual_completed") return false;
+
+  return (
+    status === "virtual_invited" ||
+    status === "virtual_scheduled" ||
+    status === "needs_review" ||
+    screening === "virtual_invited" ||
+    screening === "needs_review" ||
+    (typeof application.fit_score === "number" && application.fit_score >= 70)
+  );
+}
+
+function isOpenAssignedWork(application: AssignmentRow) {
+  const status = normalizeText(application.status).toLowerCase();
+  const screening = normalizeText(application.screening_status).toLowerCase();
+  const virtualStatus = normalizeText(application.virtual_interview_status).toLowerCase();
+
+  if (!application.recruiter_id) return false;
+  if (status === "not_fit" || status === "placed" || status === "rejected") return false;
+  if (screening === "not_fit" || screening === "rejected") return false;
+  if (virtualStatus === "completed" || status === "virtual_completed") return false;
+
+  return true;
+}
+
+function isActiveBooking(booking: BookingRow) {
+  const status = normalizeText(booking.status).toLowerCase();
+  return !!booking.recruiter_id && !["cancelled", "canceled", "completed", "no_show"].includes(status);
+}
+
+function buildLoadSnapshots(recruiters: Recruiter[], applications: AssignmentRow[], bookings: BookingRow[]): LoadSnapshot[] {
+  return recruiters.map((recruiter) => {
+    const assignedCount = applications.filter((application) => application.recruiter_id === recruiter.id && isOpenAssignedWork(application)).length;
+    const interviewCount = bookings.filter((booking) => booking.recruiter_id === recruiter.id && isActiveBooking(booking)).length;
+    return {
+      recruiterId: recruiter.id,
+      assignedCount,
+      interviewCount,
+      loadScore: assignedCount + interviewCount * 3,
+    };
+  });
+}
+
+function getLoad(loadSnapshots: LoadSnapshot[], recruiterId: string) {
+  return loadSnapshots.find((snapshot) => snapshot.recruiterId === recruiterId) || {
+    recruiterId,
+    assignedCount: 0,
+    interviewCount: 0,
+    loadScore: 0,
+  };
+}
+
+function getQueryValue(searchParams: RecruiterAdminPageProps["searchParams"], key: string) {
+  const value = searchParams?.[key];
+  if (Array.isArray(value)) return value[0] || "";
+  return value || "";
+}
+
 function groupRecruiters(recruiters: Recruiter[], role: RecruiterRole) {
   return recruiters.filter((recruiter) => normalizeRole(recruiter.role) === role);
 }
 
 async function getAdminData() {
-  const [{ data: recruitersData, error: recruitersError }, { data: applicationsData, error: applicationsError }] =
-    await Promise.all([
+  const [
+    { data: recruitersData, error: recruitersError },
+    { data: applicationsData, error: applicationsError },
+    { data: bookingsData, error: bookingsError },
+  ] = await Promise.all([
       supabaseAdmin
         .schema("nata")
         .from("recruiters")
@@ -169,10 +255,17 @@ async function getAdminData() {
         )
         .order("created_at", { ascending: false })
         .limit(100),
+      supabaseAdmin
+        .schema("nata")
+        .from("interview_bookings")
+        .select("id,recruiter_id,status,starts_at")
+        .gte("starts_at", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .limit(500),
     ]);
 
   if (recruitersError) console.error("Failed to load recruiters:", recruitersError);
   if (applicationsError) console.error("Failed to load applications:", applicationsError);
+  if (bookingsError) console.error("Failed to load interview bookings:", bookingsError);
 
   return {
     recruiters: ((recruitersData || []) as Recruiter[]).map((recruiter) => {
@@ -185,11 +278,12 @@ async function getAdminData() {
       };
     }),
     applications: (applicationsData || []) as AssignmentRow[],
+    bookings: (bookingsData || []) as BookingRow[],
   };
 }
 
-export default async function RecruiterAdminPage() {
-  const { recruiters, applications } = await getAdminData();
+export default async function RecruiterAdminPage({ searchParams }: RecruiterAdminPageProps) {
+  const { recruiters, applications, bookings } = await getAdminData();
 
   const activeRecruiters = recruiters.filter(
     (recruiter) => normalizeStatus(recruiter.status, recruiter.is_active) === "active"
@@ -199,6 +293,17 @@ export default async function RecruiterAdminPage() {
   const admins = groupRecruiters(recruiters, "admin");
   const workingRecruiters = groupRecruiters(recruiters, "recruiter");
   const agents = groupRecruiters(recruiters, "agent");
+  const backlogCandidates = applications.filter(isInterviewBacklog);
+  const activeBacklogCandidates = backlogCandidates.filter((application) => !application.recruiter_id);
+  const loadSnapshots = buildLoadSnapshots(activeRecruiters, applications, bookings);
+  const highestLoad = loadSnapshots.length ? Math.max(...loadSnapshots.map((snapshot) => snapshot.loadScore)) : 0;
+  const lowestLoad = loadSnapshots.length ? Math.min(...loadSnapshots.map((snapshot) => snapshot.loadScore)) : 0;
+  const loadVariance = highestLoad - lowestLoad;
+  const don = recruiters.find((recruiter) => recruiter.name.toLowerCase().includes("don"));
+  const donLoad = don ? getLoad(loadSnapshots, don.id).loadScore : 0;
+  const pressureActive = backlogCandidates.length >= 10 || loadVariance >= 6 || donLoad >= 15;
+  const assignStatus = getQueryValue(searchParams, "assign");
+  const suggested = getQueryValue(searchParams, "suggested");
 
   return (
     <main style={pageStyle}>
@@ -236,7 +341,57 @@ export default async function RecruiterAdminPage() {
           <Metric label="Recruiters" value={workingRecruiters.length} />
           <Metric label="Agents" value={agents.length} />
           <Metric label="Unassigned candidates" value={unassignedCandidates.length} />
+          <Metric label="Interview backlog" value={backlogCandidates.length} />
+          <Metric label="Load variance" value={loadVariance} />
         </div>
+
+        <section style={{ ...panelStyle, marginTop: 22 }}>
+          <div style={panelHeaderStyle}>
+            <div>
+              <div style={eyebrowStyle}>Assignment intelligence</div>
+              <h2 style={panelTitleStyle}>Workload control</h2>
+            </div>
+            <span style={pressureActive ? pressurePillStyle : stablePillStyle}>
+              {pressureActive ? "Pressure active" : "Below auto threshold"}
+            </span>
+          </div>
+
+          {assignStatus ? (
+            <div style={noticeStyle}>
+              Assignment engine result: <strong>{assignStatus}</strong>{suggested ? ` · Suggested: ${suggested}` : ""}
+            </div>
+          ) : null}
+
+          <div style={controlGridStyle}>
+            <Metric label="Eligible backlog" value={backlogCandidates.length} />
+            <Metric label="Unassigned backlog" value={activeBacklogCandidates.length} />
+            <Metric label="Don load score" value={donLoad} />
+            <Metric label="Load variance" value={loadVariance} />
+          </div>
+
+          <p style={controlCopyStyle}>
+            Dealer and manual assignments remain primary. The engine only routes overflow when workload pressure is high enough to risk stalled interviews.
+          </p>
+
+          <div style={engineActionsStyle}>
+            <form method="POST" action="/api/nata/recruiters/assign">
+              <input type="hidden" name="mode" value="suggest" />
+              <button type="submit" style={secondaryButtonStyle}>Suggest next overflow</button>
+            </form>
+            <form method="POST" action="/api/nata/recruiters/assign">
+              <input type="hidden" name="mode" value="auto_one" />
+              <button type="submit" style={primarySmallButtonStyle}>Auto-assign one</button>
+            </form>
+            <form method="POST" action="/api/nata/recruiters/assign">
+              <input type="hidden" name="mode" value="auto_all" />
+              <button type="submit" style={primarySmallButtonStyle}>Auto-balance eligible backlog</button>
+            </form>
+            <form method="POST" action="/api/nata/recruiters/assign">
+              <input type="hidden" name="mode" value="rebalance_one" />
+              <button type="submit" style={warningButtonStyle}>Rebalance one overloaded assignment</button>
+            </form>
+          </div>
+        </section>
 
         <div style={mainGridStyle}>
           <section style={panelStyle}>
@@ -305,9 +460,9 @@ export default async function RecruiterAdminPage() {
             <div style={eyebrowStyle}>Live workforce state</div>
             <h2 style={panelTitleStyle}>Recruiters and agents</h2>
 
-            <RosterGroup title="Admins" recruiters={admins} applications={applications} allRecruiters={recruiters} />
-            <RosterGroup title="Recruiters" recruiters={workingRecruiters} applications={applications} allRecruiters={recruiters} />
-            <RosterGroup title="Agents" recruiters={agents} applications={applications} allRecruiters={recruiters} />
+            <RosterGroup title="Admins" recruiters={admins} applications={applications} allRecruiters={recruiters} loadSnapshots={loadSnapshots} />
+            <RosterGroup title="Recruiters" recruiters={workingRecruiters} applications={applications} allRecruiters={recruiters} loadSnapshots={loadSnapshots} />
+            <RosterGroup title="Agents" recruiters={agents} applications={applications} allRecruiters={recruiters} loadSnapshots={loadSnapshots} />
 
             {recruiters.length === 0 ? <div style={emptyStateStyle}>No recruiters found.</div> : null}
           </section>
@@ -347,6 +502,7 @@ export default async function RecruiterAdminPage() {
 
                     <form method="POST" action="/api/nata/recruiters/assign" style={assignmentFormStyle}>
                       <input type="hidden" name="applicationId" value={application.id} />
+                      <input type="hidden" name="mode" value="manual" />
                       <select name="recruiterId" defaultValue={application.recruiter_id || ""} style={compactSelectStyle}>
                         <option value="">Unassigned</option>
                         {activeRecruiters.map((recruiter) => (
@@ -355,6 +511,14 @@ export default async function RecruiterAdminPage() {
                       </select>
                       <button type="submit" style={secondaryButtonStyle}>Assign</button>
                     </form>
+
+                    {!application.recruiter_id && isInterviewBacklog(application) ? (
+                      <form method="POST" action="/api/nata/recruiters/assign" style={assignmentFormStyle}>
+                        <input type="hidden" name="applicationId" value={application.id} />
+                        <input type="hidden" name="mode" value="auto_one" />
+                        <button type="submit" style={primarySmallButtonStyle}>Overflow</button>
+                      </form>
+                    ) : null}
                   </article>
                 );
               })
@@ -378,7 +542,7 @@ function Check({ name, label, defaultChecked = false }: { name: string; label: s
   return <label style={checkStyle}><input type="checkbox" name={name} defaultChecked={defaultChecked} /><span>{label}</span></label>;
 }
 
-function RosterGroup({ title, recruiters, applications, allRecruiters }: { title: string; recruiters: Recruiter[]; applications: AssignmentRow[]; allRecruiters: Recruiter[] }) {
+function RosterGroup({ title, recruiters, applications, allRecruiters, loadSnapshots }: { title: string; recruiters: Recruiter[]; applications: AssignmentRow[]; allRecruiters: Recruiter[]; loadSnapshots: LoadSnapshot[] }) {
   return (
     <div style={rosterGroupStyle}>
       <h3 style={rosterGroupTitleStyle}>{title}</h3>
@@ -387,6 +551,7 @@ function RosterGroup({ title, recruiters, applications, allRecruiters }: { title
         const permissions = mergePermissions(role, recruiter.permissions);
         const status = normalizeStatus(recruiter.status, recruiter.is_active);
         const manager = allRecruiters.find((item) => item.id === recruiter.manager_recruiter_id);
+        const load = getLoad(loadSnapshots, recruiter.id);
         return (
           <article key={recruiter.id} style={rosterCardStyle}>
             <div style={avatarStyle}>{initials(recruiter.name)}</div>
@@ -403,8 +568,9 @@ function RosterGroup({ title, recruiters, applications, allRecruiters }: { title
             </div>
             <div style={rosterRightStyle}>
               <span style={status === "active" ? activePillStyle : invitedPillStyle}>{STATUS_LABELS[status] || status}</span>
-              <span style={workloadStyle}>{countAssigned(applications, recruiter.id)} assigned</span>
-              <span style={workloadStyle}>{countPendingInterviews(applications, recruiter.id)} interviews</span>
+              <span style={workloadStyle}>{load.assignedCount || countAssigned(applications, recruiter.id)} assigned</span>
+              <span style={workloadStyle}>{load.interviewCount || countPendingInterviews(applications, recruiter.id)} interviews</span>
+              <span style={workloadStyle}>Load {load.loadScore}</span>
               {status === "active" ? <Link href={`/recruiter/${recruiter.slug}/dashboard`} style={workspaceLinkStyle}>View workspace</Link> : <span style={pendingLinkStyle}>Activation pending</span>}
             </div>
           </article>
@@ -425,7 +591,7 @@ const ledeStyle: CSSProperties = { color: "#bfd6f5", maxWidth: 780, fontSize: 18
 const principleCardStyle: CSSProperties = { borderRadius: 24, padding: 20, background: "rgba(20,115,255,0.12)", border: "1px solid rgba(96,165,250,0.22)" };
 const principleTitleStyle: CSSProperties = { fontWeight: 950, color: "#dbeafe", fontSize: 18 };
 const principleTextStyle: CSSProperties = { margin: "8px 0 0", color: "#bfd6f5", lineHeight: 1.5 };
-const statsGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 14, marginTop: 28 };
+const statsGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 14, marginTop: 28 };
 const metricCardStyle: CSSProperties = { borderRadius: 22, padding: 20, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" };
 const metricValueStyle: CSSProperties = { fontSize: 34, fontWeight: 950 };
 const metricLabelStyle: CSSProperties = { color: "#9fb4d6", marginTop: 4, fontWeight: 850 };
@@ -471,3 +637,11 @@ const warningPillStyle: CSSProperties = { ...statusPillStyle, background: "rgba(
 const assignmentFormStyle: CSSProperties = { display: "flex", gap: 8, alignItems: "center" };
 const compactSelectStyle: CSSProperties = { minHeight: 38, minWidth: 180, borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(3,7,18,0.82)", color: "#fff", padding: "0 10px" };
 const secondaryButtonStyle: CSSProperties = { minHeight: 38, padding: "0 13px", borderRadius: 999, border: "1px solid rgba(147,197,253,0.22)", background: "rgba(147,197,253,0.12)", color: "#dbeafe", fontWeight: 950, cursor: "pointer" };
+
+const controlGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginTop: 14 };
+const controlCopyStyle: CSSProperties = { color: "#bfd6f5", lineHeight: 1.55, margin: "14px 0 0" };
+const engineActionsStyle: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 16 };
+const primarySmallButtonStyle: CSSProperties = { minHeight: 38, padding: "0 13px", borderRadius: 999, border: "none", background: "linear-gradient(135deg, #1473ff, #0757c9)", color: "#fff", fontWeight: 950, cursor: "pointer" };
+const warningButtonStyle: CSSProperties = { minHeight: 38, padding: "0 13px", borderRadius: 999, border: "1px solid rgba(251,191,36,0.32)", background: "rgba(251,191,36,0.14)", color: "#fde68a", fontWeight: 950, cursor: "pointer" };
+const pressurePillStyle: CSSProperties = { padding: "8px 12px", borderRadius: 999, background: "rgba(251,191,36,0.14)", border: "1px solid rgba(251,191,36,0.28)", color: "#fde68a", fontSize: 12, fontWeight: 950 };
+const stablePillStyle: CSSProperties = { padding: "8px 12px", borderRadius: 999, background: "rgba(34,197,94,0.14)", border: "1px solid rgba(34,197,94,0.28)", color: "#86efac", fontSize: 12, fontWeight: 950 };
