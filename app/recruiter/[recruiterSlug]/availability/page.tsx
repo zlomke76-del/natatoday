@@ -15,9 +15,20 @@ type PageProps = {
 
 type AnyRow = Record<string, any>;
 
+type AvailabilityBlock = {
+  blockIndex: number;
+  isAvailable: boolean;
+  startTime: string;
+  endTime: string;
+  timezone: string;
+  note: string;
+};
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
+
+const MAX_BLOCKS_PER_DAY = 3;
 
 const days = [
   { value: 0, label: "Sunday", short: "Sun" },
@@ -51,6 +62,18 @@ const timeSlots = [
   "16:00",
   "17:00",
   "18:00",
+];
+
+const defaultWeekdayBlocks = [
+  { startTime: "09:00", endTime: "12:00", note: "Morning interview block" },
+  { startTime: "13:00", endTime: "17:00", note: "Afternoon interview block" },
+  { startTime: "", endTime: "", note: "" },
+];
+
+const defaultWeekendBlocks = [
+  { startTime: "10:00", endTime: "14:00", note: "Limited weekend availability" },
+  { startTime: "", endTime: "", note: "" },
+  { startTime: "", endTime: "", note: "" },
 ];
 
 function getCurrentWeekStartSunday() {
@@ -131,31 +154,70 @@ function clean(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function getAvailabilityForDay(rows: AnyRow[], day: number, timezone: string) {
-  const row = rows.find((item) => Number(item.day_of_week) === day);
+function getAvailabilityBlocksForDay(
+  rows: AnyRow[],
+  day: number,
+  timezone: string
+): AvailabilityBlock[] {
+  const dayRows = rows
+    .filter((item) => Number(item.day_of_week) === day)
+    .sort((a, b) => Number(a.block_index || 0) - Number(b.block_index || 0));
 
-  if (row) {
-    return {
-      isAvailable: row.is_available !== false,
-      startTime: String(row.start_time || ""),
-      endTime: String(row.end_time || ""),
-      timezone: String(row.timezone || timezone),
-      note: String(row.note || ""),
-    };
+  const hasSavedAvailableRows = dayRows.some((row) => row.is_available !== false);
+
+  if (dayRows.length > 0) {
+    const normalized = Array.from({ length: MAX_BLOCKS_PER_DAY }).map((_, index) => {
+      const row = dayRows.find((item) => Number(item.block_index || 0) === index);
+
+      if (row) {
+        return {
+          blockIndex: index,
+          isAvailable: row.is_available !== false,
+          startTime: String(row.start_time || ""),
+          endTime: String(row.end_time || ""),
+          timezone: String(row.timezone || timezone),
+          note: String(row.note || ""),
+        };
+      }
+
+      return {
+        blockIndex: index,
+        isAvailable: false,
+        startTime: "",
+        endTime: "",
+        timezone,
+        note: "",
+      };
+    });
+
+    if (!hasSavedAvailableRows) {
+      return normalized.map((block) => ({ ...block, isAvailable: false }));
+    }
+
+    return normalized;
   }
 
-  const isWeekend = day === 0 || day === 6;
+  const defaults = day === 0 || day === 6 ? defaultWeekendBlocks : defaultWeekdayBlocks;
 
-  return {
-    isAvailable: true,
-    startTime: isWeekend ? "10:00" : "09:00",
-    endTime: isWeekend ? "14:00" : "17:00",
+  return defaults.map((block, index) => ({
+    blockIndex: index,
+    isAvailable: index === 0 || (day !== 0 && day !== 6 && index === 1),
+    startTime: block.startTime,
+    endTime: block.endTime,
     timezone,
-    note: "",
-  };
+    note: block.note,
+  }));
 }
 
-function getSlotEventStyle(startTime: string, endTime: string): React.CSSProperties {
+function getActiveBlocks(blocks: AvailabilityBlock[]) {
+  return blocks.filter((block) => block.isAvailable && block.startTime && block.endTime);
+}
+
+function getSlotEventStyle(
+  startTime: string,
+  endTime: string,
+  blockIndex: number
+): React.CSSProperties {
   const startHour = Number(startTime.slice(0, 2));
   const startMinute = Number(startTime.slice(3, 5));
   const endHour = Number(endTime.slice(0, 2));
@@ -167,11 +229,14 @@ function getSlotEventStyle(startTime: string, endTime: string): React.CSSPropert
   const normalizedEnd = Number.isFinite(endHour)
     ? endHour + (endMinute || 0) / 60
     : 17;
-  const duration = Math.max(1, normalizedEnd - normalizedStart);
+  const duration = Math.max(0.75, normalizedEnd - normalizedStart);
 
   return {
     top: `${Math.max(8, normalizedStart) * 72 - 8 * 72 + 10}px`,
-    height: `${Math.max(62, duration * 72 - 12)}px`,
+    height: `${Math.max(64, duration * 72 - 12)}px`,
+    left: `${10 + blockIndex * 4}px`,
+    right: `${10 + (MAX_BLOCKS_PER_DAY - blockIndex - 1) * 4}px`,
+    zIndex: 2 + blockIndex,
   };
 }
 
@@ -198,7 +263,8 @@ async function loadWeeklyAvailability(recruiterId: string, weekStart: string) {
     .select("*")
     .eq("recruiter_id", recruiterId)
     .eq("week_start", weekStart)
-    .order("day_of_week", { ascending: true });
+    .order("day_of_week", { ascending: true })
+    .order("block_index", { ascending: true });
 
   if (error) {
     console.error("Failed to load weekly availability:", error);
@@ -238,6 +304,14 @@ export default async function RecruiterAvailabilityPage({
     rows[0]?.timezone || recruiter.timezone || "America/Chicago"
   );
   const saved = searchParams?.saved === "1";
+  const blocksByDay = days.reduce<Record<number, AvailabilityBlock[]>>((acc, day) => {
+    acc[day.value] = getAvailabilityBlocksForDay(
+      rows,
+      day.value,
+      recruiterTimezone
+    );
+    return acc;
+  }, {});
 
   async function saveWeeklyAvailability(formData: FormData) {
     "use server";
@@ -251,34 +325,68 @@ export default async function RecruiterAvailabilityPage({
       throw new Error("Missing recruiter availability context.");
     }
 
-    const payload = days.map((day) => {
-      const available = clean(formData.get(`available_${day.value}`)) === "on";
-      const startTime = clean(formData.get(`start_${day.value}`));
-      const endTime = clean(formData.get(`end_${day.value}`));
-      const note = clean(formData.get(`note_${day.value}`));
+    const payload = days.flatMap((day) => {
+      const blocks = Array.from({ length: MAX_BLOCKS_PER_DAY }).map((_, index) => {
+        const available = clean(formData.get(`available_${day.value}_${index}`)) === "on";
+        const startTime = clean(formData.get(`start_${day.value}_${index}`));
+        const endTime = clean(formData.get(`end_${day.value}_${index}`));
+        const note = clean(formData.get(`note_${day.value}_${index}`));
 
-      return {
-        recruiter_id: recruiterId,
-        week_start: submittedWeekStart,
-        day_of_week: day.value,
-        start_time: available ? startTime || null : null,
-        end_time: available ? endTime || null : null,
-        timezone: submittedTimezone,
-        is_available: available,
-        note: note || null,
-        updated_at: new Date().toISOString(),
-      };
-    });
-
-    const { error } = await supabaseAdmin
-      .schema("nata")
-      .from("recruiter_weekly_availability")
-      .upsert(payload, {
-        onConflict: "recruiter_id,week_start,day_of_week,block_index",
+        return {
+          recruiter_id: recruiterId,
+          week_start: submittedWeekStart,
+          day_of_week: day.value,
+          block_index: index,
+          start_time: available ? startTime || null : null,
+          end_time: available ? endTime || null : null,
+          timezone: submittedTimezone,
+          is_available: available && Boolean(startTime) && Boolean(endTime),
+          note: note || null,
+          updated_at: new Date().toISOString(),
+        };
       });
 
-    if (error) {
-      console.error("Failed to save recruiter weekly availability:", error);
+      const hasAvailableBlock = blocks.some((block) => block.is_available);
+
+      if (hasAvailableBlock) {
+        return blocks.filter((block) => block.is_available);
+      }
+
+      return [
+        {
+          recruiter_id: recruiterId,
+          week_start: submittedWeekStart,
+          day_of_week: day.value,
+          block_index: 0,
+          start_time: null,
+          end_time: null,
+          timezone: submittedTimezone,
+          is_available: false,
+          note: null,
+          updated_at: new Date().toISOString(),
+        },
+      ];
+    });
+
+    const { error: deleteError } = await supabaseAdmin
+      .schema("nata")
+      .from("recruiter_weekly_availability")
+      .delete()
+      .eq("recruiter_id", recruiterId)
+      .eq("week_start", submittedWeekStart);
+
+    if (deleteError) {
+      console.error("Failed to clear recruiter weekly availability:", deleteError);
+      throw new Error("Availability could not be saved.");
+    }
+
+    const { error: insertError } = await supabaseAdmin
+      .schema("nata")
+      .from("recruiter_weekly_availability")
+      .insert(payload);
+
+    if (insertError) {
+      console.error("Failed to save recruiter weekly availability:", insertError);
       throw new Error("Availability could not be saved.");
     }
 
@@ -289,9 +397,12 @@ export default async function RecruiterAvailabilityPage({
 
   const weekEnd = addDays(weekStart, 6);
   const availableCount = days.filter((day) => {
-    const value = getAvailabilityForDay(rows, day.value, recruiterTimezone);
-    return value.isAvailable;
+    return getActiveBlocks(blocksByDay[day.value] || []).length > 0;
   }).length;
+
+  const totalBlockCount = days.reduce((count, day) => {
+    return count + getActiveBlocks(blocksByDay[day.value] || []).length;
+  }, 0);
 
   return (
     <main className="shell">
@@ -303,9 +414,9 @@ export default async function RecruiterAvailabilityPage({
             <div className="eyebrow">Recruiter Availability</div>
             <h1 style={title}>{recruiter.name} — Calendar</h1>
             <p style={muted}>
-              Manage interview availability in a weekly calendar view. Candidates only
-              see valid 15-minute openings after existing bookings and unavailable time
-              are removed.
+              Manage interview availability in a weekly calendar view. Add multiple
+              blocks per day for split schedules, lunch breaks, evening availability,
+              or limited weekend windows.
             </p>
           </div>
 
@@ -359,6 +470,11 @@ export default async function RecruiterAvailabilityPage({
                 <span>days open</span>
               </div>
 
+              <div style={miniStat}>
+                <strong>{totalBlockCount}</strong>
+                <span>active blocks</span>
+              </div>
+
               <label style={timezoneField}>
                 <span style={labelStyle}>Timezone</span>
                 <select name="timezone" defaultValue={recruiterTimezone} style={toolbarSelect}>
@@ -384,14 +500,14 @@ export default async function RecruiterAvailabilityPage({
             <div>
               <strong>Weekly interview availability</strong>
               <span>
-                Blue blocks are open interview windows. Turn a day off to remove it
-                from candidate scheduling.
+                Each day supports up to {MAX_BLOCKS_PER_DAY} separate availability blocks.
+                Enable only the blocks you want candidates to see.
               </span>
             </div>
 
             <div style={legend}>
-              <span style={legendAvailable}>Available</span>
-              <span style={legendClosed}>Unavailable</span>
+              <span style={legendAvailable}>Available block</span>
+              <span style={legendClosed}>Disabled / unavailable</span>
             </div>
           </div>
 
@@ -403,18 +519,19 @@ export default async function RecruiterAvailabilityPage({
 
               {days.map((day) => {
                 const date = addDays(weekStart, day.value);
-                const value = getAvailabilityForDay(rows, day.value, recruiterTimezone);
+                const activeBlocks = getActiveBlocks(blocksByDay[day.value] || []);
 
                 return (
                   <div
                     key={day.value}
                     style={{
                       ...calendarDayHeader,
-                      opacity: value.isAvailable ? 1 : 0.62,
+                      opacity: activeBlocks.length > 0 ? 1 : 0.62,
                     }}
                   >
                     <span>{day.short}</span>
                     <strong>{formatDayNumber(date)}</strong>
+                    <small>{activeBlocks.length} block{activeBlocks.length === 1 ? "" : "s"}</small>
                   </div>
                 );
               })}
@@ -428,17 +545,16 @@ export default async function RecruiterAvailabilityPage({
               </div>
 
               {days.map((day) => {
-                const value = getAvailabilityForDay(rows, day.value, recruiterTimezone);
+                const blocks = blocksByDay[day.value] || [];
+                const activeBlocks = getActiveBlocks(blocks);
                 const date = addDays(weekStart, day.value);
-                const startValue = value.startTime.slice(0, 5) || "09:00";
-                const endValue = value.endTime.slice(0, 5) || "17:00";
 
                 return (
                   <div
                     key={day.value}
                     style={{
                       ...calendarDayColumn,
-                      background: value.isAvailable
+                      background: activeBlocks.length
                         ? "rgba(255,255,255,0.035)"
                         : "rgba(148,163,184,0.05)",
                     }}
@@ -447,20 +563,90 @@ export default async function RecruiterAvailabilityPage({
                       <div key={slot} style={calendarHourLine} />
                     ))}
 
-                    {value.isAvailable ? (
-                      <div style={{ ...availabilityBlock, ...getSlotEventStyle(startValue, endValue) }}>
-                        <div style={eventHeader}>
-                          <strong>Available</strong>
-                          <span>{formatTime(startValue)} – {formatTime(endValue)}</span>
-                        </div>
+                    {activeBlocks.length > 0 ? (
+                      activeBlocks.map((block, renderIndex) => {
+                        const startValue = block.startTime.slice(0, 5);
+                        const endValue = block.endTime.slice(0, 5);
 
-                        <div style={eventControls}>
+                        return (
+                          <div
+                            key={block.blockIndex}
+                            style={{
+                              ...availabilityBlock,
+                              ...getSlotEventStyle(
+                                startValue,
+                                endValue,
+                                Math.min(renderIndex, MAX_BLOCKS_PER_DAY - 1)
+                              ),
+                            }}
+                          >
+                            <div style={eventHeader}>
+                              <strong>Available block {block.blockIndex + 1}</strong>
+                              <span>{formatTime(startValue)} – {formatTime(endValue)}</span>
+                            </div>
+
+                            {block.note ? <p style={eventNote}>{block.note}</p> : null}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div style={closedBlock}>
+                        <strong>Unavailable</strong>
+                        <span>No candidate bookings</span>
+                      </div>
+                    )}
+
+                    <div style={dayDateLabel}>{formatDisplayDate(date)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={blockEditor}>
+            {days.map((day) => {
+              const date = addDays(weekStart, day.value);
+              const blocks = blocksByDay[day.value] || [];
+
+              return (
+                <article key={day.value} style={editorDayCard}>
+                  <div style={editorDayHeader}>
+                    <div>
+                      <strong>{day.label}</strong>
+                      <span>{formatDisplayDate(date)}</span>
+                    </div>
+                    <small>Enable up to {MAX_BLOCKS_PER_DAY} blocks</small>
+                  </div>
+
+                  <div style={editorBlockList}>
+                    {Array.from({ length: MAX_BLOCKS_PER_DAY }).map((_, index) => {
+                      const block = blocks[index] || {
+                        blockIndex: index,
+                        isAvailable: false,
+                        startTime: "",
+                        endTime: "",
+                        timezone: recruiterTimezone,
+                        note: "",
+                      };
+
+                      return (
+                        <div key={index} style={editorBlock}>
+                          <label style={togglePill}>
+                            <input
+                              type="checkbox"
+                              name={`available_${day.value}_${index}`}
+                              defaultChecked={block.isAvailable && Boolean(block.startTime) && Boolean(block.endTime)}
+                              style={{ accentColor: "#1473ff" }}
+                            />
+                            <span>Block {index + 1}</span>
+                          </label>
+
                           <label style={compactField}>
                             <span>Start</span>
                             <input
                               type="time"
-                              name={`start_${day.value}`}
-                              defaultValue={startValue}
+                              name={`start_${day.value}_${index}`}
+                              defaultValue={block.startTime.slice(0, 5)}
                               style={compactInput}
                             />
                           </label>
@@ -469,69 +655,34 @@ export default async function RecruiterAvailabilityPage({
                             <span>End</span>
                             <input
                               type="time"
-                              name={`end_${day.value}`}
-                              defaultValue={endValue}
+                              name={`end_${day.value}_${index}`}
+                              defaultValue={block.endTime.slice(0, 5)}
+                              style={compactInput}
+                            />
+                          </label>
+
+                          <label style={compactFieldWide}>
+                            <span>Note</span>
+                            <input
+                              name={`note_${day.value}_${index}`}
+                              defaultValue={block.note}
+                              placeholder="Optional note"
                               style={compactInput}
                             />
                           </label>
                         </div>
-
-                        <label style={compactField}>
-                          <span>Note</span>
-                          <input
-                            name={`note_${day.value}`}
-                            defaultValue={value.note}
-                            placeholder="Optional note"
-                            style={compactInput}
-                          />
-                        </label>
-                      </div>
-                    ) : (
-                      <div style={closedBlock}>
-                        <strong>Unavailable</strong>
-                        <span>No bookings</span>
-
-                        <input
-                          type="hidden"
-                          name={`start_${day.value}`}
-                          defaultValue={startValue}
-                        />
-                        <input
-                          type="hidden"
-                          name={`end_${day.value}`}
-                          defaultValue={endValue}
-                        />
-                        <input
-                          type="hidden"
-                          name={`note_${day.value}`}
-                          defaultValue={value.note}
-                        />
-                      </div>
-                    )}
-
-                    <div style={dayControlBar}>
-                      <label style={togglePill}>
-                        <input
-                          type="checkbox"
-                          name={`available_${day.value}`}
-                          defaultChecked={value.isAvailable}
-                          style={{ accentColor: "#1473ff" }}
-                        />
-                        <span>{value.isAvailable ? "Open" : "Closed"}</span>
-                      </label>
-
-                      <span style={dayDateLabel}>{formatDisplayDate(date)}</span>
-                    </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
+                </article>
+              );
+            })}
           </div>
 
           <div style={submitRow}>
             <div style={mutedSmall}>
-              Candidate-facing slots are generated from these windows, then reduced by
-              bookings and blackouts before scheduling.
+              Candidate-facing slots are generated from every active block, then reduced
+              by bookings and blackouts before scheduling.
             </div>
 
             <button
@@ -790,9 +941,7 @@ const calendarHourLine: React.CSSProperties = {
 
 const availabilityBlock: React.CSSProperties = {
   position: "absolute",
-  left: 10,
-  right: 10,
-  minHeight: 62,
+  minHeight: 64,
   padding: 12,
   borderRadius: 18,
   border: "1px solid rgba(147,197,253,0.38)",
@@ -806,34 +955,13 @@ const availabilityBlock: React.CSSProperties = {
 const eventHeader: React.CSSProperties = {
   display: "grid",
   gap: 3,
-  marginBottom: 10,
 };
 
-const eventControls: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 8,
-  marginBottom: 8,
-};
-
-const compactField: React.CSSProperties = {
-  display: "grid",
-  gap: 4,
-  fontSize: 11,
-  fontWeight: 850,
-  color: "rgba(255,255,255,0.84)",
-};
-
-const compactInput: React.CSSProperties = {
-  minWidth: 0,
-  width: "100%",
-  minHeight: 32,
-  borderRadius: 10,
-  border: "1px solid rgba(255,255,255,0.22)",
-  background: "rgba(7,16,31,0.54)",
-  color: "#fff",
-  padding: "0 9px",
-  outline: "none",
+const eventNote: React.CSSProperties = {
+  margin: "8px 0 0",
+  color: "rgba(255,255,255,0.82)",
+  fontSize: 12,
+  lineHeight: 1.35,
 };
 
 const closedBlock: React.CSSProperties = {
@@ -850,18 +978,53 @@ const closedBlock: React.CSSProperties = {
   color: "#cbd5e1",
 };
 
-const dayControlBar: React.CSSProperties = {
+const dayDateLabel: React.CSSProperties = {
   position: "absolute",
   left: 10,
   right: 10,
   bottom: 10,
+  color: "#8fa6ca",
+  fontSize: 11,
+};
+
+const blockEditor: React.CSSProperties = {
+  display: "grid",
+  gap: 14,
+  padding: 22,
+  borderTop: "1px solid rgba(255,255,255,0.09)",
+  background: "rgba(255,255,255,0.025)",
+};
+
+const editorDayCard: React.CSSProperties = {
+  padding: 18,
+  borderRadius: 22,
+  border: "1px solid rgba(255,255,255,0.1)",
+  background: "rgba(3,10,20,0.28)",
+};
+
+const editorDayHeader: React.CSSProperties = {
   display: "flex",
-  alignItems: "center",
   justifyContent: "space-between",
-  gap: 8,
+  gap: 14,
+  alignItems: "flex-start",
+  marginBottom: 14,
+  color: "#ffffff",
+};
+
+const editorBlockList: React.CSSProperties = {
+  display: "grid",
+  gap: 10,
+};
+
+const editorBlock: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "140px 120px 120px minmax(220px, 1fr)",
+  gap: 10,
+  alignItems: "end",
 };
 
 const togglePill: React.CSSProperties = {
+  minHeight: 36,
   display: "inline-flex",
   alignItems: "center",
   gap: 8,
@@ -874,9 +1037,28 @@ const togglePill: React.CSSProperties = {
   fontWeight: 850,
 };
 
-const dayDateLabel: React.CSSProperties = {
-  color: "#8fa6ca",
+const compactField: React.CSSProperties = {
+  display: "grid",
+  gap: 5,
   fontSize: 11,
+  fontWeight: 850,
+  color: "rgba(255,255,255,0.84)",
+};
+
+const compactFieldWide: React.CSSProperties = {
+  ...compactField,
+};
+
+const compactInput: React.CSSProperties = {
+  minWidth: 0,
+  width: "100%",
+  minHeight: 36,
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.16)",
+  background: "rgba(7,16,31,0.78)",
+  color: "#fff",
+  padding: "0 10px",
+  outline: "none",
 };
 
 const submitRow: React.CSSProperties = {
