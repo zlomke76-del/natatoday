@@ -32,6 +32,28 @@ type MusicTrack = {
 };
 
 const MUSIC_BUCKET = "nata-music-library";
+const MIN_MATCH_SCORE = 70;
+const MAX_MATCH_DISTANCE_MILES = 100;
+
+const POOL_RETURN_STATUSES = [
+  "not_fit",
+  "passed",
+  "pass",
+  "rejected",
+  "dealer_rejected",
+  "not_selected",
+  "interview_not_selected",
+  "not_hired",
+  "withdrawn",
+];
+
+const PLACED_STATUSES = [
+  "placed",
+  "hired",
+  "dealer_hired",
+  "placement_complete",
+  "completed_placement",
+];
 
 async function loadInitialMusicTracks(): Promise<MusicTrack[]> {
   const { data, error } = await supabaseAdmin
@@ -76,6 +98,10 @@ function label(value: unknown, fallback = "Unassigned") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
+function normalize(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
 function formatDate(value: unknown) {
   if (!value || typeof value !== "string") return "Not scheduled";
 
@@ -93,6 +119,16 @@ function formatDate(value: unknown) {
 
 function cleanFormValue(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function yearsSince(value?: string | null) {
+  if (!value) return null;
+
+  const time = new Date(value).getTime();
+
+  if (!Number.isFinite(time)) return null;
+
+  return (Date.now() - time) / (1000 * 60 * 60 * 24 * 365.25);
 }
 
 function getRoleKey(roleTitle: string) {
@@ -372,6 +408,436 @@ function hasAdminAccess(recruiter: AnyRow) {
   );
 }
 
+function toNumber(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const radius = 3958.8;
+  const toRad = (value: number) => (value * Math.PI) / 180;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) ** 2;
+
+  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function getDistanceMiles(candidate: AnyRow, job: AnyRow) {
+  const candidateLat = toNumber(candidate.latitude);
+  const candidateLon = toNumber(candidate.longitude);
+  const jobLat = toNumber(job.latitude);
+  const jobLon = toNumber(job.longitude);
+
+  if (
+    candidateLat === null ||
+    candidateLon === null ||
+    jobLat === null ||
+    jobLon === null
+  ) {
+    return null;
+  }
+
+  return haversineMiles(candidateLat, candidateLon, jobLat, jobLon);
+}
+
+function getTargetRoles(candidate: AnyRow) {
+  if (Array.isArray(candidate.target_roles)) {
+    return candidate.target_roles.map((role) => normalize(role)).filter(Boolean);
+  }
+
+  return [];
+}
+
+function getCandidateSearchText(candidate: AnyRow) {
+  return [
+    candidate.name,
+    candidate.email,
+    candidate.location_text,
+    candidate.linkedin,
+    candidate.experience_summary,
+    ...(Array.isArray(candidate.target_roles) ? candidate.target_roles : []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function getJobRoleKey(job: AnyRow) {
+  const title = normalize(job.title);
+
+  if (title.includes("sales")) return "sales consultant";
+  if (title.includes("service") && title.includes("advisor")) return "service advisor";
+  if (title.includes("technician") || title.includes("tech")) return "service technician";
+  if (title.includes("bdc")) return "bdc representative";
+  if (title.includes("parts")) return "parts advisor";
+  if (title.includes("finance") || title.includes("f&i")) return "finance manager";
+
+  return "general";
+}
+
+function scoreRoleFit(candidate: AnyRow, job: AnyRow) {
+  const roleKey = getJobRoleKey(job);
+  const text = getCandidateSearchText(candidate);
+  const targetRoles = getTargetRoles(candidate);
+  const reasons: string[] = [];
+
+  let score = 0;
+
+  if (targetRoles.some((role) => role.includes(roleKey) || roleKey.includes(role))) {
+    score += 35;
+    reasons.push(`Target role aligns with ${roleKey}.`);
+  }
+
+  if (roleKey === "sales consultant") {
+    if (text.includes("sales")) score += 16;
+    if (text.includes("closing") || text.includes("closer")) score += 10;
+    if (text.includes("crm")) score += 8;
+    if (text.includes("appointment")) score += 6;
+    if (text.includes("units") || text.includes("close rate")) score += 8;
+  }
+
+  if (roleKey === "service advisor") {
+    if (text.includes("service advisor")) score += 20;
+    if (text.includes("repair order") || text.includes("ro ")) score += 10;
+    if (text.includes("warranty")) score += 8;
+    if (text.includes("service lane")) score += 8;
+    if (text.includes("customer escalation")) score += 6;
+  }
+
+  if (roleKey === "service technician") {
+    if (text.includes("technician") || text.includes("tech")) score += 18;
+    if (text.includes("ase")) score += 12;
+    if (text.includes("diagnostic")) score += 10;
+    if (text.includes("electrical")) score += 8;
+    if (text.includes("tools")) score += 6;
+  }
+
+  if (roleKey === "bdc representative") {
+    if (text.includes("bdc")) score += 22;
+    if (text.includes("calls")) score += 8;
+    if (text.includes("appointment")) score += 8;
+    if (text.includes("crm")) score += 8;
+    if (text.includes("sms") || text.includes("email follow")) score += 6;
+  }
+
+  if (roleKey === "parts advisor") {
+    if (text.includes("parts")) score += 22;
+    if (text.includes("inventory")) score += 8;
+    if (text.includes("catalog")) score += 8;
+    if (text.includes("counter")) score += 6;
+  }
+
+  if (roleKey === "finance manager") {
+    if (text.includes("finance") || text.includes("f&i")) score += 22;
+    if (text.includes("lender")) score += 8;
+    if (text.includes("compliance")) score += 8;
+    if (text.includes("menu")) score += 6;
+  }
+
+  if (score > 0 && reasons.length === 0) {
+    reasons.push(`Candidate has role-specific signal for ${roleKey}.`);
+  }
+
+  return {
+    roleKey,
+    score: Math.min(score, 45),
+    reasons,
+  };
+}
+
+function computeMatch(candidate: AnyRow, job: AnyRow) {
+  let score = 35;
+  const reasons: string[] = [];
+
+  const roleFit = scoreRoleFit(candidate, job);
+  score += roleFit.score;
+  reasons.push(...roleFit.reasons);
+
+  const distance = getDistanceMiles(candidate, job);
+
+  if (distance !== null) {
+    if (distance <= MAX_MATCH_DISTANCE_MILES) {
+      score += 12;
+      reasons.push(`Candidate is within ${Math.round(distance)} miles.`);
+    } else {
+      score -= 35;
+      reasons.push(`Candidate is ${Math.round(distance)} miles away, outside preferred radius.`);
+    }
+  } else if (candidate.location_text) {
+    score += 6;
+    reasons.push("Candidate provided a local market or ZIP.");
+  }
+
+  if (candidate.resume_url) {
+    score += 8;
+    reasons.push("Resume is available for review.");
+  }
+
+  if (candidate.profile_photo_url) {
+    score += 2;
+    reasons.push("Profile photo is available.");
+  }
+
+  if (candidate.linkedin) {
+    score += 3;
+    reasons.push("LinkedIn profile is available.");
+  }
+
+  if (job.publish_status === "published") {
+    score += 2;
+    reasons.push("Role is published.");
+  }
+
+  if (job.is_active !== false && !job.filled_at) {
+    score += 2;
+    reasons.push("Role is active and unfilled.");
+  }
+
+  if (roleFit.score < 15) {
+    score -= 18;
+    reasons.push(`Insufficient role-specific signal for ${roleFit.roleKey}.`);
+  }
+
+  const fitScore = Math.max(0, Math.min(100, Math.round(score)));
+
+  return {
+    distance_miles: distance === null ? null : Math.round(distance * 10) / 10,
+    fit_score: fitScore,
+    match_status: fitScore >= MIN_MATCH_SCORE ? "eligible" : "below_threshold",
+    match_reason: reasons.join(" "),
+  };
+}
+
+function inferTargetRolesFromApplication(application: AnyRow, job: AnyRow | null) {
+  const explicit = splitList(application.target_roles);
+
+  if (explicit.length) return explicit.map((item) => item.toLowerCase());
+
+  const roleTitle = label(application.role || application.job_title || job?.title, "");
+  const roleKey = roleTitle ? getRoleKey(roleTitle) : "";
+
+  return roleKey ? [roleKey] : [];
+}
+
+function buildExperienceSummary(application: AnyRow, job: AnyRow | null) {
+  return label(
+    application.experience_summary ||
+      application.screening_summary ||
+      application.cover_note ||
+      application.decision_reason,
+    `Candidate previously applied for ${label(job?.title || application.role, "a dealership role")}.`,
+  );
+}
+
+async function syncCandidateMatches(candidate: AnyRow) {
+  const { data: jobs, error } = await supabaseAdmin
+    .schema("nata")
+    .from("jobs")
+    .select(
+      "id,title,location,public_location,public_dealer_name,dealer_slug,is_active,publish_status,publish_mode,filled_at,latitude,longitude",
+    )
+    .eq("is_active", true)
+    .eq("publish_status", "published")
+    .is("filled_at", null);
+
+  if (error) {
+    console.error("Failed to load jobs for candidate matching:", error);
+    return;
+  }
+
+  const rows = ((jobs || []) as AnyRow[]).map((job) => {
+    const match = computeMatch(candidate, job);
+
+    return {
+      candidate_id: candidate.id,
+      job_id: job.id,
+      distance_miles: match.distance_miles,
+      fit_score: match.fit_score,
+      match_status: match.match_status,
+      match_reason: match.match_reason,
+      updated_at: new Date().toISOString(),
+    };
+  });
+
+  if (!rows.length) return;
+
+  const { error: matchError } = await supabaseAdmin
+    .schema("nata")
+    .from("candidate_matches")
+    .upsert(rows, { onConflict: "candidate_id,job_id" });
+
+  if (matchError) {
+    console.error("Failed to sync candidate matches:", matchError);
+  }
+}
+
+async function returnApplicationToCandidatePool(input: {
+  applicationId: string;
+  source: "recruiter_rejected" | "dealer_rejected" | "not_hired";
+  reason: string;
+}) {
+  const { data: application, error: applicationError } = await supabaseAdmin
+    .schema("nata")
+    .from("applications")
+    .select("*")
+    .eq("id", input.applicationId)
+    .maybeSingle();
+
+  if (applicationError) {
+    console.error("Failed to load application for candidate pool return:", applicationError);
+    return;
+  }
+
+  if (!application?.email) return;
+
+  const status = normalize(application.status);
+
+  if (PLACED_STATUSES.includes(status)) {
+    const { error: placedError } = await supabaseAdmin
+      .schema("nata")
+      .from("candidates")
+      .update({
+        status: "placed",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("email", application.email);
+
+    if (placedError) {
+      console.error("Failed to protect placed candidate in pool:", placedError);
+    }
+
+    return;
+  }
+
+  if (!POOL_RETURN_STATUSES.includes(status)) {
+    return;
+  }
+
+  const { data: job } = await supabaseAdmin
+    .schema("nata")
+    .from("jobs")
+    .select("*")
+    .eq("id", application.job_id)
+    .maybeSingle();
+
+  const targetRoles = inferTargetRolesFromApplication(application, job);
+  const experienceSummary = buildExperienceSummary(application, job);
+
+  const { data: candidate, error: upsertError } = await supabaseAdmin
+    .schema("nata")
+    .from("candidates")
+    .upsert(
+      {
+        name: label(application.name || application.candidate_name || application.email, "Candidate"),
+        email: String(application.email).trim().toLowerCase(),
+        phone: label(application.phone || application.candidate_phone, ""),
+        linkedin: application.linkedin || null,
+        location_text:
+          application.location_text ||
+          application.location ||
+          application.city ||
+          application.market ||
+          null,
+        resume_url:
+          application.resume_url ||
+          application.resume_public_url ||
+          application.resume_path ||
+          null,
+        profile_photo_url:
+          application.profile_photo_url ||
+          application.photo_url ||
+          application.candidate_photo_url ||
+          null,
+        target_roles: targetRoles,
+        experience_summary: experienceSummary,
+        status: "active",
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "email" },
+    )
+    .select("*")
+    .single();
+
+  if (upsertError || !candidate) {
+    console.error("Failed to return application to candidate pool:", upsertError);
+    return;
+  }
+
+  await syncCandidateMatches(candidate);
+
+  const existingReason = label(application.decision_reason, "");
+  const poolNote = `[Pool return: ${input.source}] ${input.reason}`;
+
+  const { error: noteError } = await supabaseAdmin
+    .schema("nata")
+    .from("applications")
+    .update({
+      decision_reason: existingReason
+        ? `${existingReason}\n${poolNote}`
+        : poolNote,
+    })
+    .eq("id", input.applicationId);
+
+  if (noteError) {
+    console.error("Failed to append candidate pool return note:", noteError);
+  }
+}
+
+function getCurrentDealerSlug(application: AnyRow) {
+  return normalize(
+    application.current_dealer_slug ||
+      application.current_employer_dealer_slug ||
+      application.current_rooftop_slug ||
+      application.current_dealership_slug ||
+      application.current_employer,
+  );
+}
+
+function getPlacementDate(application: AnyRow) {
+  return label(
+    application.placed_at ||
+      application.hired_at ||
+      application.placement_completed_at ||
+      application.dealer_hired_at ||
+      application.updated_at,
+    "",
+  );
+}
+
+function getDealerProtectionState(application: AnyRow, job: AnyRow | undefined | null) {
+  const jobDealerSlug = normalize(job?.dealer_slug);
+  const currentDealerSlug = getCurrentDealerSlug(application);
+  const sameDealer = Boolean(jobDealerSlug && currentDealerSlug && jobDealerSlug === currentDealerSlug);
+
+  const statusValues = [
+    application.status,
+    application.screening_status,
+    application.virtual_interview_status,
+  ].map(normalize);
+
+  const hasPlacementHistory = statusValues.some((status) => PLACED_STATUSES.includes(status));
+  const placementYears = yearsSince(getPlacementDate(application));
+  const isOldPlacement = placementYears !== null && placementYears >= 2;
+  const placementRisk = hasPlacementHistory && !isOldPlacement;
+  const hasClientDealerRisk = Boolean(currentDealerSlug && !sameDealer);
+
+  return {
+    sameDealer,
+    hasPlacementHistory,
+    placementYears,
+    isOldPlacement,
+    placementRisk,
+    hasClientDealerRisk,
+  };
+}
+
 export default async function RecruiterDashboard({
   params,
 }: {
@@ -434,7 +900,21 @@ export default async function RecruiterDashboard({
       .eq("id", application.job_id)
       .maybeSingle();
 
+    const protection = getDealerProtectionState(application, job);
+
+    if (protection.sameDealer) {
+      throw new Error("Dealer Protection Mode blocked this action because the candidate appears connected to the same rooftop.");
+    }
+
+    if ((protection.placementRisk || protection.hasClientDealerRisk) && !reason) {
+      throw new Error("Recruiter override reason is required for flagged candidates.");
+    }
+
     const bookingUrl = buildCandidateScheduleUrl(applicationId);
+    const overridePrefix =
+      protection.placementRisk || protection.hasClientDealerRisk
+        ? "[Recruiter Override] "
+        : "";
 
     const { error } = await supabaseAdmin
       .schema("nata")
@@ -444,7 +924,7 @@ export default async function RecruiterDashboard({
         screening_status: "virtual_invited",
         virtual_interview_status: "invited",
         virtual_interview_url: bookingUrl,
-        decision_reason: reason,
+        decision_reason: `${overridePrefix}${reason}`,
       })
       .eq("id", applicationId)
       .eq("recruiter_id", recruiter.id);
@@ -513,6 +993,12 @@ export default async function RecruiterDashboard({
       .eq("recruiter_id", recruiter.id);
 
     if (error) throw new Error(error.message);
+
+    await returnApplicationToCandidatePool({
+      applicationId,
+      source: "recruiter_rejected",
+      reason,
+    });
 
     redirect(`/recruiter/${recruiterSlug}/dashboard`);
   }
@@ -585,6 +1071,7 @@ export default async function RecruiterDashboard({
     const canOpenStudio = surface === "interview" || fit.canOpenStudio;
     const resumeUrl = getResumeUrl(application);
     const profilePhotoUrl = getProfilePhotoUrl(application);
+    const protection = getDealerProtectionState(application, job);
 
     return (
       <article key={application.id} style={candidateCard}>
@@ -618,6 +1105,24 @@ export default async function RecruiterDashboard({
             <p style={{ margin: "10px 0 0", color: "#9fb1cc", fontSize: 13 }}>
               Email: {application.email || "Not provided"} · Phone: {application.phone || "Not provided"}
             </p>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+              {protection.sameDealer ? (
+                <span style={conflictPill}>Same rooftop — blocked</span>
+              ) : null}
+
+              {protection.placementRisk ? (
+                <span style={dangerPill}>Recent placement — override required</span>
+              ) : null}
+
+              {protection.hasPlacementHistory && protection.isOldPlacement ? (
+                <span style={historyPill}>Historical placement</span>
+              ) : null}
+
+              {protection.hasClientDealerRisk && !protection.sameDealer ? (
+                <span style={warningPill}>Client dealership relationship</span>
+              ) : null}
+            </div>
           </div>
           <span style={{ ...scoreBadge, ...getBadgeStyle(fit.tone) }}>
             Solace Fit {fitScore === null ? "—" : `${fitScore}/100`}<br />{fit.label}
@@ -656,8 +1161,32 @@ export default async function RecruiterDashboard({
           <div style={actionPanel}>
             <form action={approveForInterview} style={actionForm}>
               <input type="hidden" name="application_id" value={String(application.id)} />
-              <input name="reason" placeholder="Approval note" style={miniInput} />
-              <button className="btn btn-primary" type="submit">Approve + send invite</button>
+              <input
+                name="reason"
+                placeholder={
+                  protection.sameDealer
+                    ? "Blocked — same rooftop"
+                    : protection.placementRisk || protection.hasClientDealerRisk
+                      ? "Override reason required"
+                      : "Approval note"
+                }
+                style={miniInput}
+              />
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={protection.sameDealer}
+                style={{
+                  opacity: protection.sameDealer ? 0.45 : 1,
+                  cursor: protection.sameDealer ? "not-allowed" : "pointer",
+                }}
+              >
+                {protection.sameDealer
+                  ? "Blocked — same dealer"
+                  : protection.placementRisk || protection.hasClientDealerRisk
+                    ? "Override + send invite"
+                    : "Approve + send invite"}
+              </button>
             </form>
             <form action={holdCandidate} style={actionForm}>
               <input type="hidden" name="application_id" value={String(application.id)} />
@@ -695,7 +1224,7 @@ export default async function RecruiterDashboard({
           <div>
             <h1 style={{ marginTop: 0 }}>{recruiter.name} — Operations Command Center</h1>
             <p style={{ color: "#cfe2ff", maxWidth: 860 }}>
-              Daily visibility for dealer demand, role-specific scoring, recruiter review, candidate coaching, interview readiness, and dealer handoff status.
+              Daily visibility for dealer demand, role-specific scoring, recruiter review, candidate coaching, interview readiness, dealer handoff status, and protected candidate relationships.
             </p>
           </div>
 
@@ -753,7 +1282,7 @@ export default async function RecruiterDashboard({
           <div style={noticeCard}>
             <strong>Actionable candidate queue</strong>
             <span>{candidateQueue.length}</span>
-            <p>Only candidates requiring recruiter decision are shown below.</p>
+            <p>Rejected candidates are returned to the candidate pool and rematched when eligible.</p>
           </div>
         </div>
 
@@ -805,7 +1334,7 @@ export default async function RecruiterDashboard({
         <div className="section-kicker" style={{ marginTop: 48 }}>Candidate Queue</div>
         <div style={{ display: "grid", gap: 18 }}>
           {candidateQueue.length === 0 ? (
-            <EmptyState>No candidates require a recruiter decision right now. Approved candidates are hidden until they schedule, and passed candidates are archived.</EmptyState>
+            <EmptyState>No candidates require a recruiter decision right now. Approved candidates are hidden until they schedule, and passed candidates are archived into the candidate pool.</EmptyState>
           ) : (
             candidateQueue.map((application) => renderApplicationCard(application, "candidate"))
           )}
@@ -881,3 +1410,43 @@ const pill: React.CSSProperties = { display: "inline-flex", justifyContent: "cen
 const actionPanel: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.1)" };
 const actionForm: React.CSSProperties = { display: "grid", gap: 8 };
 const miniInput: React.CSSProperties = { minHeight: 42, borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(3,7,18,0.8)", color: "#fff", padding: "0 12px", outline: "none" };
+
+const conflictPill: React.CSSProperties = {
+  padding: "6px 10px",
+  borderRadius: 999,
+  background: "rgba(239,68,68,0.2)",
+  border: "1px solid rgba(248,113,113,0.4)",
+  color: "#fecaca",
+  fontSize: 12,
+  fontWeight: 900,
+};
+
+const dangerPill: React.CSSProperties = {
+  padding: "6px 10px",
+  borderRadius: 999,
+  background: "rgba(251,191,36,0.2)",
+  border: "1px solid rgba(251,191,36,0.4)",
+  color: "#fde68a",
+  fontSize: 12,
+  fontWeight: 900,
+};
+
+const historyPill: React.CSSProperties = {
+  padding: "6px 10px",
+  borderRadius: 999,
+  background: "rgba(147,197,253,0.2)",
+  border: "1px solid rgba(147,197,253,0.4)",
+  color: "#dbeafe",
+  fontSize: 12,
+  fontWeight: 900,
+};
+
+const warningPill: React.CSSProperties = {
+  padding: "6px 10px",
+  borderRadius: 999,
+  background: "rgba(168,85,247,0.16)",
+  border: "1px solid rgba(192,132,252,0.35)",
+  color: "#e9d5ff",
+  fontSize: 12,
+  fontWeight: 900,
+};
