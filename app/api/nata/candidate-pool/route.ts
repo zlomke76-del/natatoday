@@ -19,6 +19,17 @@ function safeFileName(fileName: string) {
     .replace(/^-|-$/g, "");
 }
 
+function getFile(formData: FormData, keys: string[]) {
+  for (const key of keys) {
+    const value = formData.get(key);
+    if (value instanceof File && value.size > 0) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 async function uploadPublicFile(input: {
   bucket: string;
   file: File | null;
@@ -59,16 +70,13 @@ export async function POST(req: Request) {
     const location = clean(formData.get("location"));
     const linkedin = clean(formData.get("linkedin"));
 
-    const resume = formData.get("resume") instanceof File
-      ? (formData.get("resume") as File)
-      : null;
-
-    const profilePhoto =
-      formData.get("profile_photo") instanceof File
-        ? (formData.get("profile_photo") as File)
-        : formData.get("photo") instanceof File
-          ? (formData.get("photo") as File)
-          : null;
+    const resume = getFile(formData, ["resume", "resume_file"]);
+    const profilePhoto = getFile(formData, [
+      "profile_photo",
+      "profilePhoto",
+      "photo",
+      "candidate_photo",
+    ]);
 
     if (!name || !email || !phone) {
       return NextResponse.json(
@@ -108,7 +116,7 @@ export async function POST(req: Request) {
       .select("id,name,email,status")
       .single();
 
-    if (insertError) {
+    if (insertError || !candidate) {
       console.error("Insert failed:", insertError);
       return NextResponse.json(
         { error: "Failed to submit candidate." },
@@ -116,16 +124,16 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({
-      ok: true,
-      candidate,
-    });
-  } catch (error) {
-    console.error("Candidate pool route failed:", error);
-
     return NextResponse.redirect(
       new URL(`/careers/thank-you?candidateId=${candidate.id}`, req.url),
       { status: 303 },
+    );
+  } catch (error) {
+    console.error("Candidate pool route failed:", error);
+
+    return NextResponse.json(
+      { error: "Unexpected candidate submission error." },
+      { status: 500 },
     );
   }
 }
