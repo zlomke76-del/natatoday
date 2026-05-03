@@ -20,7 +20,7 @@ const ALLOWED_ATTACHMENT_TYPES = new Set([
 
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 
-function firstString(...values: unknown[]) {
+function firstString(...values: unknown[]): string {
   for (const value of values) {
     if (typeof value === "string" && value.trim()) return value.trim();
 
@@ -47,7 +47,7 @@ function firstString(...values: unknown[]) {
   return "";
 }
 
-function emailAddressOnly(value: string | undefined | null) {
+function emailAddressOnly(value: string | undefined | null): string {
   if (!value) return "";
 
   const trimmed = value.trim();
@@ -55,7 +55,7 @@ function emailAddressOnly(value: string | undefined | null) {
   return (match?.[1] || trimmed).trim().toLowerCase().replace(/^mailto:/, "");
 }
 
-function normalizedEmail(value: string | undefined | null) {
+function normalizedEmail(value: string | undefined | null): string {
   const email = emailAddressOnly(value);
   if (!email.includes("@")) return email;
 
@@ -65,11 +65,11 @@ function normalizedEmail(value: string | undefined | null) {
   return `${local.replace(/\+.*/, "")}@${domain}`;
 }
 
-function localPart(email: string) {
+function localPart(email: string): string {
   return email.split("@")[0]?.toLowerCase() || "";
 }
 
-function safeFileName(value: string) {
+function safeFileName(value: string): string {
   return (
     value
       .trim()
@@ -95,7 +95,7 @@ function extractAttachments(raw: AnyRecord): AnyRecord[] {
   return [];
 }
 
-function attachmentFileName(attachment: AnyRecord, index: number) {
+function attachmentFileName(attachment: AnyRecord, index: number): string {
   return firstString(
     attachment.filename,
     attachment.file_name,
@@ -105,7 +105,7 @@ function attachmentFileName(attachment: AnyRecord, index: number) {
   );
 }
 
-function attachmentContentType(attachment: AnyRecord) {
+function attachmentContentType(attachment: AnyRecord): string {
   return firstString(
     attachment.content_type,
     attachment.contentType,
@@ -116,7 +116,7 @@ function attachmentContentType(attachment: AnyRecord) {
   ).toLowerCase();
 }
 
-function attachmentSize(attachment: AnyRecord) {
+function attachmentSize(attachment: AnyRecord): number | null {
   const value =
     attachment.size ||
     attachment.file_size ||
@@ -127,7 +127,7 @@ function attachmentSize(attachment: AnyRecord) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-function attachmentProviderId(attachment: AnyRecord) {
+function attachmentProviderId(attachment: AnyRecord): string {
   return firstString(
     attachment.id,
     attachment.attachment_id,
@@ -137,7 +137,7 @@ function attachmentProviderId(attachment: AnyRecord) {
   );
 }
 
-function attachmentBase64Content(attachment: AnyRecord) {
+function attachmentBase64Content(attachment: AnyRecord): string {
   const content = firstString(
     attachment.content,
     attachment.data,
@@ -156,7 +156,9 @@ function attachmentBase64Content(attachment: AnyRecord) {
   return content;
 }
 
-async function findRecruiterForInbound(toEmail: string) {
+async function findRecruiterForInbound(
+  toEmail: string
+): Promise<AnyRecord | null> {
   const alias = normalizedEmail(toEmail);
   const slug = localPart(alias);
 
@@ -184,7 +186,10 @@ async function findRecruiterForInbound(toEmail: string) {
   return (bySlug || null) as AnyRecord | null;
 }
 
-async function findApplicationForInbound(fromEmail: string, recruiterId?: string | null) {
+async function findApplicationForInbound(
+  fromEmail: string,
+  recruiterId?: string | null
+): Promise<AnyRecord | null> {
   if (!fromEmail) return null;
 
   let query = supabaseAdmin
@@ -207,7 +212,9 @@ async function findApplicationForInbound(fromEmail: string, recruiterId?: string
   return data?.[0] || null;
 }
 
-async function findExistingMessage(providerMessageId: string) {
+async function findExistingMessage(
+  providerMessageId: string
+): Promise<{ id: string } | null> {
   if (!providerMessageId) return null;
 
   const { data, error } = await supabaseAdmin
@@ -222,7 +229,7 @@ async function findExistingMessage(providerMessageId: string) {
     return null;
   }
 
-  return data;
+  return data as { id: string } | null;
 }
 
 async function ensureThread(input: {
@@ -230,7 +237,7 @@ async function ensureThread(input: {
   applicationId?: string | null;
   candidateEmail?: string | null;
   subject?: string | null;
-}) {
+}): Promise<string | null> {
   if (input.applicationId) {
     const { data: existing, error } = await supabaseAdmin
       .schema("nata")
@@ -282,7 +289,7 @@ async function ensureThread(input: {
   return String(data.id);
 }
 
-async function parsePayload(request: NextRequest) {
+async function parsePayload(request: NextRequest): Promise<AnyRecord> {
   const contentType = request.headers.get("content-type") || "";
 
   if (contentType.includes("application/json")) {
@@ -299,7 +306,7 @@ async function storeInboundAttachments(input: {
   threadId: string;
   recruiterId: string;
   applicationId?: string | null;
-}) {
+}): Promise<{ saved: string[]; skipped: string[] }> {
   const saved: string[] = [];
   const skipped: string[] = [];
 
