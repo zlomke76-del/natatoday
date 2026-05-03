@@ -38,7 +38,7 @@ export async function POST(req: Request) {
 
     const { error } = await supabaseAdmin
       .schema("nata")
-      .from("candidate_pool")
+      .from("candidates")
       .insert({
         name,
         email,
