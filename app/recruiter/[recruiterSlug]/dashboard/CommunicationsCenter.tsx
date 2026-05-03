@@ -31,12 +31,47 @@ type TemplateOption = {
   body: string;
 };
 
+type UploadedAttachment = {
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  storageBucket: string;
+  storagePath: string;
+  applicationId: string | null;
+  threadId: string | null;
+  messageDraftId: string | null;
+};
+
 function label(value: unknown, fallback = "—") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
 function clean(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function parseAttachments(value: string): UploadedAttachment[] {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((item) => ({
+        fileName: label(item?.fileName, ""),
+        fileType: label(item?.fileType, ""),
+        fileSize: Number(item?.fileSize || 0),
+        storageBucket: label(item?.storageBucket, ""),
+        storagePath: label(item?.storagePath, ""),
+        applicationId: item?.applicationId || null,
+        threadId: item?.threadId || null,
+        messageDraftId: item?.messageDraftId || null,
+      }))
+      .filter((item) => item.fileName && item.storageBucket && item.storagePath);
+  } catch {
+    return [];
+  }
 }
 
 function formatMessageDate(value: unknown) {
@@ -319,6 +354,105 @@ async function sendLoggedSms(input: {
   }
 }
 
+async function buildEmailAttachments(attachments: UploadedAttachment[]) {
+  const emailAttachments: Array<{ filename: string; content: string }> = [];
+
+  for (const attachment of attachments) {
+    const { data, error } = await supabaseAdmin.storage
+      .from(attachment.storageBucket)
+      .download(attachment.storagePath);
+
+    if (error || !data) {
+      console.error("Failed to load outbound attachment for email:", {
+        storageBucket: attachment.storageBucket,
+        storagePath: attachment.storagePath,
+        error,
+      });
+      continue;
+    }
+
+    const arrayBuffer = await data.arrayBuffer();
+    const content = Buffer.from(arrayBuffer).toString("base64");
+
+    emailAttachments.push({
+      filename: attachment.fileName,
+      content,
+    });
+  }
+
+  return emailAttachments;
+}
+
+async function findLatestOutboundEmail(input: {
+  recruiterId: string;
+  applicationId: string | null;
+  toEmail: string;
+  subject: string;
+}) {
+  let query = supabaseAdmin
+    .schema("nata")
+    .from("messages")
+    .select("id, thread_id")
+    .eq("recruiter_id", input.recruiterId)
+    .eq("direction", "outbound")
+    .eq("channel", "email")
+    .eq("to_email", input.toEmail)
+    .eq("subject", input.subject)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (input.applicationId) {
+    query = query.eq("application_id", input.applicationId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("Failed to resolve outbound message for attachments:", error);
+    return null;
+  }
+
+  return data?.[0] || null;
+}
+
+async function linkOutboundAttachments(input: {
+  attachments: UploadedAttachment[];
+  messageId: string;
+  threadId: string | null;
+  recruiterId: string;
+  applicationId: string | null;
+}) {
+  if (!input.attachments.length) return;
+
+  const rows = input.attachments.map((attachment) => ({
+    message_id: input.messageId,
+    thread_id: input.threadId || attachment.threadId || null,
+    recruiter_id: input.recruiterId,
+    application_id: input.applicationId || attachment.applicationId || null,
+    file_name: attachment.fileName,
+    file_type: attachment.fileType || null,
+    file_size: attachment.fileSize || null,
+    storage_bucket: attachment.storageBucket,
+    storage_path: attachment.storagePath,
+    direction: "outbound",
+    provider: "recruiter-upload",
+    provider_attachment_id: null,
+    provider_payload: {
+      messageDraftId: attachment.messageDraftId || null,
+      source: "communications-composer",
+    },
+  }));
+
+  const { error } = await supabaseAdmin
+    .schema("nata")
+    .from("message_attachments")
+    .insert(rows);
+
+  if (error) {
+    console.error("Failed to link outbound attachments:", error);
+  }
+}
+
 export default async function CommunicationsCenter({
   recruiter,
   recruiterSlug,
@@ -347,6 +481,7 @@ export default async function CommunicationsCenter({
     const toPhone = clean(formData.get("to_phone"));
     const subject = clean(formData.get("subject"));
     const body = clean(formData.get("body"));
+    const attachments = parseAttachments(clean(formData.get("attachments")));
 
     if (!body) {
       throw new Error("Message body is required.");
@@ -356,6 +491,10 @@ export default async function CommunicationsCenter({
       if (!toEmail || !subject) {
         throw new Error("Email recipient and subject are required.");
       }
+
+      const emailAttachments = attachments.length
+        ? await buildEmailAttachments(attachments)
+        : [];
 
       await sendEmail({
         to: toEmail,
@@ -370,7 +509,29 @@ export default async function CommunicationsCenter({
         signatureTitle: label(recruiter.title || recruiter.role, "Recruiting Operations"),
         signatureEmail: alias,
         signaturePhone: label(recruiter.phone, ""),
-      });
+        attachments: emailAttachments,
+      } as any);
+
+      if (attachments.length) {
+        const loggedMessage = await findLatestOutboundEmail({
+          recruiterId,
+          applicationId: applicationId || null,
+          toEmail,
+          subject,
+        });
+
+        if (loggedMessage?.id) {
+          await linkOutboundAttachments({
+            attachments,
+            messageId: String(loggedMessage.id),
+            threadId: loggedMessage.thread_id ? String(loggedMessage.thread_id) : null,
+            recruiterId,
+            applicationId: applicationId || null,
+          });
+        } else {
+          console.error("Outbound attachments uploaded but no outbound message record was found.");
+        }
+      }
     } else {
       if (!toPhone) {
         throw new Error("SMS recipient phone is required.");
@@ -415,6 +576,7 @@ export default async function CommunicationsCenter({
         <CommunicationsComposerClient
           action={sendRecruiterMessage}
           alias={alias}
+          recruiterId={recruiterId}
           recruiterName={label(recruiter.name, "NATA Recruiter")}
           contacts={contacts}
           templates={templates}
