@@ -756,60 +756,76 @@ export default async function RecruiterDashboard({
           <div className="eyebrow">Recruiter Control Center</div>
           <h1>Recruiter not found.</h1>
 
-        {/* ========================= */}
-        {/* 🔥 TOP CANDIDATES NOW */}
-        {/* ========================= */}
+{/* ========================= */}
+{/* 🔥 TOP CANDIDATES NOW */}
+{/* ========================= */}
 
-        <div className="section-kicker" style={{ marginTop: 48 }}>
-          Top Candidates Now
-        </div>
+<div className="section-kicker" style={{ marginTop: 48 }}>
+  Top Candidates Now
+</div>
 
-        {topMatchesData && (
-          <div style={{ display: "grid", gap: 18 }}>
-            {Object.keys(matchesByJob || {}).length === 0 ? (
-              <div>No candidates available right now</div>
-            ) : (
-              Object.entries(matchesByJob).map(([jobId, rows]: any) => {
-                const job = rows[0]?.jobs;
+<div style={{ display: "grid", gap: 18 }}>
+  {Object.keys(matchesByJob || {}).length === 0 ? (
+    <div>No candidates available right now</div>
+  ) : (
+    Object.entries(matchesByJob).map(([jobId, rows]: any) => {
+      const job = rows[0]?.jobs;
 
-                return (
-                  <div key={jobId} style={{ padding: 20, border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14 }}>
-                    <h2>{job?.title} · {job?.public_dealer_name}</h2>
+      return (
+        <div
+          key={jobId}
+          style={{
+            padding: 20,
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: 14,
+          }}
+        >
+          <h2>
+            {job?.title} · {job?.public_dealer_name}
+          </h2>
 
-                    <div style={{ display: "grid", gap: 10 }}>
-                      {rows.slice(0, 5).map((row: any) => {
-                        const c = row.candidates;
+          <div style={{ display: "grid", gap: 10 }}>
+            {rows.slice(0, 5).map((row: any) => {
+              const c = row.candidates;
 
-                        return (
-                          <div key={row.id} style={{ display: "grid", gridTemplateColumns: "1fr auto", padding: 12, borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)" }}>
-                            <div>
-                              <strong>{c.name}</strong>
-                              <div style={{ fontSize: 12 }}>{c.location_text}</div>
-                              <div style={{ fontSize: 12, marginTop: 4 }}>{row.match_reason}</div>
-                            </div>
-
-                            <div style={{ textAlign: "right" }}>
-                              <div>{row.fit_score}/100</div>
-                              {c.resume_url && (
-                                <a href={c.resume_url} target="_blank">Resume</a>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+              return (
+                <div
+                  key={row.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
+                    padding: 12,
+                    borderRadius: 10,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <div>
+                    <strong>{c.name}</strong>
+                    <div style={{ fontSize: 12 }}>
+                      {c.location_text}
+                    </div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>
+                      {row.match_reason}
                     </div>
                   </div>
-                );
-              })
-            )}
-          </div>
-        )}
 
-          <p style={{ color: "#cfe2ff" }}>This recruiter workspace does not exist or is inactive.</p>
-        </section>
-      </main>
-    );
-  }
+                  <div style={{ textAlign: "right" }}>
+                    <div>{row.fit_score}/100</div>
+                    {c.resume_url && (
+                      <a href={c.resume_url} target="_blank">
+                        Resume
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    })
+  )}
+</div>
 
   async function approveForInterview(formData: FormData) {
     "use server";
