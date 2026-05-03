@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
@@ -22,6 +23,7 @@ type Match = {
   distance_miles: number | null;
   fit_score: number | null;
   match_status: string;
+  match_reason: string | null;
   created_at: string;
 };
 
@@ -32,6 +34,13 @@ type Job = {
   public_dealer_name: string | null;
   public_location: string | null;
   publish_mode: string | null;
+  dealer_slug: string | null;
+};
+
+type Recruiter = {
+  id: string;
+  name: string | null;
+  slug: string | null;
 };
 
 const MIN_VISIBLE_MATCH_SCORE = 70;
@@ -49,6 +58,25 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
+function clean(value: FormDataEntryValue | null) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+async function getRecruiter(recruiterSlug: string) {
+  const { data, error } = await supabaseAdmin
+    .schema("nata")
+    .from("recruiters")
+    .select("id,name,slug")
+    .eq("slug", recruiterSlug)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Failed to load recruiter:", error);
+  }
+
+  return data as Recruiter | null;
+}
+
 async function getPlacedCandidateEmails() {
   const { data, error } = await supabaseAdmin
     .schema("nata")
@@ -64,7 +92,7 @@ async function getPlacedCandidateEmails() {
   return new Set(
     (data || [])
       .map((row) => String(row.email || "").trim().toLowerCase())
-      .filter(Boolean)
+      .filter(Boolean),
   );
 }
 
@@ -86,7 +114,7 @@ async function getCandidatePool() {
   }
 
   const safeCandidates = ((candidates || []) as Candidate[]).filter(
-    (candidate) => !placedEmails.has(candidate.email.trim().toLowerCase())
+    (candidate) => !placedEmails.has(candidate.email.trim().toLowerCase()),
   );
 
   const candidateIds = safeCandidates.map((candidate) => candidate.id);
@@ -99,6 +127,7 @@ async function getCandidatePool() {
     .select("*")
     .in("candidate_id", candidateIds)
     .gte("fit_score", MIN_VISIBLE_MATCH_SCORE)
+    .eq("match_status", "eligible")
     .order("fit_score", { ascending: false });
 
   if (matchError) {
@@ -106,7 +135,7 @@ async function getCandidatePool() {
   }
 
   const jobIds = Array.from(
-    new Set(((matches || []) as Match[]).map((match) => match.job_id))
+    new Set(((matches || []) as Match[]).map((match) => match.job_id)),
   );
 
   const { data: jobs, error: jobError } =
@@ -115,7 +144,7 @@ async function getCandidatePool() {
           .schema("nata")
           .from("jobs")
           .select(
-            "id,title,location,public_dealer_name,public_location,publish_mode"
+            "id,title,location,public_dealer_name,public_location,publish_mode,dealer_slug",
           )
           .in("id", jobIds)
       : { data: [], error: null };
@@ -154,7 +183,89 @@ export default async function RecruiterCandidatePoolPage({
 }: {
   params: { recruiterSlug: string };
 }) {
+  const recruiter = await getRecruiter(params.recruiterSlug);
   const rows = await getCandidatePool();
+
+  async function createApplicationFromMatch(formData: FormData) {
+    "use server";
+
+    const candidateId = clean(formData.get("candidate_id"));
+    const jobId = clean(formData.get("job_id"));
+    const matchId = clean(formData.get("match_id"));
+
+    if (!candidateId || !jobId) {
+      throw new Error("Candidate and job are required.");
+    }
+
+    const { data: candidate, error: candidateError } = await supabaseAdmin
+      .schema("nata")
+      .from("candidates")
+      .select("*")
+      .eq("id", candidateId)
+      .maybeSingle();
+
+    if (candidateError) throw new Error(candidateError.message);
+    if (!candidate) throw new Error("Candidate not found.");
+
+    const { data: job, error: jobError } = await supabaseAdmin
+      .schema("nata")
+      .from("jobs")
+      .select("*")
+      .eq("id", jobId)
+      .maybeSingle();
+
+    if (jobError) throw new Error(jobError.message);
+    if (!job) throw new Error("Job not found.");
+
+    const { data: existing } = await supabaseAdmin
+      .schema("nata")
+      .from("applications")
+      .select("id")
+      .eq("job_id", jobId)
+      .eq("email", candidate.email)
+      .limit(1);
+
+    if (!existing?.length) {
+      const { error: insertError } = await supabaseAdmin
+        .schema("nata")
+        .from("applications")
+        .insert({
+          job_id: jobId,
+          name: candidate.name,
+          email: candidate.email,
+          phone: candidate.phone,
+          linkedin: candidate.linkedin,
+          resume_url: candidate.resume_url,
+          profile_photo_url: candidate.profile_photo_url,
+          status: "new",
+          screening_status: "new",
+          virtual_interview_status: "not_scheduled",
+          fit_score: Number(clean(formData.get("fit_score"))) || null,
+          decision_reason: "Created from NATA candidate pool match.",
+          assigned_recruiter: recruiter?.name || params.recruiterSlug,
+          recruiter_id: recruiter?.id || null,
+        });
+
+      if (insertError) throw new Error(insertError.message);
+    }
+
+    if (matchId) {
+      const { error: matchUpdateError } = await supabaseAdmin
+        .schema("nata")
+        .from("candidate_matches")
+        .update({
+          match_status: "application_created",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", matchId);
+
+      if (matchUpdateError) {
+        console.error("Failed to update candidate match:", matchUpdateError);
+      }
+    }
+
+    redirect(`/recruiter/${params.recruiterSlug}/dashboard`);
+  }
 
   return (
     <main style={pageStyle}>
@@ -172,7 +283,8 @@ export default async function RecruiterCandidatePoolPage({
             <h1 style={titleStyle}>Available talent radar.</h1>
             <p style={ledeStyle}>
               Active candidates who have not been previously placed. Only the
-              top {MAX_VISIBLE_MATCHES} eligible matches at or above {MIN_VISIBLE_MATCH_SCORE} are surfaced.
+              top {MAX_VISIBLE_MATCHES} eligible matches at or above{" "}
+              {MIN_VISIBLE_MATCH_SCORE} are surfaced.
             </p>
           </div>
 
@@ -180,7 +292,8 @@ export default async function RecruiterCandidatePoolPage({
             <div style={guardrailTitleStyle}>Safeguards active</div>
             <div style={guardrailTextStyle}>
               Prior placed candidates are excluded by candidate status and prior
-              application history. No solicitation is triggered from this dashboard.
+              application history. No solicitation is triggered from this
+              dashboard.
             </div>
           </div>
         </div>
@@ -288,6 +401,11 @@ export default async function RecruiterCandidatePoolPage({
                                 : job?.public_dealer_name || "Dealership"}{" "}
                               · {job?.public_location || job?.location || "Location"}
                             </div>
+                            {match.match_reason ? (
+                              <div style={reasonStyle}>
+                                {match.match_reason}
+                              </div>
+                            ) : null}
                           </div>
 
                           <div style={matchScoreWrapStyle}>
@@ -299,6 +417,32 @@ export default async function RecruiterCandidatePoolPage({
                                 ? `${Math.round(match.distance_miles)} mi`
                                 : "distance n/a"}
                             </span>
+
+                            <form action={createApplicationFromMatch}>
+                              <input
+                                type="hidden"
+                                name="candidate_id"
+                                value={candidate.id}
+                              />
+                              <input
+                                type="hidden"
+                                name="job_id"
+                                value={match.job_id}
+                              />
+                              <input
+                                type="hidden"
+                                name="match_id"
+                                value={match.id}
+                              />
+                              <input
+                                type="hidden"
+                                name="fit_score"
+                                value={String(match.fit_score || "")}
+                              />
+                              <button type="submit" style={primaryButtonStyle}>
+                                Create application
+                              </button>
+                            </form>
                           </div>
                         </div>
                       ))}
@@ -533,6 +677,17 @@ const secondaryButtonStyle: React.CSSProperties = {
   textDecoration: "none",
 };
 
+const primaryButtonStyle: React.CSSProperties = {
+  minHeight: 36,
+  padding: "0 12px",
+  borderRadius: 999,
+  border: "1px solid rgba(20,115,255,0.45)",
+  background: "#1473ff",
+  color: "#fff",
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
 const matchSectionStyle: React.CSSProperties = {
   marginTop: 20,
   paddingTop: 18,
@@ -575,10 +730,18 @@ const matchMetaStyle: React.CSSProperties = {
   fontSize: 13,
 };
 
+const reasonStyle: React.CSSProperties = {
+  color: "#bfd6f5",
+  marginTop: 7,
+  fontSize: 12,
+  lineHeight: 1.45,
+};
+
 const matchScoreWrapStyle: React.CSSProperties = {
   display: "grid",
   justifyItems: "end",
-  gap: 4,
+  gap: 6,
+  minWidth: 150,
 };
 
 const scoreStyle: React.CSSProperties = {
