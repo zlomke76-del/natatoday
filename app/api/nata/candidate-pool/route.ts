@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "./supabaseAdmin";
+import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
 type AnyRow = Record<string, any>;
 
