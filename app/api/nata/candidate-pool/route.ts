@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
+import { syncCandidateMatches } from "../../../../lib/nataCandidatePool";
 
 type AnyRow = Record<string, any>;
 
