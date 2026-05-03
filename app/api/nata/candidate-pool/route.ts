@@ -1,5 +1,4 @@
-import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
-import { syncCandidateMatches } from "../../../../lib/nataCandidatePool";
+import { supabaseAdmin } from "./supabaseAdmin";
 
 type AnyRow = Record<string, any>;
 
@@ -218,26 +217,8 @@ function scoreRoleFit(candidate: AnyRow, job: AnyRow) {
   };
 }
 
-function getDaysSince(value: unknown) {
-  if (!value || typeof value !== "string") return null;
-
-  const time = new Date(value).getTime();
-
-  if (!Number.isFinite(time)) return null;
-
-  return (Date.now() - time) / (1000 * 60 * 60 * 24);
-}
-
-function isInCooldown(candidate: AnyRow) {
-  if (!candidate.cooldown_until) return false;
-
-  const cooldownTime = new Date(candidate.cooldown_until).getTime();
-
-  return Number.isFinite(cooldownTime) && cooldownTime > Date.now();
-}
-
 function computeMatch(candidate: AnyRow, job: AnyRow) {
-  let score = 50;
+  let score = 35;
   const reasons: string[] = [];
 
   const roleFit = scoreRoleFit(candidate, job);
@@ -248,71 +229,19 @@ function computeMatch(candidate: AnyRow, job: AnyRow) {
 
   if (distance !== null) {
     if (distance <= MAX_MATCH_DISTANCE_MILES) {
-      score += 10;
+      score += 12;
       reasons.push(`Candidate is within ${Math.round(distance)} miles.`);
     } else {
       score -= 35;
       reasons.push(`Candidate is ${Math.round(distance)} miles away, outside preferred radius.`);
     }
   } else if (candidate.location_text) {
-    score += 5;
+    score += 6;
     reasons.push("Candidate provided a local market or ZIP.");
   }
 
-  const candidateText = getCandidateSearchText(candidate);
-  const jobText = [
-    job.title,
-    job.description,
-    job.public_description,
-    job.summary,
-    job.requirements,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  if (
-    candidateText.includes("dealership") ||
-    candidateText.includes("automotive") ||
-    candidateText.includes("car sales") ||
-    candidateText.includes("auto sales")
-  ) {
-    score += 12;
-    reasons.push("Candidate has automotive or dealership experience signal.");
-  }
-
-  if (jobText.includes("sales") && candidateText.includes("sales")) {
-    score += 8;
-    reasons.push("Sales language aligns with the role.");
-  }
-
-  if (jobText.includes("service") && candidateText.includes("service")) {
-    score += 8;
-    reasons.push("Service language aligns with the role.");
-  }
-
-  if (
-    (jobText.includes("technician") || jobText.includes("tech")) &&
-    (candidateText.includes("technician") || candidateText.includes("tech"))
-  ) {
-    score += 10;
-    reasons.push("Technician language aligns with the role.");
-  }
-
-  const daysSinceUpdate = getDaysSince(candidate.updated_at);
-
-  if (daysSinceUpdate !== null) {
-    if (daysSinceUpdate <= 7) {
-      score += 8;
-      reasons.push("Candidate record was updated in the last week.");
-    } else if (daysSinceUpdate <= 30) {
-      score += 4;
-      reasons.push("Candidate record was updated in the last 30 days.");
-    }
-  }
-
   if (candidate.resume_url) {
-    score += 7;
+    score += 8;
     reasons.push("Resume is available for review.");
   }
 
@@ -341,59 +270,17 @@ function computeMatch(candidate: AnyRow, job: AnyRow) {
     reasons.push(`Insufficient role-specific signal for ${roleFit.roleKey}.`);
   }
 
-  const contactCount = Number(candidate.contact_count || 0);
-
-  if (contactCount >= 6) {
-    score -= 18;
-    reasons.push("Candidate has high prior contact volume.");
-  } else if (contactCount >= 3) {
+  if (candidate.cooldown_until && new Date(candidate.cooldown_until).getTime() > Date.now()) {
     score -= 10;
-    reasons.push("Candidate has moderate prior contact volume.");
-  }
-
-  const daysSinceRejected = getDaysSince(candidate.last_rejected_at);
-
-  if (daysSinceRejected !== null) {
-    if (daysSinceRejected <= 7) {
-      score -= 25;
-      reasons.push("Candidate was rejected in the last 7 days.");
-    } else if (daysSinceRejected <= 30) {
-      score -= 12;
-      reasons.push("Candidate was rejected in the last 30 days.");
-    } else if (daysSinceRejected <= 90) {
-      score -= 5;
-      reasons.push("Candidate was rejected in the last 90 days.");
-    }
-  }
-
-  const inCooldown = isInCooldown(candidate);
-
-  if (inCooldown) {
-    score -= 40;
-    reasons.push("Candidate is inside an enforced cooldown window.");
-  }
-
-  if (normalize(candidate.availability_status) === "do_not_contact") {
-    score = 0;
-    reasons.push("Candidate is marked do-not-contact.");
-  }
-
-  if (normalize(candidate.availability_status) === "working_at_client") {
-    score = Math.min(score, 45);
-    reasons.push("Candidate is marked as working at a client dealership.");
+    reasons.push("Candidate is currently inside a post-decision cooldown window.");
   }
 
   const fitScore = Math.max(0, Math.min(100, Math.round(score)));
-  const eligible =
-    fitScore >= MIN_MATCH_SCORE &&
-    !inCooldown &&
-    normalize(candidate.availability_status) !== "do_not_contact" &&
-    normalize(candidate.availability_status) !== "working_at_client";
 
   return {
     distance_miles: distance === null ? null : Math.round(distance * 10) / 10,
     fit_score: fitScore,
-    match_status: eligible ? "eligible" : inCooldown ? "cooldown" : "below_threshold",
+    match_status: fitScore >= MIN_MATCH_SCORE ? "eligible" : "below_threshold",
     match_reason: reasons.join(" "),
   };
 }
@@ -419,6 +306,22 @@ function buildExperienceSummary(application: AnyRow, job: AnyRow | null, reason:
     `Candidate previously applied for ${label(job?.title || application.role, "a dealership role")}.`,
   );
 }
+
+export async function syncCandidateMatches(candidate: AnyRow) {
+  const { data: jobs, error } = await supabaseAdmin
+    .schema("nata")
+    .from("jobs")
+    .select(
+      "id,title,location,public_location,public_dealer_name,dealer_slug,is_active,publish_status,publish_mode,filled_at,latitude,longitude",
+    )
+    .eq("is_active", true)
+    .eq("publish_status", "published")
+    .is("filled_at", null);
+
+  if (error) {
+    console.error("Failed to load jobs for candidate matching:", error);
+    return;
+  }
 
   const rows = ((jobs || []) as AnyRow[]).map((job) => {
     const match = computeMatch(candidate, job);
@@ -625,17 +528,14 @@ export async function incrementCandidateContactByEmail(emailValue: string) {
     .maybeSingle();
 
   const nextContactCount = Number(existing?.contact_count || 0) + 1;
-  const now = new Date().toISOString();
 
   const { error } = await supabaseAdmin
     .schema("nata")
     .from("candidates")
     .update({
-      last_contacted_at: now,
+      last_contacted_at: new Date().toISOString(),
       contact_count: nextContactCount,
-      cooldown_until: addDays(7),
-      availability_status: "contacted",
-      updated_at: now,
+      updated_at: new Date().toISOString(),
     })
     .eq("email", email);
 
