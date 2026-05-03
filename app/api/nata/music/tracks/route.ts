@@ -2,29 +2,110 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../../lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const MUSIC_BUCKET = "nata-music-library";
+
+function cleanTitle(fileName: string): string {
+  return fileName
+    .replace(/\.mp3$/i, "")
+    .replace(/_/g, " ")
+    .replace(/\s+\(\d+\)$/g, "")
+    .replace(/\d{4}-\d{2}-\d{2}T\d{6}/g, "")
+    .replace(/\s+/g, " ")
+    .trim() || "Untitled track";
+}
+
+function isMp3(fileName: string): boolean {
+  return fileName.toLowerCase().endsWith(".mp3");
+}
+
+async function syncStorageTracks(): Promise<{ inserted: number; error?: string }> {
+  const { data: files, error: listError } = await supabaseAdmin.storage
+    .from(MUSIC_BUCKET)
+    .list("", {
+      limit: 1000,
+      offset: 0,
+      sortBy: { column: "name", order: "asc" },
+    });
+
+  if (listError) {
+    console.error("Failed to list music storage bucket:", listError);
+    return { inserted: 0, error: listError.message };
+  }
+
+  const mp3Files = (files || []).filter((file) => isMp3(file.name));
+
+  if (!mp3Files.length) return { inserted: 0 };
+
+  const rows = mp3Files.map((file, index) => ({
+    title: cleanTitle(file.name),
+    artist: "NATA Today",
+    mood: null,
+    category: "workspace",
+    storage_bucket: MUSIC_BUCKET,
+    storage_path: file.name,
+    file_name: file.name,
+    file_type: "audio/mpeg",
+    file_size: typeof file.metadata?.size === "number" ? file.metadata.size : null,
+    is_active: true,
+    sort_order: 100 + index,
+  }));
+
+  const { error: upsertError } = await supabaseAdmin
+    .schema("nata")
+    .from("music_tracks")
+    .upsert(rows, {
+      onConflict: "storage_bucket,storage_path",
+      ignoreDuplicates: true,
+    });
+
+  if (upsertError) {
+    console.error("Failed to sync music tracks:", upsertError);
+    return { inserted: 0, error: upsertError.message };
+  }
+
+  return { inserted: rows.length };
+}
 
 export async function GET() {
+  const syncResult = await syncStorageTracks();
+
   const { data, error } = await supabaseAdmin
     .schema("nata")
     .from("music_tracks")
-    .select("*")
+    .select("id,title,artist,mood,category,storage_bucket,storage_path,file_name,sort_order,created_at")
     .eq("is_active", true)
-    .order("sort_order", { ascending: true });
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: false });
 
   if (error) {
     console.error("Failed to load music tracks:", error);
-    return NextResponse.json({ tracks: [] });
+    return NextResponse.json(
+      { ok: false, tracks: [], error: error.message, sync: syncResult },
+      { status: 500 },
+    );
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const tracks = (data || []).map((track) => {
+    const { data: publicUrl } = supabaseAdmin.storage
+      .from(track.storage_bucket || MUSIC_BUCKET)
+      .getPublicUrl(track.storage_path);
 
-  const tracks = (data || []).map((track) => ({
-    id: track.id,
-    title: track.title,
-    artist: track.artist,
-    mood: track.mood,
-    url: `${baseUrl}/storage/v1/object/public/${track.storage_bucket}/${track.storage_path}`,
-  }));
+    return {
+      id: String(track.id),
+      title: track.title || cleanTitle(track.file_name || track.storage_path),
+      artist: track.artist || "NATA Today",
+      mood: track.mood || "",
+      category: track.category || "workspace",
+      url: publicUrl.publicUrl,
+    };
+  });
 
-  return NextResponse.json({ tracks });
+  return NextResponse.json({
+    ok: true,
+    synced: !syncResult.error,
+    sync: syncResult,
+    tracks,
+  });
 }
