@@ -8,6 +8,8 @@ const RESUME_BUCKET = "candidate-resumes";
 const PHOTO_BUCKET = "candidate-photos";
 const MAX_MATCH_DISTANCE_MILES = 100;
 const MIN_MATCH_SCORE = 70;
+const DEFAULT_LIMIT = 50;
+const MAX_LIMIT = 100;
 
 type AnyRow = Record<string, any>;
 
@@ -35,6 +37,22 @@ function getFile(formData: FormData, keys: string[]) {
 function toNumber(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function normalizeText(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function clampLimit(value: unknown) {
+  const parsed = Number(value || DEFAULT_LIMIT);
+  if (!Number.isFinite(parsed)) return DEFAULT_LIMIT;
+  return Math.max(1, Math.min(MAX_LIMIT, Math.floor(parsed)));
+}
+
+function clampOffset(value: unknown) {
+  const parsed = Number(value || 0);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.floor(parsed));
 }
 
 function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -69,10 +87,6 @@ function getDistanceMiles(candidate: AnyRow, job: AnyRow) {
   }
 
   return haversineMiles(candidateLat, candidateLon, jobLat, jobLon);
-}
-
-function normalizeText(value: unknown) {
-  return String(value || "").toLowerCase();
 }
 
 function getTargetRoles(candidate: AnyRow) {
@@ -258,6 +272,29 @@ function inferTargetRoles(formData: FormData) {
     .filter(Boolean);
 }
 
+function buildSearchText(input: {
+  name: string;
+  email: string;
+  phone: string;
+  location: string;
+  linkedin: string;
+  experienceSummary: string;
+  targetRoles: string[];
+}) {
+  return [
+    input.name,
+    input.email,
+    input.phone,
+    input.location,
+    input.linkedin,
+    input.experienceSummary,
+    ...input.targetRoles,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
 async function uploadPublicFile(input: {
   bucket: string;
   file: File | null;
@@ -329,6 +366,152 @@ async function syncCandidateMatches(candidate: AnyRow) {
   }
 }
 
+async function getJobIdsForRole(role: string) {
+  if (!role || role === "all") return null;
+
+  const { data, error } = await supabaseAdmin
+    .schema("nata")
+    .from("jobs")
+    .select("id")
+    .eq("is_active", true)
+    .eq("publish_status", "published")
+    .is("filled_at", null)
+    .ilike("title", `%${role}%`);
+
+  if (error) {
+    console.error("Failed to load role-filtered jobs:", error);
+    return [] as string[];
+  }
+
+  return (data || []).map((job) => String(job.id));
+}
+
+async function getCandidateIdsForSearch(search: string) {
+  const value = search.trim();
+  if (!value) return null;
+
+  const { data, error } = await supabaseAdmin
+    .schema("nata")
+    .from("candidates")
+    .select("id")
+    .textSearch("search_text", value, { type: "plain" })
+    .limit(5000);
+
+  if (!error) {
+    return (data || []).map((candidate) => String(candidate.id));
+  }
+
+  console.error("Candidate text search failed; falling back to ilike search:", error);
+
+  const safe = value.replace(/[%_]/g, "");
+  const pattern = `%${safe}%`;
+  const fallback = await supabaseAdmin
+    .schema("nata")
+    .from("candidates")
+    .select("id")
+    .or(`name.ilike.${pattern},email.ilike.${pattern},location_text.ilike.${pattern}`)
+    .limit(5000);
+
+  if (fallback.error) {
+    console.error("Candidate fallback search failed:", fallback.error);
+    return [] as string[];
+  }
+
+  return (fallback.data || []).map((candidate) => String(candidate.id));
+}
+
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+
+    const limit = clampLimit(searchParams.get("limit"));
+    const offset = clampOffset(searchParams.get("offset"));
+    const role = normalizeText(searchParams.get("role") || "all");
+    const minScore = Number(searchParams.get("minScore") || MIN_MATCH_SCORE);
+    const search = String(searchParams.get("search") || "").trim();
+
+    const [roleJobIds, searchCandidateIds] = await Promise.all([
+      getJobIdsForRole(role),
+      getCandidateIdsForSearch(search),
+    ]);
+
+    if (roleJobIds && roleJobIds.length === 0) {
+      return NextResponse.json({ rows: [], pagination: { limit, offset, next: offset, hasMore: false } });
+    }
+
+    if (searchCandidateIds && searchCandidateIds.length === 0) {
+      return NextResponse.json({ rows: [], pagination: { limit, offset, next: offset, hasMore: false } });
+    }
+
+    let query = supabaseAdmin
+      .schema("nata")
+      .from("candidate_matches")
+      .select("*")
+      .eq("match_status", "eligible")
+      .gte("fit_score", Number.isFinite(minScore) ? minScore : MIN_MATCH_SCORE)
+      .order("fit_score", { ascending: false })
+      .order("updated_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (roleJobIds) {
+      query = query.in("job_id", roleJobIds);
+    }
+
+    if (searchCandidateIds) {
+      query = query.in("candidate_id", searchCandidateIds);
+    }
+
+    const { data: matches, error: matchError } = await query;
+
+    if (matchError) {
+      console.error("Candidate pool GET match query failed:", matchError);
+      return NextResponse.json({ error: "Failed to load candidate matches." }, { status: 500 });
+    }
+
+    const candidateIds = Array.from(new Set((matches || []).map((match) => String(match.candidate_id))));
+    const jobIds = Array.from(new Set((matches || []).map((match) => String(match.job_id))));
+
+    const [candidateResult, jobResult] = await Promise.all([
+      candidateIds.length
+        ? supabaseAdmin.schema("nata").from("candidates").select("*").in("id", candidateIds)
+        : Promise.resolve({ data: [], error: null }),
+      jobIds.length
+        ? supabaseAdmin.schema("nata").from("jobs").select("*").in("id", jobIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (candidateResult.error) {
+      console.error("Candidate pool GET candidate query failed:", candidateResult.error);
+    }
+
+    if (jobResult.error) {
+      console.error("Candidate pool GET job query failed:", jobResult.error);
+    }
+
+    const candidatesById = new Map((candidateResult.data || []).map((candidate: AnyRow) => [String(candidate.id), candidate]));
+    const jobsById = new Map((jobResult.data || []).map((job: AnyRow) => [String(job.id), job]));
+
+    const rows = (matches || []).map((match) => ({
+      match,
+      candidate: candidatesById.get(String(match.candidate_id)) || null,
+      job: jobsById.get(String(match.job_id)) || null,
+    }));
+
+    return NextResponse.json({
+      rows,
+      pagination: {
+        limit,
+        offset,
+        next: offset + limit,
+        hasMore: (matches || []).length === limit,
+      },
+    });
+  } catch (error) {
+    console.error("Candidate pool GET failed:", error);
+    return NextResponse.json({ error: "Unexpected candidate pool query error." }, { status: 500 });
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
@@ -371,6 +554,16 @@ export async function POST(req: Request) {
       }),
     ]);
 
+    const searchText = buildSearchText({
+      name,
+      email,
+      phone,
+      location,
+      linkedin,
+      experienceSummary,
+      targetRoles,
+    });
+
     const { data: candidate, error: insertError } = await supabaseAdmin
       .schema("nata")
       .from("candidates")
@@ -384,6 +577,7 @@ export async function POST(req: Request) {
         profile_photo_url: profilePhotoUrl,
         target_roles: targetRoles,
         experience_summary: experienceSummary || null,
+        search_text: searchText,
         status: "active",
       })
       .select("*")
