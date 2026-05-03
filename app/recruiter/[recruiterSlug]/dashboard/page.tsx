@@ -22,48 +22,47 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 
-const MUSIC_TRACKS = [
-  {
-    title: "Backroad Hallelujah",
-    file: "Backroad_Hallelujah_2026-03-07T051245.mp3",
-    mood: "Country / reflective",
-  },
-  {
-    title: "Burn",
-    file: "Burn_2026-03-07T044035.mp3",
-    mood: "High energy",
-  },
-  {
-    title: "Catch a Vibe",
-    file: "Catch_a_Vibe_Favorite_2.mp3",
-    mood: "Upbeat",
-  },
-  {
-    title: "Catch a Vibe 3",
-    file: "Catch_a_Vibe_Favorite_3 (1).mp3",
-    mood: "Upbeat",
-  },
-  {
-    title: "Fire Inside",
-    file: "Fire_Inside_2026-03-07T041215 (1).mp3",
-    mood: "Motivational",
-  },
-  {
-    title: "Just Five Minutes",
-    file: "Just_Five_Minutes_2026-03-07T050956.mp3",
-    mood: "Focused",
-  },
-  {
-    title: "Red Dirt Road",
-    file: "Red_Dirt_Road_Favorite_1.mp3",
-    mood: "Country",
-  },
-  {
-    title: "Signal Without a Listener",
-    file: "Signal_Without_a_Listener_Favorite_1.mp3",
-    mood: "Reflective",
-  },
-];
+type MusicTrack = {
+  id: string;
+  title: string;
+  artist?: string;
+  mood?: string;
+  category?: string;
+  url: string;
+};
+
+const MUSIC_BUCKET = "nata-music-library";
+
+async function loadInitialMusicTracks(): Promise<MusicTrack[]> {
+  const { data, error } = await supabaseAdmin
+    .schema("nata")
+    .from("music_tracks")
+    .select("id,title,artist,mood,category,storage_bucket,storage_path,sort_order,created_at")
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Failed to load music tracks:", error);
+    return [];
+  }
+
+  return (data || []).map((track) => {
+    const bucket = String(track.storage_bucket || MUSIC_BUCKET);
+    const path = String(track.storage_path || "");
+    const { data: publicUrl } = supabaseAdmin.storage.from(bucket).getPublicUrl(path);
+
+    return {
+      id: String(track.id),
+      title: label(track.title, "Untitled track"),
+      artist: label(track.artist, "NATA Today"),
+      mood: label(track.mood, ""),
+      category: label(track.category, "workspace"),
+      url: publicUrl.publicUrl,
+    };
+  });
+}
+
 
 const ROLE_THRESHOLDS: Record<string, Omit<FitBand, "roleKey">> = {
   "sales consultant": { interviewReady: 80, review: 60 },
@@ -540,6 +539,7 @@ export default async function RecruiterDashboard({
   const jobs = (jobsData || []) as AnyRow[];
   const applications = (applicationsData || []) as AnyRow[];
   const canOpenAdmin = hasAdminAccess(recruiter);
+  const musicTracks = await loadInitialMusicTracks();
 
   const openJobs = jobs.filter((job) => job.is_active !== false && !job.filled_at && job.publish_status !== "closed" && job.publish_status !== "filled");
 
@@ -803,7 +803,7 @@ export default async function RecruiterDashboard({
           )}
         </div>
 
-        <MusicLibraryPlayer tracks={MUSIC_TRACKS} />
+        <MusicLibraryPlayer tracks={musicTracks} />
 
         <div className="section-kicker" style={{ marginTop: 48 }}>Communications</div>
         <CommunicationsCenter
