@@ -80,6 +80,26 @@ const paySuggestions: Record<string, string> = {
 
 const DEALER_SCHEDULE_REQUESTED_STATUS = "dealer_schedule_requested";
 
+const MIN_MATCH_SCORE = 70;
+const MAX_MATCH_DISTANCE_MILES = 100;
+
+const POOL_RETURN_OUTCOMES = new Set([
+  "not_hired",
+  "dealer_rejected",
+  "not_selected",
+  "interview_not_selected",
+  "rejected",
+  "withdrawn",
+]);
+
+const PLACED_OUTCOMES = new Set([
+  "hired",
+  "placed",
+  "dealer_hired",
+  "placement_complete",
+  "completed_placement",
+]);
+
 const MANAGER_VISIBLE_STATUSES = new Set([
   "dealer_interview_scheduled",
   "dealer_review",
@@ -440,6 +460,423 @@ function getDecisionStatusFromOutcome(outcome: string) {
   return "dealer_review";
 }
 
+function normalize(value: unknown) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function toNumber(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function haversineMiles(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+) {
+  const radius = 3958.8;
+  const toRad = (value: number) => (value * Math.PI) / 180;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+
+  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function getDistanceMiles(candidate: AnyRow, job: AnyRow) {
+  const candidateLat = toNumber(candidate.latitude);
+  const candidateLon = toNumber(candidate.longitude);
+  const jobLat = toNumber(job.latitude);
+  const jobLon = toNumber(job.longitude);
+
+  if (
+    candidateLat === null ||
+    candidateLon === null ||
+    jobLat === null ||
+    jobLon === null
+  ) {
+    return null;
+  }
+
+  return haversineMiles(candidateLat, candidateLon, jobLat, jobLon);
+}
+
+function getCandidateTargetRoles(application: AnyRow, job: AnyRow | null) {
+  if (
+    Array.isArray(application.target_roles) &&
+    application.target_roles.length
+  ) {
+    return application.target_roles
+      .map((role) => normalize(role))
+      .filter(Boolean);
+  }
+
+  const roleTitle = String(
+    application.role || application.job_title || job?.title || "",
+  );
+
+  if (!roleTitle.trim()) return [];
+
+  const normalized = roleTitle.toLowerCase();
+
+  if (normalized.includes("sales")) return ["sales consultant"];
+  if (normalized.includes("service") && normalized.includes("advisor"))
+    return ["service advisor"];
+  if (normalized.includes("technician") || normalized.includes("tech"))
+    return ["service technician"];
+  if (normalized.includes("bdc")) return ["bdc representative"];
+  if (normalized.includes("parts")) return ["parts advisor"];
+  if (normalized.includes("finance") || normalized.includes("f&i"))
+    return ["finance manager"];
+
+  return [normalized];
+}
+
+function getCandidateSearchText(candidate: AnyRow) {
+  return [
+    candidate.name,
+    candidate.email,
+    candidate.location_text,
+    candidate.linkedin,
+    candidate.experience_summary,
+    ...(Array.isArray(candidate.target_roles) ? candidate.target_roles : []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function getJobRoleKey(job: AnyRow) {
+  const title = normalize(job.title);
+
+  if (title.includes("sales")) return "sales consultant";
+  if (title.includes("service") && title.includes("advisor"))
+    return "service advisor";
+  if (title.includes("technician") || title.includes("tech"))
+    return "service technician";
+  if (title.includes("bdc")) return "bdc representative";
+  if (title.includes("parts")) return "parts advisor";
+  if (title.includes("finance") || title.includes("f&i"))
+    return "finance manager";
+
+  return "general";
+}
+
+function scoreRoleFit(candidate: AnyRow, job: AnyRow) {
+  const roleKey = getJobRoleKey(job);
+  const text = getCandidateSearchText(candidate);
+  const targetRoles = Array.isArray(candidate.target_roles)
+    ? candidate.target_roles.map((role) => normalize(role)).filter(Boolean)
+    : [];
+  const reasons: string[] = [];
+
+  let score = 0;
+
+  if (
+    targetRoles.some((role) => role.includes(roleKey) || roleKey.includes(role))
+  ) {
+    score += 35;
+    reasons.push(`Target role aligns with ${roleKey}.`);
+  }
+
+  if (roleKey === "sales consultant") {
+    if (text.includes("sales")) score += 16;
+    if (text.includes("closing") || text.includes("closer")) score += 10;
+    if (text.includes("crm")) score += 8;
+    if (text.includes("appointment")) score += 6;
+    if (text.includes("units") || text.includes("close rate")) score += 8;
+  }
+
+  if (roleKey === "service advisor") {
+    if (text.includes("service advisor")) score += 20;
+    if (text.includes("repair order") || text.includes("ro ")) score += 10;
+    if (text.includes("warranty")) score += 8;
+    if (text.includes("service lane")) score += 8;
+    if (text.includes("customer escalation")) score += 6;
+  }
+
+  if (roleKey === "service technician") {
+    if (text.includes("technician") || text.includes("tech")) score += 18;
+    if (text.includes("ase")) score += 12;
+    if (text.includes("diagnostic")) score += 10;
+    if (text.includes("electrical")) score += 8;
+    if (text.includes("tools")) score += 6;
+  }
+
+  if (roleKey === "bdc representative") {
+    if (text.includes("bdc")) score += 22;
+    if (text.includes("calls")) score += 8;
+    if (text.includes("appointment")) score += 8;
+    if (text.includes("crm")) score += 8;
+    if (text.includes("sms") || text.includes("email follow")) score += 6;
+  }
+
+  if (roleKey === "parts advisor") {
+    if (text.includes("parts")) score += 22;
+    if (text.includes("inventory")) score += 8;
+    if (text.includes("catalog")) score += 8;
+    if (text.includes("counter")) score += 6;
+  }
+
+  if (roleKey === "finance manager") {
+    if (text.includes("finance") || text.includes("f&i")) score += 22;
+    if (text.includes("lender")) score += 8;
+    if (text.includes("compliance")) score += 8;
+    if (text.includes("menu")) score += 6;
+  }
+
+  return {
+    roleKey,
+    score: Math.min(score, 45),
+    reasons,
+  };
+}
+
+function computeCandidateMatch(candidate: AnyRow, job: AnyRow) {
+  let score = 35;
+  const reasons: string[] = [];
+
+  const roleFit = scoreRoleFit(candidate, job);
+  score += roleFit.score;
+  reasons.push(...roleFit.reasons);
+
+  const distance = getDistanceMiles(candidate, job);
+
+  if (distance !== null) {
+    if (distance <= MAX_MATCH_DISTANCE_MILES) {
+      score += 12;
+      reasons.push(`Candidate is within ${Math.round(distance)} miles.`);
+    } else {
+      score -= 35;
+      reasons.push(
+        `Candidate is ${Math.round(distance)} miles away, outside preferred radius.`,
+      );
+    }
+  } else if (candidate.location_text) {
+    score += 6;
+    reasons.push("Candidate provided a local market or ZIP.");
+  }
+
+  if (candidate.resume_url) {
+    score += 8;
+    reasons.push("Resume is available for review.");
+  }
+
+  if (candidate.profile_photo_url) {
+    score += 2;
+    reasons.push("Profile photo is available.");
+  }
+
+  if (candidate.linkedin) {
+    score += 3;
+    reasons.push("LinkedIn profile is available.");
+  }
+
+  if (job.publish_status === "published") {
+    score += 2;
+    reasons.push("Role is published.");
+  }
+
+  if (job.is_active !== false && !job.filled_at) {
+    score += 2;
+    reasons.push("Role is active and unfilled.");
+  }
+
+  if (roleFit.score < 15) {
+    score -= 18;
+    reasons.push(`Insufficient role-specific signal for ${roleFit.roleKey}.`);
+  }
+
+  const fitScore = Math.max(0, Math.min(100, Math.round(score)));
+
+  return {
+    distance_miles: distance === null ? null : Math.round(distance * 10) / 10,
+    fit_score: fitScore,
+    match_status: fitScore >= MIN_MATCH_SCORE ? "eligible" : "below_threshold",
+    match_reason:
+      reasons.join(" ") || "Candidate returned to pool after dealer decision.",
+  };
+}
+
+function buildPoolExperienceSummary(
+  application: AnyRow,
+  job: AnyRow | null,
+  decisionReason: string,
+) {
+  return String(
+    application.experience_summary ||
+      application.screening_summary ||
+      application.summary ||
+      application.cover_note ||
+      decisionReason ||
+      `Candidate previously interviewed for ${job?.title || application.role || "a dealership role"}.`,
+  );
+}
+
+async function syncCandidateMatches(candidate: AnyRow) {
+  const { data: jobs, error } = await supabaseAdmin
+    .schema("nata")
+    .from("jobs")
+    .select(
+      "id,title,location,public_location,public_dealer_name,dealer_slug,is_active,publish_status,publish_mode,filled_at,latitude,longitude",
+    )
+    .eq("is_active", true)
+    .eq("publish_status", "published")
+    .is("filled_at", null);
+
+  if (error) {
+    console.error("Failed to load active jobs for candidate rematch:", error);
+    return;
+  }
+
+  const rows = ((jobs || []) as AnyRow[]).map((job) => {
+    const match = computeCandidateMatch(candidate, job);
+
+    return {
+      candidate_id: candidate.id,
+      job_id: job.id,
+      distance_miles: match.distance_miles,
+      fit_score: match.fit_score,
+      match_status: match.match_status,
+      match_reason: match.match_reason,
+      updated_at: new Date().toISOString(),
+    };
+  });
+
+  if (!rows.length) return;
+
+  const { error: matchError } = await supabaseAdmin
+    .schema("nata")
+    .from("candidate_matches")
+    .upsert(rows, { onConflict: "candidate_id,job_id" });
+
+  if (matchError) {
+    console.error(
+      "Failed to rematch candidate after dealer decision:",
+      matchError,
+    );
+  }
+}
+
+async function upsertCandidateFromApplication(input: {
+  applicationId: string;
+  outcome: string;
+  decisionReason: string;
+}) {
+  const { data: application, error: applicationError } = await supabaseAdmin
+    .schema("nata")
+    .from("applications")
+    .select("*")
+    .eq("id", input.applicationId)
+    .maybeSingle();
+
+  if (applicationError) {
+    console.error(
+      "Failed to load application for pool sync:",
+      applicationError,
+    );
+    return;
+  }
+
+  if (!application?.email) return;
+
+  const { data: job } = await supabaseAdmin
+    .schema("nata")
+    .from("jobs")
+    .select("*")
+    .eq("id", application.job_id)
+    .maybeSingle();
+
+  const email = String(application.email).trim().toLowerCase();
+  const isPlaced = PLACED_OUTCOMES.has(input.outcome);
+  const shouldReturnToPool = POOL_RETURN_OUTCOMES.has(input.outcome);
+
+  if (!isPlaced && !shouldReturnToPool) return;
+
+  const candidatePayload = {
+    name: getCandidateName(application),
+    email,
+    phone: String(
+      application.phone || application.candidate_phone || "Not provided",
+    ),
+    linkedin: application.linkedin || null,
+    location_text:
+      application.location_text ||
+      application.location ||
+      application.city ||
+      application.market ||
+      job?.public_location ||
+      job?.location ||
+      null,
+    resume_url: getResumeUrl(application) || null,
+    profile_photo_url: getCandidatePhotoUrl(application) || null,
+    target_roles: getCandidateTargetRoles(application, job),
+    experience_summary: buildPoolExperienceSummary(
+      application,
+      job,
+      input.decisionReason,
+    ),
+    status: isPlaced ? "placed" : "active",
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data: existingCandidate, error: existingError } = await supabaseAdmin
+    .schema("nata")
+    .from("candidates")
+    .select("*")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (existingError) {
+    console.error("Failed to check existing pool candidate:", existingError);
+    return;
+  }
+
+  let candidate: AnyRow | null = null;
+
+  if (existingCandidate?.id) {
+    const { data: updatedCandidate, error: updateError } = await supabaseAdmin
+      .schema("nata")
+      .from("candidates")
+      .update(candidatePayload)
+      .eq("id", existingCandidate.id)
+      .select("*")
+      .single();
+
+    if (updateError) {
+      console.error("Failed to update candidate pool record:", updateError);
+      return;
+    }
+
+    candidate = updatedCandidate as AnyRow;
+  } else {
+    const { data: insertedCandidate, error: insertError } = await supabaseAdmin
+      .schema("nata")
+      .from("candidates")
+      .insert(candidatePayload)
+      .select("*")
+      .single();
+
+    if (insertError) {
+      console.error("Failed to insert candidate pool record:", insertError);
+      return;
+    }
+
+    candidate = insertedCandidate as AnyRow;
+  }
+
+  if (candidate && shouldReturnToPool) {
+    await syncCandidateMatches(candidate);
+  }
+}
+
 async function loadDashboardData(dealerSlug: string) {
   noStore();
 
@@ -533,7 +970,8 @@ function findActiveAction(
   managerCandidates: ManagerCandidate[],
 ) {
   const activeReady = readyScheduleCandidates.find(
-    (candidate) => candidate.applicationId === activeId || candidate.id === activeId,
+    (candidate) =>
+      candidate.applicationId === activeId || candidate.id === activeId,
   );
 
   if (activeReady) {
@@ -548,7 +986,8 @@ function findActiveAction(
   }
 
   const activeManager = managerCandidates.find(
-    (candidate) => candidate.applicationId === activeId || candidate.id === activeId,
+    (candidate) =>
+      candidate.applicationId === activeId || candidate.id === activeId,
   );
 
   if (activeManager) {
@@ -558,7 +997,8 @@ function findActiveAction(
       index:
         readyScheduleCandidates.length +
         managerCandidates.findIndex(
-          (candidate) => candidate.applicationId === activeManager.applicationId,
+          (candidate) =>
+            candidate.applicationId === activeManager.applicationId,
         ),
       total: readyScheduleCandidates.length + managerCandidates.length,
     };
@@ -660,9 +1100,15 @@ export default async function DealerDashboardPage({
     const publishMode =
       cleanFormValue(formData.get("publish_mode")) || "public";
     const interviewPocName = cleanFormValue(formData.get("interview_poc_name"));
-    const interviewPocTitle = cleanFormValue(formData.get("interview_poc_title"));
-    const interviewPocPhone = cleanFormValue(formData.get("interview_poc_phone"));
-    const interviewPocEmail = cleanFormValue(formData.get("interview_poc_email"));
+    const interviewPocTitle = cleanFormValue(
+      formData.get("interview_poc_title"),
+    );
+    const interviewPocPhone = cleanFormValue(
+      formData.get("interview_poc_phone"),
+    );
+    const interviewPocEmail = cleanFormValue(
+      formData.get("interview_poc_email"),
+    );
     const backupInterviewPocName = cleanFormValue(
       formData.get("backup_interview_poc_name"),
     );
@@ -825,6 +1271,7 @@ export default async function DealerDashboardPage({
       .schema("nata")
       .from("applications")
       .update({
+        status: nextApplicationStatus,
         screening_status: nextApplicationStatus,
         decision_reason: decisionReason,
       })
@@ -837,6 +1284,12 @@ export default async function DealerDashboardPage({
       );
       throw new Error("Application status could not be updated.");
     }
+
+    await upsertCandidateFromApplication({
+      applicationId,
+      outcome,
+      decisionReason,
+    });
 
     if (outcome === "hired") {
       const { error: jobError } = await supabaseAdmin
@@ -932,9 +1385,7 @@ export default async function DealerDashboardPage({
         ) : null}
 
         <div style={topGridStyle}>
-          <HiringRequestPanel
-            submitHiringRequest={submitHiringRequest}
-          />
+          <HiringRequestPanel submitHiringRequest={submitHiringRequest} />
 
           <InterviewCoordinationPanel
             dealerSlug={params.dealerSlug}
@@ -956,7 +1407,10 @@ export default async function DealerDashboardPage({
           applications={applications}
         />
 
-        <section id="next-action" style={{ marginTop: 40, scrollMarginTop: 120 }}>
+        <section
+          id="next-action"
+          style={{ marginTop: 40, scrollMarginTop: 120 }}
+        >
           <div className="eyebrow">Next action workspace</div>
 
           {activeAction ? (
@@ -1054,7 +1508,11 @@ function HiringRequestPanel({
           </Field>
 
           <Field label="Publishing mode">
-            <select name="publish_mode" defaultValue="public" style={inputStyle}>
+            <select
+              name="publish_mode"
+              defaultValue="public"
+              style={inputStyle}
+            >
               <option value="public">Public dealership posting</option>
               <option value="confidential">Confidential search</option>
             </select>
@@ -1089,7 +1547,11 @@ function HiringRequestPanel({
             </Field>
 
             <Field label="POC phone">
-              <input name="interview_poc_phone" placeholder="+1..." style={inputStyle} />
+              <input
+                name="interview_poc_phone"
+                placeholder="+1..."
+                style={inputStyle}
+              />
             </Field>
 
             <Field label="POC email">
@@ -1110,7 +1572,11 @@ function HiringRequestPanel({
             </Field>
 
             <Field label="Backup phone">
-              <input name="backup_interview_poc_phone" placeholder="+1..." style={inputStyle} />
+              <input
+                name="backup_interview_poc_phone"
+                placeholder="+1..."
+                style={inputStyle}
+              />
             </Field>
 
             <Field label="Backup email">
@@ -1198,19 +1664,26 @@ function OpenRequestsSection({
               <details key={job.id} style={requestCardStyle}>
                 <summary style={requestSummaryStyle}>
                   <div>
-                    <h3 style={requestTitleStyle}>{job.title || "Open role"}</h3>
+                    <h3 style={requestTitleStyle}>
+                      {job.title || "Open role"}
+                    </h3>
                     <p style={{ margin: "8px 0 0", color: "#bfd6f5" }}>
                       {job.salary || "Compensation reviewed by NATA"}
                     </p>
                   </div>
 
-                  <span style={priorityBadgeStyle}>{job.priority || "Active"}</span>
+                  <span style={priorityBadgeStyle}>
+                    {job.priority || "Active"}
+                  </span>
                 </summary>
 
                 <div style={metricGridStyle}>
                   <Metric label="Candidates" value={jobApplications.length} />
                   <Metric label="Ready" value={readyCount} />
-                  <Metric label="Status" value={job.publish_status || "published"} />
+                  <Metric
+                    label="Status"
+                    value={job.publish_status || "published"}
+                  />
                 </div>
 
                 <p style={{ color: "#9fb4d6", margin: "16px 0 0" }}>
@@ -1239,7 +1712,9 @@ function OpenRequestsSection({
                         </option>
                         <option value="internal_hire">Filled internally</option>
                         <option value="role_paused">Role paused</option>
-                        <option value="no_longer_needed">No longer needed</option>
+                        <option value="no_longer_needed">
+                          No longer needed
+                        </option>
                       </select>
                     </Field>
 
@@ -1299,7 +1774,8 @@ function FilledRequestsSection({
                 String(decision.outcome) === "hired",
             );
             const application = applications.find(
-              (item) => String(item.id) === String(hiredDecision?.application_id),
+              (item) =>
+                String(item.id) === String(hiredDecision?.application_id),
             );
 
             return (
@@ -1311,7 +1787,9 @@ function FilledRequestsSection({
                 <p style={{ margin: "10px 0 0", color: "#cfe2ff" }}>
                   Filled by{" "}
                   <strong style={{ color: "#fff" }}>
-                    {application ? getCandidateName(application) : "documented hire"}
+                    {application
+                      ? getCandidateName(application)
+                      : "documented hire"}
                   </strong>
                 </p>
 
@@ -1339,14 +1817,21 @@ function ScheduleCandidateCard({
   dealerSlug: string;
 }) {
   return (
-    <article id={`schedule-${candidate.applicationId}`} style={scheduleCardStyle}>
+    <article
+      id={`schedule-${candidate.applicationId}`}
+      style={scheduleCardStyle}
+    >
       <CandidateHeader
         candidate={candidate}
         subline={`${candidate.role} · Ready for manager interview time`}
         status="Packet ready · schedule needed"
       />
 
-      <PacketDetails candidate={candidate} title="View recommendation packet" notesTitle="NATA recommendation" />
+      <PacketDetails
+        candidate={candidate}
+        title="View recommendation packet"
+        notesTitle="NATA recommendation"
+      />
 
       <form
         method="POST"
@@ -1359,11 +1844,21 @@ function ScheduleCandidateCard({
 
         <div className="grid-2" style={{ gap: 14 }}>
           <Field label="Interview date">
-            <input name="interview_date" type="date" required style={inputStyle} />
+            <input
+              name="interview_date"
+              type="date"
+              required
+              style={inputStyle}
+            />
           </Field>
 
           <Field label="Interview time">
-            <input name="interview_time" type="time" required style={inputStyle} />
+            <input
+              name="interview_time"
+              type="time"
+              required
+              style={inputStyle}
+            />
           </Field>
 
           <Field label="Manager / interviewer">
@@ -1417,18 +1912,29 @@ function DecisionCandidateCard({
   submitInterviewDecision: (formData: FormData) => Promise<void>;
 }) {
   return (
-    <article id={`interview-${candidate.applicationId}`} style={decisionCardStyle}>
+    <article
+      id={`interview-${candidate.applicationId}`}
+      style={decisionCardStyle}
+    >
       <CandidateHeader
         candidate={candidate}
         subline={`${candidate.role} · ${formatInterviewTime(candidate.dealerInterviewAt)}`}
         status="Packet ready · interview scheduled"
       />
 
-      <PacketDetails candidate={candidate} title="View interview packet" notesTitle="NATA notes" />
+      <PacketDetails
+        candidate={candidate}
+        title="View interview packet"
+        notesTitle="NATA notes"
+      />
 
       <form action={submitInterviewDecision} style={embeddedFormStyle}>
         <input type="hidden" name="job_id" value={candidate.jobId} />
-        <input type="hidden" name="application_id" value={candidate.applicationId} />
+        <input
+          type="hidden"
+          name="application_id"
+          value={candidate.applicationId}
+        />
         <input type="hidden" name="candidate_name" value={candidate.name} />
 
         <h4 style={formTitleStyle}>Interview outcome</h4>
@@ -1572,8 +2078,8 @@ function InterviewCoordinationPanel({
       </h2>
 
       <p style={{ color: "#cfe2ff", lineHeight: 1.6, marginTop: 12 }}>
-        This is your next-action queue. Click a card to load exactly one
-        action below: schedule the interview or record the manager decision.
+        This is your next-action queue. Click a card to load exactly one action
+        below: schedule the interview or record the manager decision.
       </p>
 
       <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
@@ -1682,13 +2188,7 @@ function MiniCandidateCard({
   );
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label>
       <span style={{ color: "#d7e8ff", fontWeight: 800 }}>{label}</span>
