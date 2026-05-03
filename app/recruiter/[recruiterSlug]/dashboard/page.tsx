@@ -5,6 +5,7 @@ import Nav from "../../../components/Nav";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { buildCandidateScheduleUrl, sendInterviewInvite } from "../../../../lib/nataNotifications";
 import CommunicationsCenter from "./CommunicationsCenter";
+import MusicLibraryPlayer from "./MusicLibraryPlayer";
 
 type AnyRow = Record<string, any>;
 
@@ -19,6 +20,50 @@ type QueueSurface = "candidate" | "interview";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
+
+
+const MUSIC_TRACKS = [
+  {
+    title: "Backroad Hallelujah",
+    file: "Backroad_Hallelujah_2026-03-07T051245.mp3",
+    mood: "Country / reflective",
+  },
+  {
+    title: "Burn",
+    file: "Burn_2026-03-07T044035.mp3",
+    mood: "High energy",
+  },
+  {
+    title: "Catch a Vibe",
+    file: "Catch_a_Vibe_Favorite_2.mp3",
+    mood: "Upbeat",
+  },
+  {
+    title: "Catch a Vibe 3",
+    file: "Catch_a_Vibe_Favorite_3 (1).mp3",
+    mood: "Upbeat",
+  },
+  {
+    title: "Fire Inside",
+    file: "Fire_Inside_2026-03-07T041215 (1).mp3",
+    mood: "Motivational",
+  },
+  {
+    title: "Just Five Minutes",
+    file: "Just_Five_Minutes_2026-03-07T050956.mp3",
+    mood: "Focused",
+  },
+  {
+    title: "Red Dirt Road",
+    file: "Red_Dirt_Road_Favorite_1.mp3",
+    mood: "Country",
+  },
+  {
+    title: "Signal Without a Listener",
+    file: "Signal_Without_a_Listener_Favorite_1.mp3",
+    mood: "Reflective",
+  },
+];
 
 const ROLE_THRESHOLDS: Record<string, Omit<FitBand, "roleKey">> = {
   "sales consultant": { interviewReady: 80, review: 60 },
@@ -757,6 +802,8 @@ export default async function RecruiterDashboard({
             candidateQueue.map((application) => renderApplicationCard(application, "candidate"))
           )}
         </div>
+
+        <MusicLibraryPlayer tracks={MUSIC_TRACKS} />
 
         <div className="section-kicker" style={{ marginTop: 48 }}>Communications</div>
         <CommunicationsCenter
