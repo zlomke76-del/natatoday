@@ -679,27 +679,6 @@ async function syncCandidateMatches(candidate: AnyRow) {
   }
 }
 
-  if (!application?.email) return;
-
-  const status = normalize(application.status);
-
-  if (PLACED_STATUSES.includes(status)) {
-    const { error: placedError } = await supabaseAdmin
-      .schema("nata")
-      .from("candidates")
-      .update({
-        status: "placed",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("email", application.email);
-
-    if (placedError) {
-      console.error("Failed to protect placed candidate in pool:", placedError);
-    }
-
-    return;
-  }
-
 function getCurrentDealerSlug(application: AnyRow) {
   return normalize(
     application.current_dealer_slug ||
