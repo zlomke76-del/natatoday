@@ -6,11 +6,23 @@ export const revalidate = 0;
 
 type AnyRecord = Record<string, any>;
 
+const ATTACHMENT_BUCKET =
+  process.env.NATA_MESSAGE_ATTACHMENT_BUCKET || "nata-message-attachments";
+
+const ALLOWED_ATTACHMENT_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+]);
+
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+
 function firstString(...values: unknown[]) {
   for (const value of values) {
-    if (typeof value === "string" && value.trim()) {
-      return value.trim();
-    }
+    if (typeof value === "string" && value.trim()) return value.trim();
 
     if (Array.isArray(value)) {
       for (const item of value) {
@@ -40,9 +52,7 @@ function emailAddressOnly(value: string | undefined | null) {
 
   const trimmed = value.trim();
   const match = trimmed.match(/<([^>]+)>/);
-  const rawEmail = (match?.[1] || trimmed).trim().toLowerCase();
-
-  return rawEmail.replace(/^mailto:/, "");
+  return (match?.[1] || trimmed).trim().toLowerCase().replace(/^mailto:/, "");
 }
 
 function normalizedEmail(value: string | undefined | null) {
@@ -59,6 +69,93 @@ function localPart(email: string) {
   return email.split("@")[0]?.toLowerCase() || "";
 }
 
+function safeFileName(value: string) {
+  return (
+    value
+      .trim()
+      .replace(/[^\w.\-() ]+/g, "_")
+      .replace(/\s+/g, "_")
+      .slice(0, 120) || "attachment"
+  );
+}
+
+function extractAttachments(raw: AnyRecord): AnyRecord[] {
+  const possible = [
+    raw.attachments,
+    raw.attachment,
+    raw.files,
+    raw.data?.attachments,
+    raw.email?.attachments,
+  ];
+
+  for (const value of possible) {
+    if (Array.isArray(value)) return value as AnyRecord[];
+  }
+
+  return [];
+}
+
+function attachmentFileName(attachment: AnyRecord, index: number) {
+  return firstString(
+    attachment.filename,
+    attachment.file_name,
+    attachment.name,
+    attachment.content_disposition?.filename,
+    `attachment-${index + 1}`
+  );
+}
+
+function attachmentContentType(attachment: AnyRecord) {
+  return firstString(
+    attachment.content_type,
+    attachment.contentType,
+    attachment.mime_type,
+    attachment.mimeType,
+    attachment.type,
+    "application/octet-stream"
+  ).toLowerCase();
+}
+
+function attachmentSize(attachment: AnyRecord) {
+  const value =
+    attachment.size ||
+    attachment.file_size ||
+    attachment.size_bytes ||
+    attachment.length;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function attachmentProviderId(attachment: AnyRecord) {
+  return firstString(
+    attachment.id,
+    attachment.attachment_id,
+    attachment.attachmentId,
+    attachment.content_id,
+    attachment.contentId
+  );
+}
+
+function attachmentBase64Content(attachment: AnyRecord) {
+  const content = firstString(
+    attachment.content,
+    attachment.data,
+    attachment.body,
+    attachment.base64,
+    attachment.content_base64
+  );
+
+  if (!content) return "";
+
+  const commaIndex = content.indexOf(",");
+  if (content.startsWith("data:") && commaIndex >= 0) {
+    return content.slice(commaIndex + 1);
+  }
+
+  return content;
+}
+
 async function findRecruiterForInbound(toEmail: string) {
   const alias = normalizedEmail(toEmail);
   const slug = localPart(alias);
@@ -72,10 +169,7 @@ async function findRecruiterForInbound(toEmail: string) {
     .eq("email_alias", alias)
     .maybeSingle();
 
-  if (aliasError) {
-    console.error("Inbound recruiter alias lookup failed:", aliasError);
-  }
-
+  if (aliasError) console.error("Inbound recruiter alias lookup failed:", aliasError);
   if (byAlias) return byAlias as AnyRecord;
 
   const { data: bySlug, error: slugError } = await supabaseAdmin
@@ -85,17 +179,12 @@ async function findRecruiterForInbound(toEmail: string) {
     .eq("slug", slug)
     .maybeSingle();
 
-  if (slugError) {
-    console.error("Inbound recruiter slug lookup failed:", slugError);
-  }
+  if (slugError) console.error("Inbound recruiter slug lookup failed:", slugError);
 
   return (bySlug || null) as AnyRecord | null;
 }
 
-async function findApplicationForInbound(
-  fromEmail: string,
-  recruiterId?: string | null
-) {
+async function findApplicationForInbound(fromEmail: string, recruiterId?: string | null) {
   if (!fromEmail) return null;
 
   let query = supabaseAdmin
@@ -104,9 +193,7 @@ async function findApplicationForInbound(
     .select("*")
     .ilike("email", fromEmail);
 
-  if (recruiterId) {
-    query = query.eq("recruiter_id", recruiterId);
-  }
+  if (recruiterId) query = query.eq("recruiter_id", recruiterId);
 
   const { data, error } = await query
     .order("created_at", { ascending: false })
@@ -153,10 +240,7 @@ async function ensureThread(input: {
       .eq("application_id", input.applicationId)
       .maybeSingle();
 
-    if (error) {
-      console.error("Inbound application thread lookup failed:", error);
-    }
-
+    if (error) console.error("Inbound application thread lookup failed:", error);
     if (existing?.id) return String(existing.id);
   }
 
@@ -169,10 +253,7 @@ async function ensureThread(input: {
       .eq("candidate_email", input.candidateEmail)
       .maybeSingle();
 
-    if (error) {
-      console.error("Inbound candidate thread lookup failed:", error);
-    }
-
+    if (error) console.error("Inbound candidate thread lookup failed:", error);
     if (existing?.id) return String(existing.id);
   }
 
@@ -212,6 +293,107 @@ async function parsePayload(request: NextRequest) {
   return Object.fromEntries(formData.entries()) as AnyRecord;
 }
 
+async function storeInboundAttachments(input: {
+  attachments: AnyRecord[];
+  messageId: string;
+  threadId: string;
+  recruiterId: string;
+  applicationId?: string | null;
+}) {
+  const saved: string[] = [];
+  const skipped: string[] = [];
+
+  for (let index = 0; index < input.attachments.length; index++) {
+    const attachment = input.attachments[index];
+    const fileName = safeFileName(attachmentFileName(attachment, index));
+    const fileType = attachmentContentType(attachment);
+    const fileSize = attachmentSize(attachment);
+    const providerAttachmentId = attachmentProviderId(attachment);
+
+    if (!ALLOWED_ATTACHMENT_TYPES.has(fileType)) {
+      skipped.push(`${fileName}: unsupported type ${fileType}`);
+      continue;
+    }
+
+    if (fileSize && fileSize > MAX_ATTACHMENT_BYTES) {
+      skipped.push(`${fileName}: exceeds size limit`);
+      continue;
+    }
+
+    const base64 = attachmentBase64Content(attachment);
+
+    if (!base64) {
+      skipped.push(`${fileName}: no file content in webhook payload`);
+      continue;
+    }
+
+    let buffer: Buffer;
+
+    try {
+      buffer = Buffer.from(base64, "base64");
+    } catch {
+      skipped.push(`${fileName}: invalid base64 content`);
+      continue;
+    }
+
+    if (!buffer.length) {
+      skipped.push(`${fileName}: empty file`);
+      continue;
+    }
+
+    if (buffer.length > MAX_ATTACHMENT_BYTES) {
+      skipped.push(`${fileName}: exceeds size limit`);
+      continue;
+    }
+
+    const storagePath = `inbound/${input.threadId}/${input.messageId}/${Date.now()}-${fileName}`;
+
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from(ATTACHMENT_BUCKET)
+      .upload(storagePath, buffer, {
+        contentType: fileType,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error("Failed to upload inbound attachment:", uploadError);
+      skipped.push(`${fileName}: upload failed`);
+      continue;
+    }
+
+    const { data: inserted, error: insertError } = await supabaseAdmin
+      .schema("nata")
+      .from("message_attachments")
+      .insert({
+        message_id: input.messageId,
+        thread_id: input.threadId,
+        recruiter_id: input.recruiterId,
+        application_id: input.applicationId || null,
+        file_name: fileName,
+        file_type: fileType,
+        file_size: buffer.length,
+        storage_bucket: ATTACHMENT_BUCKET,
+        storage_path: storagePath,
+        direction: "inbound",
+        provider: "inbound-webhook",
+        provider_attachment_id: providerAttachmentId || null,
+        provider_payload: attachment || {},
+      })
+      .select("id")
+      .single();
+
+    if (insertError) {
+      console.error("Failed to store inbound attachment record:", insertError);
+      skipped.push(`${fileName}: metadata insert failed`);
+      continue;
+    }
+
+    saved.push(String(inserted.id));
+  }
+
+  return { saved, skipped };
+}
+
 export async function POST(request: NextRequest) {
   const payload = await parsePayload(request);
   const raw =
@@ -227,11 +409,7 @@ export async function POST(request: NextRequest) {
     firstString(raw.to, raw.to_email, raw.recipient, raw.headers?.to)
   );
 
-  const subject = firstString(
-    raw.subject,
-    raw.headers?.subject,
-    "Inbound message"
-  );
+  const subject = firstString(raw.subject, raw.headers?.subject, "Inbound message");
 
   const text = firstString(raw.text, raw.text_body, raw.plain, raw.body_text);
   const html = firstString(raw.html, raw.html_body, raw.body_html);
@@ -246,10 +424,7 @@ export async function POST(request: NextRequest) {
 
   if (!fromEmail || !toEmail) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "Inbound message missing from_email or to_email.",
-      },
+      { ok: false, error: "Inbound message missing from_email or to_email." },
       { status: 400 }
     );
   }
@@ -264,10 +439,7 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json(
-      {
-        ok: false,
-        error: "No recruiter matched inbound recipient.",
-      },
+      { ok: false, error: "No recruiter matched inbound recipient." },
       { status: 400 }
     );
   }
@@ -295,10 +467,7 @@ export async function POST(request: NextRequest) {
 
   if (!threadId) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "Unable to create or resolve message thread.",
-      },
+      { ok: false, error: "Unable to create or resolve message thread." },
       { status: 500 }
     );
   }
@@ -347,9 +516,21 @@ export async function POST(request: NextRequest) {
     })
     .eq("id", threadId);
 
+  const attachments = extractAttachments(raw);
+
+  const attachmentResult = await storeInboundAttachments({
+    attachments,
+    messageId: String(message.id),
+    threadId,
+    recruiterId: recruiter.id,
+    applicationId: application?.id || null,
+  });
+
   return NextResponse.json({
     ok: true,
     messageId: message?.id || null,
     threadId,
+    attachmentsSaved: attachmentResult.saved.length,
+    attachmentsSkipped: attachmentResult.skipped,
   });
 }
