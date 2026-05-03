@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 
 type ContactOption = {
   id: string;
@@ -22,9 +22,21 @@ type TemplateOption = {
   body: string;
 };
 
+type UploadedAttachment = {
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  storageBucket: string;
+  storagePath: string;
+  applicationId: string | null;
+  threadId: string | null;
+  messageDraftId: string | null;
+};
+
 type Props = {
   action: (formData: FormData) => void | Promise<void>;
   alias: string;
+  recruiterId: string;
   recruiterName: string;
   contacts: ContactOption[];
   templates: TemplateOption[];
@@ -48,13 +60,22 @@ function applyTokens(value: string, contact: ContactOption | null, recruiterName
     .replaceAll("{{link}}", "[link]");
 }
 
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function CommunicationsComposerClient({
   action,
   alias,
+  recruiterId,
   recruiterName,
   contacts,
   templates,
 }: Props) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const [channel, setChannel] = useState<"email" | "sms">("email");
   const [selectedContactId, setSelectedContactId] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -65,6 +86,8 @@ export default function CommunicationsComposerClient({
   const [body, setBody] = useState("");
   const [isPending, startTransition] = useTransition();
   const [rewriteStatus, setRewriteStatus] = useState("");
+  const [attachmentStatus, setAttachmentStatus] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   const selectedContact = useMemo(() => {
     return contacts.find((contact) => contact.id === selectedContactId) || null;
@@ -95,6 +118,58 @@ export default function CommunicationsComposerClient({
     setChannel(template.channel);
     setSubject(applyTokens(template.subject || "", selectedContact, recruiterName));
     setBody(applyTokens(template.body, selectedContact, recruiterName));
+  }
+
+  function handleFilesChange(files: FileList | null) {
+    const nextFiles = Array.from(files || []);
+    setSelectedFiles(nextFiles);
+    setAttachmentStatus(
+      nextFiles.length
+        ? `${nextFiles.length} attachment${nextFiles.length === 1 ? "" : "s"} selected.`
+        : "",
+    );
+  }
+
+  async function uploadAttachments(): Promise<UploadedAttachment[]> {
+    if (channel !== "email" || selectedFiles.length === 0) return [];
+
+    const uploadFormData = new FormData();
+
+    uploadFormData.set("recruiter_id", recruiterId);
+    uploadFormData.set("application_id", selectedContact?.applicationId || "");
+
+    for (const file of selectedFiles) {
+      uploadFormData.append("files", file);
+    }
+
+    setAttachmentStatus("Uploading attachments...");
+
+    const response = await fetch("/api/nata/messages/upload", {
+      method: "POST",
+      body: uploadFormData,
+    });
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(result?.error || "Attachment upload failed.");
+    }
+
+    const uploaded = Array.isArray(result.uploaded)
+      ? (result.uploaded as UploadedAttachment[])
+      : [];
+
+    const skipped = Array.isArray(result.skipped) ? result.skipped : [];
+
+    if (skipped.length) {
+      setAttachmentStatus(
+        `${uploaded.length} uploaded. Skipped: ${skipped.join("; ")}`,
+      );
+    } else {
+      setAttachmentStatus(`${uploaded.length} attachment${uploaded.length === 1 ? "" : "s"} uploaded.`);
+    }
+
+    return uploaded;
   }
 
   async function rewriteWithSolace() {
@@ -145,16 +220,32 @@ export default function CommunicationsComposerClient({
   }
 
   function handleSubmit(formData: FormData) {
-    formData.set("channel", channel);
-    formData.set("application_id", selectedContact?.applicationId || "");
-    formData.set("dealer_slug", selectedContact?.dealerSlug || "");
-    formData.set("to_email", toEmail);
-    formData.set("to_phone", toPhone);
-    formData.set("subject", subject);
-    formData.set("body", body);
-
     startTransition(() => {
-      void action(formData);
+      void (async () => {
+        try {
+          setAttachmentStatus("");
+
+          const uploadedAttachments = await uploadAttachments();
+
+          formData.set("channel", channel);
+          formData.set("application_id", selectedContact?.applicationId || "");
+          formData.set("dealer_slug", selectedContact?.dealerSlug || "");
+          formData.set("to_email", toEmail);
+          formData.set("to_phone", toPhone);
+          formData.set("subject", subject);
+          formData.set("body", body);
+          formData.set("attachments", JSON.stringify(uploadedAttachments));
+
+          await action(formData);
+        } catch (error) {
+          console.error(error);
+          setAttachmentStatus(
+            error instanceof Error
+              ? error.message
+              : "Attachment upload failed. Message was not sent.",
+          );
+        }
+      })();
     });
   }
 
@@ -239,6 +330,29 @@ export default function CommunicationsComposerClient({
               style={inputStyle}
             />
           </label>
+
+          <label style={fieldStyle}>
+            <span>Attachments</span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg"
+              onChange={(event) => handleFilesChange(event.target.files)}
+              style={fileInputStyle}
+            />
+          </label>
+
+          {selectedFiles.length ? (
+            <div style={attachmentList}>
+              {selectedFiles.map((file) => (
+                <div key={`${file.name}-${file.size}`} style={attachmentPill}>
+                  <span>{file.name}</span>
+                  <small>{formatFileSize(file.size)}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </>
       ) : (
         <label style={fieldStyle}>
@@ -294,6 +408,7 @@ export default function CommunicationsComposerClient({
       </div>
 
       {rewriteStatus ? <div style={helperText}>{rewriteStatus}</div> : null}
+      {attachmentStatus ? <div style={helperText}>{attachmentStatus}</div> : null}
 
       <button
         className="btn btn-primary"
@@ -347,6 +462,17 @@ const inputStyle: React.CSSProperties = {
   outline: "none",
 };
 
+const fileInputStyle: React.CSSProperties = {
+  width: "100%",
+  minHeight: 44,
+  borderRadius: 13,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "#07101f",
+  color: "#ffffff",
+  padding: "10px 12px",
+  outline: "none",
+};
+
 const toggleRow: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
@@ -395,4 +521,21 @@ const helperText: React.CSSProperties = {
   color: "#bfd6f5",
   fontSize: 13,
   lineHeight: 1.45,
+};
+
+const attachmentList: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+};
+
+const attachmentPill: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 10,
+  padding: "10px 12px",
+  borderRadius: 14,
+  border: "1px solid rgba(96,165,250,0.18)",
+  background: "rgba(20,115,255,0.1)",
+  color: "#dbeafe",
+  fontSize: 13,
 };
