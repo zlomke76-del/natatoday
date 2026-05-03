@@ -13,38 +13,37 @@ type Props = {
 };
 
 export default function NataSystemSoundBridge(props: Props) {
-  const prev = useRef(props);
+  const prev = useRef<Props | null>(null);
 
   useEffect(() => {
-    const p = prev.current;
+    if (!prev.current) {
+      prev.current = props;
+      return;
+    }
 
-    // 🟢 NEW CANDIDATE NEEDS ACTION
-    if (props.candidateQueue > p.candidateQueue) {
+    const previous = prev.current;
+
+    if (props.candidateQueue > previous.candidateQueue) {
       playSound("candidate_new");
     }
 
-    // 🔵 INTERVIEW SCHEDULED / READY
-    if (props.interviewQueue > p.interviewQueue) {
+    if (props.interviewQueue > previous.interviewQueue) {
       playSound("interview_scheduled");
     }
 
-    // ⏳ WAITING ON CANDIDATE
-    if (props.waitingOnCandidate > p.waitingOnCandidate) {
+    if (props.waitingOnCandidate > previous.waitingOnCandidate) {
       playSound("interview_reminder");
     }
 
-    // 🟡 REVIEW REQUIRED
-    if (props.reviewRequired > p.reviewRequired) {
+    if (props.reviewRequired > previous.reviewRequired) {
       playSound("dealer_action_required");
     }
 
-    // 🟢 READY FOR DEALER
-    if (props.dealerScheduled > p.dealerScheduled) {
+    if (props.dealerScheduled > previous.dealerScheduled) {
       playSound("candidate_ready");
     }
 
-    // 🔴 BLOCKED / PASSED
-    if (props.blocked > p.blocked) {
+    if (props.blocked > previous.blocked) {
       playSound("candidate_not_fit");
     }
 
