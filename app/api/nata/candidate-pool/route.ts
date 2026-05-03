@@ -1,37 +1,46 @@
-import { NextResponse } from "next/server";
-import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-const RESUME_BUCKET = "candidate-resumes";
-const PHOTO_BUCKET = "candidate-photos";
-const MAX_MATCH_DISTANCE_MILES = 100;
-const MIN_MATCH_SCORE = 70;
-const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 100;
+import { supabaseAdmin } from "./supabaseAdmin";
 
 type AnyRow = Record<string, any>;
 
-function clean(value: FormDataEntryValue | null) {
-  return typeof value === "string" ? value.trim() : "";
+const MIN_MATCH_SCORE = 70;
+const MAX_MATCH_DISTANCE_MILES = 100;
+const DEFAULT_COOLDOWN_DAYS = 30;
+const NO_SHOW_COOLDOWN_DAYS = 45;
+
+const POOL_RETURN_STATUSES = [
+  "not_fit",
+  "passed",
+  "pass",
+  "rejected",
+  "dealer_rejected",
+  "not_selected",
+  "interview_not_selected",
+  "not_hired",
+  "withdrawn",
+  "no_show",
+];
+
+const PLACED_STATUSES = [
+  "placed",
+  "hired",
+  "dealer_hired",
+  "placement_complete",
+  "completed_placement",
+];
+
+export type CandidatePoolReturnSource =
+  | "recruiter_rejected"
+  | "dealer_rejected"
+  | "not_hired"
+  | "withdrawn"
+  | "system";
+
+function normalize(value: unknown) {
+  return String(value || "").toLowerCase().trim();
 }
 
-function safeFileName(fileName: string) {
-  return fileName
-    .toLowerCase()
-    .replace(/[^a-z0-9.\-_]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function getFile(formData: FormData, keys: string[]) {
-  for (const key of keys) {
-    const value = formData.get(key);
-    if (value instanceof File && value.size > 0) return value;
-  }
-
-  return null;
+function label(value: unknown, fallback = "") {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
 function toNumber(value: unknown) {
@@ -39,20 +48,15 @@ function toNumber(value: unknown) {
   return Number.isFinite(number) ? number : null;
 }
 
-function normalizeText(value: unknown) {
-  return String(value || "").trim().toLowerCase();
+function addDays(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString();
 }
 
-function clampLimit(value: unknown) {
-  const parsed = Number(value || DEFAULT_LIMIT);
-  if (!Number.isFinite(parsed)) return DEFAULT_LIMIT;
-  return Math.max(1, Math.min(MAX_LIMIT, Math.floor(parsed)));
-}
-
-function clampOffset(value: unknown) {
-  const parsed = Number(value || 0);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.floor(parsed));
+function getCooldownDays(status: string) {
+  const normalized = normalize(status);
+  return normalized === "no_show" ? NO_SHOW_COOLDOWN_DAYS : DEFAULT_COOLDOWN_DAYS;
 }
 
 function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -89,9 +93,41 @@ function getDistanceMiles(candidate: AnyRow, job: AnyRow) {
   return haversineMiles(candidateLat, candidateLon, jobLat, jobLon);
 }
 
+function splitList(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map(String).map((item) => item.trim()).filter(Boolean);
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    return value
+      .split(/\n|;|\|/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function getRoleKey(roleTitle: string) {
+  const normalized = normalize(roleTitle);
+
+  if (normalized.includes("sales")) return "sales consultant";
+  if (normalized.includes("service") && normalized.includes("advisor")) return "service advisor";
+  if (normalized.includes("technician") || normalized.includes("tech")) return "service technician";
+  if (normalized.includes("bdc")) return "bdc representative";
+  if (normalized.includes("parts")) return "parts advisor";
+  if (normalized.includes("finance") || normalized.includes("f&i")) return "finance manager";
+
+  return "";
+}
+
+function getJobRoleKey(job: AnyRow) {
+  return getRoleKey(String(job.title || "")) || "general";
+}
+
 function getTargetRoles(candidate: AnyRow) {
   if (Array.isArray(candidate.target_roles)) {
-    return candidate.target_roles.map((role) => normalizeText(role)).filter(Boolean);
+    return candidate.target_roles.map((role) => normalize(role)).filter(Boolean);
   }
 
   return [];
@@ -109,19 +145,6 @@ function getCandidateSearchText(candidate: AnyRow) {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
-}
-
-function getJobRoleKey(job: AnyRow) {
-  const title = normalizeText(job.title);
-
-  if (title.includes("sales")) return "sales consultant";
-  if (title.includes("service") && title.includes("advisor")) return "service advisor";
-  if (title.includes("technician") || title.includes("tech")) return "service technician";
-  if (title.includes("bdc")) return "bdc representative";
-  if (title.includes("parts")) return "parts advisor";
-  if (title.includes("finance") || title.includes("f&i")) return "finance manager";
-
-  return "general";
 }
 
 function scoreRoleFit(candidate: AnyRow, job: AnyRow) {
@@ -194,8 +217,26 @@ function scoreRoleFit(candidate: AnyRow, job: AnyRow) {
   };
 }
 
+function getDaysSince(value: unknown) {
+  if (!value || typeof value !== "string") return null;
+
+  const time = new Date(value).getTime();
+
+  if (!Number.isFinite(time)) return null;
+
+  return (Date.now() - time) / (1000 * 60 * 60 * 24);
+}
+
+function isInCooldown(candidate: AnyRow) {
+  if (!candidate.cooldown_until) return false;
+
+  const cooldownTime = new Date(candidate.cooldown_until).getTime();
+
+  return Number.isFinite(cooldownTime) && cooldownTime > Date.now();
+}
+
 function computeMatch(candidate: AnyRow, job: AnyRow) {
-  let score = 35;
+  let score = 50;
   const reasons: string[] = [];
 
   const roleFit = scoreRoleFit(candidate, job);
@@ -206,19 +247,71 @@ function computeMatch(candidate: AnyRow, job: AnyRow) {
 
   if (distance !== null) {
     if (distance <= MAX_MATCH_DISTANCE_MILES) {
-      score += 12;
+      score += 10;
       reasons.push(`Candidate is within ${Math.round(distance)} miles.`);
     } else {
       score -= 35;
       reasons.push(`Candidate is ${Math.round(distance)} miles away, outside preferred radius.`);
     }
   } else if (candidate.location_text) {
-    score += 6;
+    score += 5;
     reasons.push("Candidate provided a local market or ZIP.");
   }
 
-  if (candidate.resume_url) {
+  const candidateText = getCandidateSearchText(candidate);
+  const jobText = [
+    job.title,
+    job.description,
+    job.public_description,
+    job.summary,
+    job.requirements,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (
+    candidateText.includes("dealership") ||
+    candidateText.includes("automotive") ||
+    candidateText.includes("car sales") ||
+    candidateText.includes("auto sales")
+  ) {
+    score += 12;
+    reasons.push("Candidate has automotive or dealership experience signal.");
+  }
+
+  if (jobText.includes("sales") && candidateText.includes("sales")) {
     score += 8;
+    reasons.push("Sales language aligns with the role.");
+  }
+
+  if (jobText.includes("service") && candidateText.includes("service")) {
+    score += 8;
+    reasons.push("Service language aligns with the role.");
+  }
+
+  if (
+    (jobText.includes("technician") || jobText.includes("tech")) &&
+    (candidateText.includes("technician") || candidateText.includes("tech"))
+  ) {
+    score += 10;
+    reasons.push("Technician language aligns with the role.");
+  }
+
+  const daysSinceUpdate = getDaysSince(candidate.updated_at);
+
+  if (daysSinceUpdate !== null) {
+    if (daysSinceUpdate <= 7) {
+      score += 8;
+      reasons.push("Candidate record was updated in the last week.");
+    } else if (daysSinceUpdate <= 30) {
+      score += 4;
+      reasons.push("Candidate record was updated in the last 30 days.");
+    }
+  }
+
+  if (candidate.resume_url) {
+    score += 7;
     reasons.push("Resume is available for review.");
   }
 
@@ -247,84 +340,86 @@ function computeMatch(candidate: AnyRow, job: AnyRow) {
     reasons.push(`Insufficient role-specific signal for ${roleFit.roleKey}.`);
   }
 
+  const contactCount = Number(candidate.contact_count || 0);
+
+  if (contactCount >= 6) {
+    score -= 18;
+    reasons.push("Candidate has high prior contact volume.");
+  } else if (contactCount >= 3) {
+    score -= 10;
+    reasons.push("Candidate has moderate prior contact volume.");
+  }
+
+  const daysSinceRejected = getDaysSince(candidate.last_rejected_at);
+
+  if (daysSinceRejected !== null) {
+    if (daysSinceRejected <= 7) {
+      score -= 25;
+      reasons.push("Candidate was rejected in the last 7 days.");
+    } else if (daysSinceRejected <= 30) {
+      score -= 12;
+      reasons.push("Candidate was rejected in the last 30 days.");
+    } else if (daysSinceRejected <= 90) {
+      score -= 5;
+      reasons.push("Candidate was rejected in the last 90 days.");
+    }
+  }
+
+  const inCooldown = isInCooldown(candidate);
+
+  if (inCooldown) {
+    score -= 40;
+    reasons.push("Candidate is inside an enforced cooldown window.");
+  }
+
+  if (normalize(candidate.availability_status) === "do_not_contact") {
+    score = 0;
+    reasons.push("Candidate is marked do-not-contact.");
+  }
+
+  if (normalize(candidate.availability_status) === "working_at_client") {
+    score = Math.min(score, 45);
+    reasons.push("Candidate is marked as working at a client dealership.");
+  }
+
   const fitScore = Math.max(0, Math.min(100, Math.round(score)));
+  const eligible =
+    fitScore >= MIN_MATCH_SCORE &&
+    !inCooldown &&
+    normalize(candidate.availability_status) !== "do_not_contact" &&
+    normalize(candidate.availability_status) !== "working_at_client";
 
   return {
     distance_miles: distance === null ? null : Math.round(distance * 10) / 10,
     fit_score: fitScore,
-    match_status: fitScore >= MIN_MATCH_SCORE ? "eligible" : "below_threshold",
+    match_status: eligible ? "eligible" : inCooldown ? "cooldown" : "below_threshold",
     match_reason: reasons.join(" "),
   };
 }
 
-function inferTargetRoles(formData: FormData) {
-  const explicit = clean(formData.get("target_roles"));
-  const role = clean(formData.get("role"));
-  const desiredRole = clean(formData.get("desired_role"));
+function inferTargetRolesFromApplication(application: AnyRow, job: AnyRow | null) {
+  const explicit = splitList(application.target_roles);
 
-  const raw = explicit || role || desiredRole;
+  if (explicit.length) return explicit.map((item) => item.toLowerCase());
 
-  if (!raw) return [];
+  const roleTitle = label(application.role || application.job_title || job?.title, "");
+  const roleKey = roleTitle ? getRoleKey(roleTitle) : "";
 
-  return raw
-    .split(/,|;|\n|\|/)
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
+  return roleKey ? [roleKey] : [];
 }
 
-function buildSearchText(input: {
-  name: string;
-  email: string;
-  phone: string;
-  location: string;
-  linkedin: string;
-  experienceSummary: string;
-  targetRoles: string[];
-}) {
-  return [
-    input.name,
-    input.email,
-    input.phone,
-    input.location,
-    input.linkedin,
-    input.experienceSummary,
-    ...input.targetRoles,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+function buildExperienceSummary(application: AnyRow, job: AnyRow | null, reason: string) {
+  return label(
+    application.experience_summary ||
+      application.screening_summary ||
+      application.cover_note ||
+      reason ||
+      application.decision_reason,
+    `Candidate previously applied for ${label(job?.title || application.role, "a dealership role")}.`,
+  );
 }
 
-async function uploadPublicFile(input: {
-  bucket: string;
-  file: File | null;
-  folder: string;
-}) {
-  const { bucket, file, folder } = input;
-
-  if (!file || file.size <= 0) return null;
-
-  const fileName = safeFileName(file.name || "upload");
-  const storagePath = `${folder}/${Date.now()}-${fileName}`;
-
-  const { error } = await supabaseAdmin.storage
-    .from(bucket)
-    .upload(storagePath, file, {
-      cacheControl: "3600",
-      upsert: false,
-      contentType: file.type || undefined,
-    });
-
-  if (error) {
-    console.error(`Failed to upload file to ${bucket}:`, error);
-    return null;
-  }
-
-  const { data } = supabaseAdmin.storage.from(bucket).getPublicUrl(storagePath);
-  return data.publicUrl || null;
-}
-
-async function syncCandidateMatches(candidate: AnyRow) {
+export async function syncCandidateMatches(candidate: AnyRow) {
   const { data: jobs, error } = await supabaseAdmin
     .schema("nata")
     .from("jobs")
@@ -366,243 +461,200 @@ async function syncCandidateMatches(candidate: AnyRow) {
   }
 }
 
-async function getJobIdsForRole(role: string) {
-  if (!role || role === "all") return null;
+export async function markCandidatePlacedFromApplication(applicationId: string) {
+  const { data: application, error } = await supabaseAdmin
+    .schema("nata")
+    .from("applications")
+    .select("*")
+    .eq("id", applicationId)
+    .maybeSingle();
 
-  const { data, error } = await supabaseAdmin
+  if (error || !application) {
+    console.error("Failed to load application for placed candidate protection:", error);
+    return;
+  }
+
+  const email = normalize(application.email || application.candidate_email);
+
+  if (!email) return;
+
+  const { error: updateError } = await supabaseAdmin
+    .schema("nata")
+    .from("candidates")
+    .update({
+      status: "placed",
+      availability_status: "working_at_client",
+      cooldown_until: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("email", email);
+
+  if (updateError) {
+    console.error("Failed to protect placed candidate:", updateError);
+  }
+}
+
+export async function returnApplicationToCandidatePool(input: {
+  applicationId: string;
+  source: CandidatePoolReturnSource;
+  reason: string;
+}) {
+  const { applicationId, source, reason } = input;
+
+  const { data: application, error: applicationError } = await supabaseAdmin
+    .schema("nata")
+    .from("applications")
+    .select("*")
+    .eq("id", applicationId)
+    .maybeSingle();
+
+  if (applicationError || !application) {
+    console.error("Failed to load application for candidate pool return:", applicationError);
+    return null;
+  }
+
+  const status = normalize(application.status);
+
+  if (PLACED_STATUSES.includes(status)) {
+    await markCandidatePlacedFromApplication(applicationId);
+    return null;
+  }
+
+  if (!POOL_RETURN_STATUSES.includes(status)) {
+    return null;
+  }
+
+  const email = normalize(application.email || application.candidate_email);
+
+  if (!email) return null;
+
+  const { data: job } = await supabaseAdmin
     .schema("nata")
     .from("jobs")
-    .select("id")
-    .eq("is_active", true)
-    .eq("publish_status", "published")
-    .is("filled_at", null)
-    .ilike("title", `%${role}%`);
+    .select("*")
+    .eq("id", application.job_id)
+    .maybeSingle();
+
+  const now = new Date().toISOString();
+  const cooldownUntil = addDays(getCooldownDays(status));
+  const targetRoles = inferTargetRolesFromApplication(application, job);
+  const experienceSummary = buildExperienceSummary(application, job, reason);
+
+  const { data: existingCandidate } = await supabaseAdmin
+    .schema("nata")
+    .from("candidates")
+    .select("id,contact_count,rejection_count")
+    .eq("email", email)
+    .maybeSingle();
+
+  const nextRejectionCount = Number(existingCandidate?.rejection_count || 0) + 1;
+
+  const { data: candidate, error: upsertError } = await supabaseAdmin
+    .schema("nata")
+    .from("candidates")
+    .upsert(
+      {
+        name: label(application.name || application.candidate_name || application.email, "Candidate"),
+        email,
+        phone: label(application.phone || application.candidate_phone, ""),
+        linkedin: application.linkedin || null,
+        location_text:
+          application.location_text ||
+          application.location ||
+          application.city ||
+          application.market ||
+          null,
+        resume_url:
+          application.resume_url ||
+          application.resume_public_url ||
+          application.resume_path ||
+          null,
+        profile_photo_url:
+          application.profile_photo_url ||
+          application.photo_url ||
+          application.candidate_photo_url ||
+          null,
+        target_roles: targetRoles,
+        experience_summary: experienceSummary,
+        status: "active",
+        availability_status: status === "no_show" ? "cooldown" : "available",
+        last_rejected_at: now,
+        cooldown_until: cooldownUntil,
+        rejection_count: nextRejectionCount,
+        search_text: [
+          application.name,
+          application.email,
+          application.phone,
+          application.linkedin,
+          application.location_text,
+          targetRoles.join(" "),
+          experienceSummary,
+          reason,
+          source,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase(),
+        updated_at: now,
+      },
+      { onConflict: "email" },
+    )
+    .select("*")
+    .single();
+
+  if (upsertError || !candidate) {
+    console.error("Failed to return application to candidate pool:", upsertError);
+    return null;
+  }
+
+  await syncCandidateMatches(candidate);
+
+  const existingReason = label(application.decision_reason, "");
+  const poolNote = `[Pool return: ${source}] ${reason}`;
+
+  const { error: noteError } = await supabaseAdmin
+    .schema("nata")
+    .from("applications")
+    .update({
+      decision_reason: existingReason ? `${existingReason}\n${poolNote}` : poolNote,
+    })
+    .eq("id", applicationId);
+
+  if (noteError) {
+    console.error("Failed to append candidate pool return note:", noteError);
+  }
+
+  return candidate;
+}
+
+export async function incrementCandidateContactByEmail(emailValue: string) {
+  const email = normalize(emailValue);
+
+  if (!email) return;
+
+  const { data: existing } = await supabaseAdmin
+    .schema("nata")
+    .from("candidates")
+    .select("contact_count")
+    .eq("email", email)
+    .maybeSingle();
+
+  const nextContactCount = Number(existing?.contact_count || 0) + 1;
+  const now = new Date().toISOString();
+
+  const { error } = await supabaseAdmin
+    .schema("nata")
+    .from("candidates")
+    .update({
+      last_contacted_at: now,
+      contact_count: nextContactCount,
+      cooldown_until: addDays(7),
+      availability_status: "contacted",
+      updated_at: now,
+    })
+    .eq("email", email);
 
   if (error) {
-    console.error("Failed to load role-filtered jobs:", error);
-    return [] as string[];
-  }
-
-  return (data || []).map((job) => String(job.id));
-}
-
-async function getCandidateIdsForSearch(search: string) {
-  const value = search.trim();
-  if (!value) return null;
-
-  const { data, error } = await supabaseAdmin
-    .schema("nata")
-    .from("candidates")
-    .select("id")
-    .textSearch("search_text", value, { type: "plain" })
-    .limit(5000);
-
-  if (!error) {
-    return (data || []).map((candidate) => String(candidate.id));
-  }
-
-  console.error("Candidate text search failed; falling back to ilike search:", error);
-
-  const safe = value.replace(/[%_]/g, "");
-  const pattern = `%${safe}%`;
-  const fallback = await supabaseAdmin
-    .schema("nata")
-    .from("candidates")
-    .select("id")
-    .or(`name.ilike.${pattern},email.ilike.${pattern},location_text.ilike.${pattern}`)
-    .limit(5000);
-
-  if (fallback.error) {
-    console.error("Candidate fallback search failed:", fallback.error);
-    return [] as string[];
-  }
-
-  return (fallback.data || []).map((candidate) => String(candidate.id));
-}
-
-export async function GET(req: Request) {
-  try {
-    const { searchParams } = new URL(req.url);
-
-    const limit = clampLimit(searchParams.get("limit"));
-    const offset = clampOffset(searchParams.get("offset"));
-    const role = normalizeText(searchParams.get("role") || "all");
-    const minScore = Number(searchParams.get("minScore") || MIN_MATCH_SCORE);
-    const search = String(searchParams.get("search") || "").trim();
-
-    const [roleJobIds, searchCandidateIds] = await Promise.all([
-      getJobIdsForRole(role),
-      getCandidateIdsForSearch(search),
-    ]);
-
-    if (roleJobIds && roleJobIds.length === 0) {
-      return NextResponse.json({ rows: [], pagination: { limit, offset, next: offset, hasMore: false } });
-    }
-
-    if (searchCandidateIds && searchCandidateIds.length === 0) {
-      return NextResponse.json({ rows: [], pagination: { limit, offset, next: offset, hasMore: false } });
-    }
-
-    let query = supabaseAdmin
-      .schema("nata")
-      .from("candidate_matches")
-      .select("*")
-      .eq("match_status", "eligible")
-      .gte("fit_score", Number.isFinite(minScore) ? minScore : MIN_MATCH_SCORE)
-      .order("fit_score", { ascending: false })
-      .order("updated_at", { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (roleJobIds) {
-      query = query.in("job_id", roleJobIds);
-    }
-
-    if (searchCandidateIds) {
-      query = query.in("candidate_id", searchCandidateIds);
-    }
-
-    const { data: matches, error: matchError } = await query;
-
-    if (matchError) {
-      console.error("Candidate pool GET match query failed:", matchError);
-      return NextResponse.json({ error: "Failed to load candidate matches." }, { status: 500 });
-    }
-
-    const candidateIds = Array.from(new Set((matches || []).map((match) => String(match.candidate_id))));
-    const jobIds = Array.from(new Set((matches || []).map((match) => String(match.job_id))));
-
-    const [candidateResult, jobResult] = await Promise.all([
-      candidateIds.length
-        ? supabaseAdmin.schema("nata").from("candidates").select("*").in("id", candidateIds)
-        : Promise.resolve({ data: [], error: null }),
-      jobIds.length
-        ? supabaseAdmin.schema("nata").from("jobs").select("*").in("id", jobIds)
-        : Promise.resolve({ data: [], error: null }),
-    ]);
-
-    if (candidateResult.error) {
-      console.error("Candidate pool GET candidate query failed:", candidateResult.error);
-    }
-
-    if (jobResult.error) {
-      console.error("Candidate pool GET job query failed:", jobResult.error);
-    }
-
-    const candidatesById = new Map((candidateResult.data || []).map((candidate: AnyRow) => [String(candidate.id), candidate]));
-    const jobsById = new Map((jobResult.data || []).map((job: AnyRow) => [String(job.id), job]));
-
-    const rows = (matches || []).map((match) => ({
-      match,
-      candidate: candidatesById.get(String(match.candidate_id)) || null,
-      job: jobsById.get(String(match.job_id)) || null,
-    }));
-
-    return NextResponse.json({
-      rows,
-      pagination: {
-        limit,
-        offset,
-        next: offset + limit,
-        hasMore: (matches || []).length === limit,
-      },
-    });
-  } catch (error) {
-    console.error("Candidate pool GET failed:", error);
-    return NextResponse.json({ error: "Unexpected candidate pool query error." }, { status: 500 });
-  }
-}
-
-export async function POST(req: Request) {
-  try {
-    const formData = await req.formData();
-
-    const name = clean(formData.get("name"));
-    const email = clean(formData.get("email")).toLowerCase();
-    const phone = clean(formData.get("phone"));
-    const location = clean(formData.get("location"));
-    const linkedin = clean(formData.get("linkedin"));
-    const experienceSummary = clean(formData.get("experience_summary"));
-    const targetRoles = inferTargetRoles(formData);
-
-    const resume = getFile(formData, ["resume", "resume_file"]);
-    const profilePhoto = getFile(formData, [
-      "profile_photo",
-      "profilePhoto",
-      "photo",
-      "candidate_photo",
-    ]);
-
-    if (!name || !email || !phone) {
-      return NextResponse.json(
-        { error: "Name, email, and phone are required." },
-        { status: 400 },
-      );
-    }
-
-    const uploadFolder = email.replace(/[^a-z0-9]+/g, "-");
-
-    const [resumeUrl, profilePhotoUrl] = await Promise.all([
-      uploadPublicFile({
-        bucket: RESUME_BUCKET,
-        file: resume,
-        folder: uploadFolder,
-      }),
-      uploadPublicFile({
-        bucket: PHOTO_BUCKET,
-        file: profilePhoto,
-        folder: uploadFolder,
-      }),
-    ]);
-
-    const searchText = buildSearchText({
-      name,
-      email,
-      phone,
-      location,
-      linkedin,
-      experienceSummary,
-      targetRoles,
-    });
-
-    const { data: candidate, error: insertError } = await supabaseAdmin
-      .schema("nata")
-      .from("candidates")
-      .insert({
-        name,
-        email,
-        phone,
-        linkedin: linkedin || null,
-        location_text: location || null,
-        resume_url: resumeUrl,
-        profile_photo_url: profilePhotoUrl,
-        target_roles: targetRoles,
-        experience_summary: experienceSummary || null,
-        search_text: searchText,
-        status: "active",
-      })
-      .select("*")
-      .single();
-
-    if (insertError || !candidate) {
-      console.error("Insert failed:", insertError);
-      return NextResponse.json(
-        { error: "Failed to submit candidate." },
-        { status: 500 },
-      );
-    }
-
-    await syncCandidateMatches(candidate);
-
-    return NextResponse.redirect(
-      new URL(`/careers/thank-you?candidateId=${candidate.id}`, req.url),
-      { status: 303 },
-    );
-  } catch (error) {
-    console.error("Candidate pool route failed:", error);
-
-    return NextResponse.json(
-      { error: "Unexpected candidate submission error." },
-      { status: 500 },
-    );
+    console.error("Failed to increment candidate contact count:", error);
   }
 }
