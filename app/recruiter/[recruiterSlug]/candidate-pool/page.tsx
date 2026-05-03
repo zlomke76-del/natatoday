@@ -44,20 +44,24 @@ type Recruiter = {
 };
 
 type ApplicationHistory = {
-  id?: string;
+  id: string;
   email: string | null;
   status: string | null;
   job_id: string | null;
-  current_employer?: string | null;
-  current_dealer_slug?: string | null;
+  created_at: string | null;
 };
 
 type CandidateFlags = {
   isPriorApplicant: boolean;
   isPlaced: boolean;
+  isRecentlyPlaced: boolean;
+  isStalePlaced: boolean;
   isAtClientDealership: boolean;
-  currentClientDealers: string[];
+  recentClientDealerSlugs: string[];
+  recentClientDealers: string[];
+  stalePlacedDealers: string[];
   priorStatuses: string[];
+  latestPlacedAt: string | null;
 };
 
 type CandidatePoolRow = {
@@ -71,6 +75,7 @@ type CandidatePoolRow = {
 
 const MIN_VISIBLE_MATCH_SCORE = 70;
 const MAX_VISIBLE_MATCHES = 5;
+const PLACEMENT_DECAY_YEARS = 2;
 
 const placedStatuses = [
   "placed",
@@ -100,6 +105,39 @@ function displayDealerName(value: string) {
     .join(" ");
 }
 
+function isPlacedStatus(value: unknown) {
+  return placedStatuses.includes(normalize(value));
+}
+
+function parseDate(value: unknown) {
+  if (!value || typeof value !== "string") return null;
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isOlderThanDecayWindow(value: unknown) {
+  const date = parseDate(value);
+
+  if (!date) return false;
+
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - PLACEMENT_DECAY_YEARS);
+
+  return date < cutoff;
+}
+
+function formatShortDate(value: unknown) {
+  const date = parseDate(value);
+
+  if (!date) return "date unknown";
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
 async function getRecruiter(recruiterSlug: string) {
   const { data, error } = await supabaseAdmin
     .schema("nata")
@@ -119,7 +157,7 @@ async function getApplicationHistory() {
   const { data, error } = await supabaseAdmin
     .schema("nata")
     .from("applications")
-    .select("id,email,status,job_id");
+    .select("id,email,status,job_id,created_at");
 
   if (error) {
     console.error("Failed to load application history:", error);
@@ -180,7 +218,7 @@ async function getHistoryJobs(history: ApplicationHistory[]) {
     return new Map<string, Job>();
   }
 
-  return new Map((data || []).map((job) => [String(job.id), job as Job]));
+  return new Map<string, Job>((data || []).map((job: any) => [String(job.id), job as Job]));
 }
 
 function buildCandidateFlags(input: {
@@ -201,26 +239,45 @@ function buildCandidateFlags(input: {
     ),
   );
 
-  const currentClientDealers = Array.from(
+  const placedApps = priorApps.filter((item) => isPlacedStatus(item.status));
+  const recentPlacedApps = placedApps.filter(
+    (item) => !isOlderThanDecayWindow(item.created_at),
+  );
+  const stalePlacedApps = placedApps.filter((item) =>
+    isOlderThanDecayWindow(item.created_at),
+  );
+
+  const latestPlacedAt = placedApps
+    .map((item) => item.created_at)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || null;
+
+  const recentClientDealerSlugs = Array.from(
     new Set(
-      priorApps
+      recentPlacedApps
         .map((item) => {
-          const directDealer =
-            normalize(item.current_dealer_slug) ||
-            normalize(item.current_employer);
-
-          if (directDealer && clientDealers.has(directDealer)) {
-            return clientDealers.get(directDealer) || displayDealerName(directDealer);
-          }
-
           const job = item.job_id ? historyJobsById.get(String(item.job_id)) : null;
-          const jobDealerSlug = normalize(job?.dealer_slug);
+          const slug = normalize(job?.dealer_slug);
+          return slug && clientDealers.has(slug) ? slug : "";
+        })
+        .filter(Boolean),
+    ),
+  );
 
-          if (jobDealerSlug && clientDealers.has(jobDealerSlug)) {
-            return clientDealers.get(jobDealerSlug) || displayDealerName(jobDealerSlug);
-          }
+  const recentClientDealers = recentClientDealerSlugs.map(
+    (slug) => clientDealers.get(slug) || displayDealerName(slug),
+  );
 
-          return "";
+  const stalePlacedDealers = Array.from(
+    new Set(
+      stalePlacedApps
+        .map((item) => {
+          const job = item.job_id ? historyJobsById.get(String(item.job_id)) : null;
+          const slug = normalize(job?.dealer_slug);
+          return slug
+            ? clientDealers.get(slug) || displayDealerName(slug)
+            : "Prior placement";
         })
         .filter(Boolean),
     ),
@@ -228,12 +285,71 @@ function buildCandidateFlags(input: {
 
   return {
     isPriorApplicant: priorApps.length > 0,
-    isPlaced:
-      normalize(candidate.status) === "placed" ||
-      priorApps.some((item) => placedStatuses.includes(normalize(item.status))),
-    isAtClientDealership: currentClientDealers.length > 0,
-    currentClientDealers,
+    isPlaced: placedApps.length > 0 || normalize(candidate.status) === "placed",
+    isRecentlyPlaced:
+      recentPlacedApps.length > 0 || normalize(candidate.status) === "placed",
+    isStalePlaced: stalePlacedApps.length > 0 && recentPlacedApps.length === 0,
+    isAtClientDealership: recentClientDealerSlugs.length > 0,
+    recentClientDealerSlugs,
+    recentClientDealers,
+    stalePlacedDealers,
     priorStatuses,
+    latestPlacedAt,
+  };
+}
+
+function getMatchProtection(job: Job | null, flags: CandidateFlags) {
+  const targetDealerSlug = normalize(job?.dealer_slug);
+  const sameRooftop = Boolean(
+    targetDealerSlug && flags.recentClientDealerSlugs.includes(targetDealerSlug),
+  );
+
+  if (sameRooftop) {
+    return {
+      relationshipFlag: "same_rooftop_block",
+      blocked: true,
+      overrideAllowed: false,
+      label: "Same rooftop blocked",
+      note: "Dealer Protection Mode blocked this candidate because the match is tied to the same current client rooftop.",
+    };
+  }
+
+  if (flags.isAtClientDealership) {
+    return {
+      relationshipFlag: "client_conflict",
+      blocked: false,
+      overrideAllowed: true,
+      label: "Override required",
+      note: "Candidate has a recent current-client placement relationship. Don can override after review.",
+    };
+  }
+
+  if (flags.isStalePlaced) {
+    return {
+      relationshipFlag: "stale_placement",
+      blocked: false,
+      overrideAllowed: false,
+      label: "Time-decayed placement",
+      note: `Placement history is older than ${PLACEMENT_DECAY_YEARS} years and is downgraded to advisory risk.`,
+    };
+  }
+
+  if (flags.isPriorApplicant || flags.isPlaced) {
+    return {
+      relationshipFlag: "prior_history",
+      blocked: false,
+      overrideAllowed: false,
+      label: "History flag",
+      note: "Candidate has prior NATA history; application may proceed with a history note.",
+    };
+  }
+
+  return {
+    relationshipFlag: "",
+    blocked: false,
+    overrideAllowed: false,
+    label: "Clear",
+    note: "No relationship guardrail triggered.",
   };
 }
 
@@ -296,7 +412,7 @@ async function getCandidatePool() {
     console.error("Failed to load matched jobs:", jobError);
   }
 
-  const jobsById = new Map((jobs || []).map((job) => [job.id, job as Job]));
+  const jobsById = new Map<string, Job>((jobs || []).map((job: any) => [String(job.id), job as Job]));
   const matchesByCandidate = new Map<string, Match[]>();
 
   for (const match of (matches || []) as Match[]) {
@@ -334,6 +450,7 @@ export default async function RecruiterCandidatePoolPage({
 }) {
   const recruiter = await getRecruiter(params.recruiterSlug);
   const rows = await getCandidatePool();
+  const isDon = normalize(params.recruiterSlug) === "don";
 
   async function createApplicationFromMatch(formData: FormData) {
     "use server";
@@ -342,14 +459,23 @@ export default async function RecruiterCandidatePoolPage({
     const jobId = clean(formData.get("job_id"));
     const matchId = clean(formData.get("match_id"));
     const relationshipFlag = clean(formData.get("relationship_flag"));
+    const overrideRelationship = clean(formData.get("override_relationship")) === "yes";
+    const recruiterSlug = clean(formData.get("recruiter_slug"));
+    const isDonOverride = normalize(recruiterSlug) === "don";
 
     if (!candidateId || !jobId) {
       throw new Error("Candidate and job are required.");
     }
 
-    if (relationshipFlag === "client_conflict") {
+    if (relationshipFlag === "same_rooftop_block") {
       throw new Error(
-        "Candidate is flagged as working with a current client dealership. Recruiter approval workflow is required before creating a new application.",
+        "Dealer Protection Mode blocked this match because the candidate is tied to the same current client rooftop.",
+      );
+    }
+
+    if (relationshipFlag === "client_conflict" && (!overrideRelationship || !isDonOverride)) {
+      throw new Error(
+        "Recruiter override is required before creating an application for a current-client dealership conflict.",
       );
     }
 
@@ -381,6 +507,26 @@ export default async function RecruiterCandidatePoolPage({
       .eq("email", candidate.email)
       .limit(1);
 
+    const decisionReasonParts = ["Created from NATA candidate pool match."];
+
+    if (relationshipFlag === "client_conflict") {
+      decisionReasonParts.push(
+        "Recruiter override applied by Don for current-client dealership relationship. Same-rooftop protection was not triggered.",
+      );
+    }
+
+    if (relationshipFlag === "stale_placement") {
+      decisionReasonParts.push(
+        `Prior placement history is older than ${PLACEMENT_DECAY_YEARS} years and treated as advisory risk.`,
+      );
+    }
+
+    if (relationshipFlag === "prior_history") {
+      decisionReasonParts.push(
+        "Candidate has prior application or placement history; recruiter review required before outreach.",
+      );
+    }
+
     if (!existing?.length) {
       const { error: insertError } = await supabaseAdmin
         .schema("nata")
@@ -397,10 +543,7 @@ export default async function RecruiterCandidatePoolPage({
           screening_status: "new",
           virtual_interview_status: "not_scheduled",
           fit_score: Number(clean(formData.get("fit_score"))) || null,
-          decision_reason:
-            relationshipFlag === "prior_history"
-              ? "Created from NATA candidate pool match. Candidate has prior application or placement history; recruiter review required before outreach."
-              : "Created from NATA candidate pool match.",
+          decision_reason: decisionReasonParts.join(" "),
           assigned_recruiter: recruiter?.name || params.recruiterSlug,
           recruiter_id: recruiter?.id || null,
         });
@@ -451,8 +594,9 @@ export default async function RecruiterCandidatePoolPage({
             <div style={guardrailTitleStyle}>Safeguards active</div>
             <div style={guardrailTextStyle}>
               Prior applicants and placed candidates are classified instead of
-              hidden. Current client-dealership conflicts are flagged and gated
-              before a new application can be created.
+              hidden. Same-rooftop matches are auto-blocked. Don can override
+              non-rooftop current-client conflicts after review. Placements older
+              than {PLACEMENT_DECAY_YEARS} years are downgraded to advisory risk.
             </div>
           </div>
         </div>
@@ -464,7 +608,7 @@ export default async function RecruiterCandidatePoolPage({
             value={rows.filter((row) => row.matches.length > 0).length}
           />
           <Stat
-            label="Relationship flags"
+            label="Guardrail flags"
             value={
               rows.filter(
                 (row) =>
@@ -519,8 +663,12 @@ export default async function RecruiterCandidatePoolPage({
                         <span style={warningPillStyle}>Prior applicant</span>
                       ) : null}
 
-                      {flags.isPlaced ? (
-                        <span style={dangerPillStyle}>Previously placed</span>
+                      {flags.isRecentlyPlaced ? (
+                        <span style={dangerPillStyle}>Recent placement</span>
+                      ) : null}
+
+                      {flags.isStalePlaced ? (
+                        <span style={decayPillStyle}>2+ year decay</span>
                       ) : null}
 
                       {flags.isAtClientDealership ? (
@@ -533,9 +681,17 @@ export default async function RecruiterCandidatePoolPage({
                     {flags.isAtClientDealership ? (
                       <div style={conflictNoticeStyle}>
                         Candidate appears connected to{" "}
-                        {flags.currentClientDealers.join(", ")}. Create
-                        application is gated until recruiter approval workflow is
-                        added.
+                        {flags.recentClientDealers.join(", ")}. Same-rooftop
+                        matches are blocked. Other client conflicts require Don
+                        override before application creation.
+                      </div>
+                    ) : flags.isStalePlaced ? (
+                      <div style={decayNoticeStyle}>
+                        Prior placement from {formatShortDate(flags.latestPlacedAt)}
+                        {flags.stalePlacedDealers.length
+                          ? ` (${flags.stalePlacedDealers.join(", ")})`
+                          : ""} is older than {PLACEMENT_DECAY_YEARS} years and
+                        downgraded to advisory risk.
                       </div>
                     ) : flags.isPriorApplicant || flags.isPlaced ? (
                       <div style={historyNoticeStyle}>
@@ -586,12 +742,8 @@ export default async function RecruiterCandidatePoolPage({
                   ) : (
                     <div style={{ display: "grid", gap: 10 }}>
                       {matches.map(({ match, job }) => {
-                        const blocked = flags.isAtClientDealership;
-                        const relationshipFlag = flags.isAtClientDealership
-                          ? "client_conflict"
-                          : flags.isPriorApplicant || flags.isPlaced
-                            ? "prior_history"
-                            : "";
+                        const protection = getMatchProtection(job, flags);
+                        const canOverride = protection.overrideAllowed && isDon;
 
                         return (
                           <div key={match.id} style={matchCardStyle}>
@@ -613,6 +765,19 @@ export default async function RecruiterCandidatePoolPage({
                                   {match.match_reason}
                                 </div>
                               ) : null}
+                              {protection.relationshipFlag ? (
+                                <div
+                                  style={
+                                    protection.blocked
+                                      ? conflictInlineStyle
+                                      : protection.relationshipFlag === "stale_placement"
+                                        ? decayInlineStyle
+                                        : warningInlineStyle
+                                  }
+                                >
+                                  {protection.label}: {protection.note}
+                                </div>
+                              ) : null}
                             </div>
 
                             <div style={matchScoreWrapStyle}>
@@ -625,7 +790,7 @@ export default async function RecruiterCandidatePoolPage({
                                   : "distance n/a"}
                               </span>
 
-                              <form action={createApplicationFromMatch}>
+                              <form action={createApplicationFromMatch} style={formStackStyle}>
                                 <input
                                   type="hidden"
                                   name="candidate_id"
@@ -649,22 +814,45 @@ export default async function RecruiterCandidatePoolPage({
                                 <input
                                   type="hidden"
                                   name="relationship_flag"
-                                  value={relationshipFlag}
+                                  value={protection.relationshipFlag}
                                 />
+                                <input
+                                  type="hidden"
+                                  name="recruiter_slug"
+                                  value={params.recruiterSlug}
+                                />
+
+                                {canOverride ? (
+                                  <label style={overrideLabelStyle}>
+                                    <input
+                                      type="checkbox"
+                                      name="override_relationship"
+                                      value="yes"
+                                    />
+                                    Don override reviewed
+                                  </label>
+                                ) : null}
+
                                 <button
                                   type="submit"
-                                  disabled={blocked}
+                                  disabled={protection.blocked}
                                   style={
-                                    blocked
+                                    protection.blocked
                                       ? disabledButtonStyle
-                                      : primaryButtonStyle
+                                      : canOverride
+                                        ? overrideButtonStyle
+                                        : primaryButtonStyle
                                   }
                                 >
-                                  {blocked
-                                    ? "Conflict — review required"
-                                    : relationshipFlag === "prior_history"
-                                      ? "Create with history flag"
-                                      : "Create application"}
+                                  {protection.blocked
+                                    ? "Same rooftop blocked"
+                                    : canOverride
+                                      ? "Override + create"
+                                      : protection.relationshipFlag === "stale_placement"
+                                        ? "Create — time-decayed"
+                                        : protection.relationshipFlag === "prior_history"
+                                          ? "Create with history flag"
+                                          : "Create application"}
                                 </button>
                               </form>
                             </div>
@@ -901,6 +1089,16 @@ const dangerPillStyle: React.CSSProperties = {
   fontWeight: 950,
 };
 
+const decayPillStyle: React.CSSProperties = {
+  padding: "6px 9px",
+  borderRadius: 999,
+  background: "rgba(14,165,233,0.12)",
+  border: "1px solid rgba(125,211,252,0.3)",
+  color: "#bae6fd",
+  fontSize: 12,
+  fontWeight: 950,
+};
+
 const conflictPillStyle: React.CSSProperties = {
   padding: "6px 9px",
   borderRadius: 999,
@@ -918,6 +1116,18 @@ const historyNoticeStyle: React.CSSProperties = {
   background: "rgba(250,204,21,0.08)",
   border: "1px solid rgba(250,204,21,0.18)",
   color: "#fde68a",
+  fontSize: 12,
+  lineHeight: 1.45,
+  fontWeight: 750,
+};
+
+const decayNoticeStyle: React.CSSProperties = {
+  marginTop: 10,
+  padding: "10px 12px",
+  borderRadius: 14,
+  background: "rgba(14,165,233,0.08)",
+  border: "1px solid rgba(125,211,252,0.18)",
+  color: "#bae6fd",
   fontSize: 12,
   lineHeight: 1.45,
   fontWeight: 750,
@@ -967,6 +1177,17 @@ const primaryButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+const overrideButtonStyle: React.CSSProperties = {
+  minHeight: 36,
+  padding: "0 12px",
+  borderRadius: 999,
+  border: "1px solid rgba(250,204,21,0.45)",
+  background: "rgba(250,204,21,0.2)",
+  color: "#fef3c7",
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
 const disabledButtonStyle: React.CSSProperties = {
   minHeight: 36,
   padding: "0 12px",
@@ -976,6 +1197,21 @@ const disabledButtonStyle: React.CSSProperties = {
   color: "#cbd5e1",
   fontWeight: 950,
   cursor: "not-allowed",
+};
+
+const formStackStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 7,
+  justifyItems: "end",
+};
+
+const overrideLabelStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  color: "#fde68a",
+  fontSize: 11,
+  fontWeight: 900,
 };
 
 const matchSectionStyle: React.CSSProperties = {
@@ -1027,11 +1263,32 @@ const reasonStyle: React.CSSProperties = {
   lineHeight: 1.45,
 };
 
+const warningInlineStyle: React.CSSProperties = {
+  color: "#fde68a",
+  marginTop: 8,
+  fontSize: 12,
+  lineHeight: 1.45,
+};
+
+const decayInlineStyle: React.CSSProperties = {
+  color: "#bae6fd",
+  marginTop: 8,
+  fontSize: 12,
+  lineHeight: 1.45,
+};
+
+const conflictInlineStyle: React.CSSProperties = {
+  color: "#fecaca",
+  marginTop: 8,
+  fontSize: 12,
+  lineHeight: 1.45,
+};
+
 const matchScoreWrapStyle: React.CSSProperties = {
   display: "grid",
   justifyItems: "end",
   gap: 6,
-  minWidth: 150,
+  minWidth: 190,
 };
 
 const scoreStyle: React.CSSProperties = {
