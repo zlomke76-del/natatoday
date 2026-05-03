@@ -419,22 +419,6 @@ function buildExperienceSummary(application: AnyRow, job: AnyRow | null, reason:
   );
 }
 
-export async function syncCandidateMatches(candidate: AnyRow) {
-  const { data: jobs, error } = await supabaseAdmin
-    .schema("nata")
-    .from("jobs")
-    .select(
-      "id,title,location,public_location,public_dealer_name,dealer_slug,is_active,publish_status,publish_mode,filled_at,latitude,longitude",
-    )
-    .eq("is_active", true)
-    .eq("publish_status", "published")
-    .is("filled_at", null);
-
-  if (error) {
-    console.error("Failed to load jobs for candidate matching:", error);
-    return;
-  }
-
   const rows = ((jobs || []) as AnyRow[]).map((job) => {
     const match = computeMatch(candidate, job);
 
