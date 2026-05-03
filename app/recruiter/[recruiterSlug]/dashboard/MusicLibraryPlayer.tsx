@@ -37,21 +37,18 @@ export default function MusicLibraryPlayer({ tracks }: Props) {
 
     if (!normalized) return tracks;
 
-    return tracks.filter((track) => {
-      return [
-        track.title,
-        cleanTitle(track.file),
-        track.artist,
-        track.mood,
-      ]
+    return tracks.filter((track) =>
+      [track.title, cleanTitle(track.file), track.artist, track.mood]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
-        .includes(normalized);
-    });
+        .includes(normalized),
+    );
   }, [query, tracks]);
 
   async function playTrack(index: number) {
+    if (index < 0 || index >= tracks.length) return;
+
     setCurrentIndex(index);
     setPlaying(true);
 
@@ -89,7 +86,7 @@ export default function MusicLibraryPlayer({ tracks }: Props) {
     void playTrack(previous);
   }
 
-  if (!tracks.length) return null;
+  if (!tracks.length || !currentTrack) return null;
 
   return (
     <section style={shell}>
@@ -116,19 +113,19 @@ export default function MusicLibraryPlayer({ tracks }: Props) {
             {currentTrack.title || cleanTitle(currentTrack.file)}
           </strong>
           <p style={trackMeta}>
-            {currentTrack.artist || "NATA Today"}{" "}
-            {currentTrack.mood ? `· ${currentTrack.mood}` : ""}
+            {currentTrack.artist || "NATA Today"}
+            {currentTrack.mood ? ` · ${currentTrack.mood}` : ""}
           </p>
         </div>
 
         <div style={controls}>
-          <button type="button" onClick={previousTrack} style={controlButton}>
+          <button type="button" onClick={previousTrack} style={controlButton} aria-label="Previous track">
             ‹
           </button>
           <button type="button" onClick={togglePlay} style={playButton}>
             {playing ? "Pause" : "Play"}
           </button>
-          <button type="button" onClick={nextTrack} style={controlButton}>
+          <button type="button" onClick={nextTrack} style={controlButton} aria-label="Next track">
             ›
           </button>
         </div>
@@ -177,6 +174,10 @@ export default function MusicLibraryPlayer({ tracks }: Props) {
               );
             })}
           </div>
+
+          {filteredTracks.length === 0 ? (
+            <div style={emptyState}>No tracks match that search.</div>
+          ) : null}
         </div>
       ) : null}
     </section>
@@ -362,4 +363,12 @@ const trackName: React.CSSProperties = {
 const trackSub: React.CSSProperties = {
   color: "#9fb4d6",
   fontSize: 12,
+};
+
+const emptyState: React.CSSProperties = {
+  padding: 16,
+  borderRadius: 16,
+  border: "1px dashed rgba(148,163,184,0.25)",
+  background: "rgba(148,163,184,0.06)",
+  color: "#9fb4d6",
 };
