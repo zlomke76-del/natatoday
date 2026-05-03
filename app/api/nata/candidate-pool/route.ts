@@ -1,5 +1,3 @@
-// app/api/nata/candidate-pool/route.ts
-
 import { NextResponse } from "next/server";
 import {
   returnApplicationToCandidatePool,
@@ -9,6 +7,7 @@ import {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+
     const { applicationId, source, reason } = body || {};
 
     if (!applicationId) {
