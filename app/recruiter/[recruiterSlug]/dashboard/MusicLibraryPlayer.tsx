@@ -1,17 +1,27 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type MusicTrack = {
+  id: string;
   title: string;
   artist?: string;
-  file: string;
   mood?: string;
+  category?: string;
+  url: string;
 };
 
 type Props = {
   tracks: MusicTrack[];
 };
+
+type PlayerSnapshot = {
+  trackId?: string;
+  time?: number;
+  volume?: number;
+};
+
+const PLAYER_STORAGE_KEY = "nata-music-player-state";
 
 function cleanTitle(value: string) {
   return value
@@ -23,44 +33,128 @@ function cleanTitle(value: string) {
     .trim();
 }
 
+function safeTrackTitle(track: MusicTrack | undefined) {
+  if (!track) return "No track selected";
+  return track.title || cleanTitle(track.url.split("/").pop() || "Untitled track");
+}
+
+function readSnapshot(): PlayerSnapshot {
+  if (typeof window === "undefined") return {};
+
+  try {
+    return JSON.parse(window.localStorage.getItem(PLAYER_STORAGE_KEY) || "{}") as PlayerSnapshot;
+  } catch {
+    return {};
+  }
+}
+
+function writeSnapshot(snapshot: PlayerSnapshot) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(snapshot));
+}
+
 export default function MusicLibraryPlayer({ tracks }: Props) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [library, setLibrary] = useState<MusicTrack[]>(tracks || []);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [status, setStatus] = useState("");
+  const [volume, setVolume] = useState(0.85);
 
-  const currentTrack = tracks[currentIndex] || tracks[0];
+  const currentTrack = library[currentIndex] || library[0];
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadDynamicTracks() {
+      try {
+        const response = await fetch("/api/nata/music/tracks", { cache: "no-store" });
+        const result = await response.json();
+        const nextTracks = Array.isArray(result.tracks) ? (result.tracks as MusicTrack[]) : [];
+
+        if (!active || !nextTracks.length) return;
+
+        setLibrary(nextTracks);
+
+        const snapshot = readSnapshot();
+        if (snapshot.trackId) {
+          const savedIndex = nextTracks.findIndex((track) => track.id === snapshot.trackId);
+          if (savedIndex >= 0) setCurrentIndex(savedIndex);
+        }
+
+        if (typeof snapshot.volume === "number") {
+          setVolume(snapshot.volume);
+        }
+
+        setStatus(result.synced ? "Library refreshed from Supabase." : "");
+      } catch (error) {
+        console.error("Failed to refresh music library:", error);
+        setStatus("Using last loaded music library.");
+      }
+    }
+
+    void loadDynamicTracks();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!audioRef.current) return;
+    audioRef.current.volume = volume;
+    writeSnapshot({ trackId: currentTrack?.id, time: audioRef.current.currentTime || 0, volume });
+  }, [volume, currentTrack?.id]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !currentTrack) return;
+
+    const snapshot = readSnapshot();
+    if (snapshot.trackId === currentTrack.id && typeof snapshot.time === "number") {
+      const restoreTime = Math.max(0, snapshot.time);
+      const restore = () => {
+        if (Number.isFinite(audio.duration) && restoreTime < audio.duration) {
+          audio.currentTime = restoreTime;
+        }
+      };
+
+      audio.addEventListener("loadedmetadata", restore, { once: true });
+      return () => audio.removeEventListener("loadedmetadata", restore);
+    }
+  }, [currentTrack?.id]);
 
   const filteredTracks = useMemo(() => {
     const normalized = query.trim().toLowerCase();
 
-    if (!normalized) return tracks;
+    if (!normalized) return library;
 
-    return tracks.filter((track) =>
-      [track.title, cleanTitle(track.file), track.artist, track.mood]
+    return library.filter((track) => {
+      return [track.title, track.artist, track.mood, track.category, track.url]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
-        .includes(normalized),
-    );
-  }, [query, tracks]);
+        .includes(normalized);
+    });
+  }, [query, library]);
 
   async function playTrack(index: number) {
-    if (index < 0 || index >= tracks.length) return;
-
     setCurrentIndex(index);
     setPlaying(true);
+    setStatus("");
 
     window.setTimeout(() => {
       void audioRef.current?.play().catch(() => {
         setPlaying(false);
+        setStatus("Press play to start audio.");
       });
     }, 25);
   }
 
   async function togglePlay() {
-    if (!audioRef.current) return;
+    if (!audioRef.current || !currentTrack) return;
 
     if (playing) {
       audioRef.current.pause();
@@ -71,22 +165,43 @@ export default function MusicLibraryPlayer({ tracks }: Props) {
     try {
       await audioRef.current.play();
       setPlaying(true);
+      setStatus("");
     } catch {
       setPlaying(false);
+      setStatus("Audio could not start automatically. Try pressing play again.");
     }
   }
 
   function nextTrack() {
-    const next = currentIndex + 1 >= tracks.length ? 0 : currentIndex + 1;
+    if (!library.length) return;
+    const next = currentIndex + 1 >= library.length ? 0 : currentIndex + 1;
     void playTrack(next);
   }
 
   function previousTrack() {
-    const previous = currentIndex - 1 < 0 ? tracks.length - 1 : currentIndex - 1;
+    if (!library.length) return;
+    const previous = currentIndex - 1 < 0 ? library.length - 1 : currentIndex - 1;
     void playTrack(previous);
   }
 
-  if (!tracks.length || !currentTrack) return null;
+  function persistProgress() {
+    if (!audioRef.current || !currentTrack) return;
+    writeSnapshot({
+      trackId: currentTrack.id,
+      time: audioRef.current.currentTime || 0,
+      volume,
+    });
+  }
+
+  if (!library.length) {
+    return (
+      <section style={shell}>
+        <div style={kicker}>Custom Music Library</div>
+        <h2 style={title}>Music library waiting for tracks</h2>
+        <p style={copy}>Upload MP3 files to the Supabase bucket and add or sync records in nata.music_tracks.</p>
+      </section>
+    );
+  }
 
   return (
     <section style={shell}>
@@ -95,13 +210,12 @@ export default function MusicLibraryPlayer({ tracks }: Props) {
           <div style={kicker}>Custom Music Library</div>
           <h2 style={title}>Recruiter workspace soundtrack</h2>
           <p style={copy}>
-            Play uploaded NATA audio tracks while working through candidates,
-            interviews, communications, and dealer follow-up.
+            Supabase-backed audio library. Add songs to the bucket and the player refreshes without a redeploy.
           </p>
         </div>
 
         <button type="button" onClick={() => setOpen(!open)} style={expandButton}>
-          {open ? "Collapse library" : `Expand library · ${tracks.length}`}
+          {open ? "Collapse library" : `Expand library · ${library.length}`}
         </button>
       </div>
 
@@ -109,12 +223,11 @@ export default function MusicLibraryPlayer({ tracks }: Props) {
         <div style={albumMark}>♪</div>
 
         <div style={{ minWidth: 0 }}>
-          <strong style={trackTitle}>
-            {currentTrack.title || cleanTitle(currentTrack.file)}
-          </strong>
+          <strong style={trackTitle}>{safeTrackTitle(currentTrack)}</strong>
           <p style={trackMeta}>
-            {currentTrack.artist || "NATA Today"}
-            {currentTrack.mood ? ` · ${currentTrack.mood}` : ""}
+            {currentTrack?.artist || "NATA Today"}
+            {currentTrack?.mood ? ` · ${currentTrack.mood}` : ""}
+            {currentTrack?.category ? ` · ${currentTrack.category}` : ""}
           </p>
         </div>
 
@@ -133,13 +246,32 @@ export default function MusicLibraryPlayer({ tracks }: Props) {
 
       <audio
         ref={audioRef}
-        src={`/audio/${currentTrack.file}`}
+        src={currentTrack?.url}
         onEnded={nextTrack}
-        onPause={() => setPlaying(false)}
+        onPause={() => {
+          persistProgress();
+          setPlaying(false);
+        }}
         onPlay={() => setPlaying(true)}
+        onTimeUpdate={persistProgress}
         controls
         style={audioStyle}
       />
+
+      <div style={volumeRow}>
+        <span>Volume</span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value={volume}
+          onChange={(event) => setVolume(Number(event.target.value))}
+          style={{ width: "100%" }}
+        />
+      </div>
+
+      {status ? <div style={helperText}>{status}</div> : null}
 
       {open ? (
         <div style={libraryPanel}>
@@ -152,12 +284,12 @@ export default function MusicLibraryPlayer({ tracks }: Props) {
 
           <div style={trackGrid}>
             {filteredTracks.map((track) => {
-              const originalIndex = tracks.findIndex((item) => item.file === track.file);
+              const originalIndex = library.findIndex((item) => item.id === track.id);
               const active = originalIndex === currentIndex;
 
               return (
                 <button
-                  key={track.file}
+                  key={track.id}
                   type="button"
                   onClick={() => playTrack(originalIndex)}
                   style={{
@@ -165,7 +297,7 @@ export default function MusicLibraryPlayer({ tracks }: Props) {
                     ...(active ? activeTrackRow : null),
                   }}
                 >
-                  <span style={trackName}>{track.title || cleanTitle(track.file)}</span>
+                  <span style={trackName}>{safeTrackTitle(track)}</span>
                   <span style={trackSub}>
                     {track.artist || "NATA Today"}
                     {track.mood ? ` · ${track.mood}` : ""}
@@ -174,10 +306,6 @@ export default function MusicLibraryPlayer({ tracks }: Props) {
               );
             })}
           </div>
-
-          {filteredTracks.length === 0 ? (
-            <div style={emptyState}>No tracks match that search.</div>
-          ) : null}
         </div>
       ) : null}
     </section>
@@ -313,6 +441,17 @@ const audioStyle: React.CSSProperties = {
   accentColor: "#fbbf24",
 };
 
+const volumeRow: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "70px minmax(0, 1fr)",
+  gap: 12,
+  alignItems: "center",
+  marginTop: 12,
+  color: "#9fb4d6",
+  fontSize: 12,
+  fontWeight: 850,
+};
+
 const libraryPanel: React.CSSProperties = {
   marginTop: 16,
   display: "grid",
@@ -365,10 +504,13 @@ const trackSub: React.CSSProperties = {
   fontSize: 12,
 };
 
-const emptyState: React.CSSProperties = {
-  padding: 16,
-  borderRadius: 16,
-  border: "1px dashed rgba(148,163,184,0.25)",
-  background: "rgba(148,163,184,0.06)",
-  color: "#9fb4d6",
+const helperText: React.CSSProperties = {
+  marginTop: 12,
+  padding: 12,
+  borderRadius: 14,
+  background: "rgba(255,255,255,0.045)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  color: "#bfd6f5",
+  fontSize: 13,
+  lineHeight: 1.45,
 };
