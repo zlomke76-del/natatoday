@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { sendEmail } from "../../../../lib/email";
+import { incrementCandidateContactByEmail } from "../../../../lib/nataCandidatePool";
 import CommunicationsComposerClient from "./CommunicationsComposerClient";
 
 type AnyRow = Record<string, any>;
@@ -512,6 +513,8 @@ export default async function CommunicationsCenter({
         attachments: emailAttachments,
       } as any);
 
+      await incrementCandidateContactByEmail(toEmail);
+
       if (attachments.length) {
         const loggedMessage = await findLatestOutboundEmail({
           recruiterId,
@@ -544,6 +547,14 @@ export default async function CommunicationsCenter({
         applicationId: applicationId || null,
         dealerSlug: dealerSlug || null,
       });
+
+      const contactEmailForSms = contacts.find(
+        (contact) => contact.applicationId && contact.applicationId === applicationId,
+      )?.email;
+
+      if (contactEmailForSms) {
+        await incrementCandidateContactByEmail(contactEmailForSms);
+      }
     }
 
     redirect(`/recruiter/${recruiterSlug}/dashboard`);
