@@ -679,23 +679,6 @@ async function syncCandidateMatches(candidate: AnyRow) {
   }
 }
 
-async function returnApplicationToCandidatePool(input: {
-  applicationId: string;
-  source: "recruiter_rejected" | "dealer_rejected" | "not_hired";
-  reason: string;
-}) {
-  const { data: application, error: applicationError } = await supabaseAdmin
-    .schema("nata")
-    .from("applications")
-    .select("*")
-    .eq("id", input.applicationId)
-    .maybeSingle();
-
-  if (applicationError) {
-    console.error("Failed to load application for candidate pool return:", applicationError);
-    return;
-  }
-
   if (!application?.email) return;
 
   const status = normalize(application.status);
