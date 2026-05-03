@@ -6,7 +6,7 @@ import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { buildCandidateScheduleUrl, sendInterviewInvite } from "../../../../lib/nataNotifications";
 import CommunicationsCenter from "./CommunicationsCenter";
 import MusicLibraryPlayer from "./MusicLibraryPlayer";
-import NataSystemSoundBridge from "./NataSystemSoundBridge";
+import NataSoundStateBridge from "./NataSoundStateBridge";
 
 type AnyRow = Record<string, any>;
 
@@ -21,7 +21,6 @@ type QueueSurface = "candidate" | "interview";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
-
 
 type MusicTrack = {
   id: string;
@@ -63,7 +62,6 @@ async function loadInitialMusicTracks(): Promise<MusicTrack[]> {
     };
   });
 }
-
 
 const ROLE_THRESHOLDS: Record<string, Omit<FitBand, "roleKey">> = {
   "sales consultant": { interviewReady: 80, review: 60 },
@@ -682,17 +680,16 @@ export default async function RecruiterDashboard({
       <Nav />
 
       <section style={{ width: "min(1180px, calc(100% - 40px))", margin: "0 auto", padding: "60px 0" }}>
+        <NataSoundStateBridge
+          candidateQueue={candidateQueue.length}
+          interviewQueue={interviewQueue.length}
+          waitingOnCandidate={waitingOnCandidate.length}
+          reviewRequired={reviewRequired.length}
+          dealerScheduled={dealerScheduled.length}
+          blocked={blocked.length}
+        />
 
-          <NataSystemSoundBridge
-            candidateQueue={candidateQueue.length}
-            interviewQueue={interviewQueue.length}
-            waitingOnCandidate={waitingOnCandidate.length}
-            reviewRequired={reviewRequired.length}
-            dealerScheduled={dealerScheduled.length}
-            blocked={blocked.length}
-          />
-
-          <div className="eyebrow">Recruiter Control Center</div>
+        <div className="eyebrow">Recruiter Control Center</div>
 
         <div style={headerRow}>
           <div>
