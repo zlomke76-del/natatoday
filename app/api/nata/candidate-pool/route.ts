@@ -123,9 +123,9 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("Candidate pool route failed:", error);
 
-    return NextResponse.json(
-      { error: "Unexpected candidate submission error." },
-      { status: 500 },
+    return NextResponse.redirect(
+      new URL(`/careers/thank-you?candidateId=${candidate.id}`, req.url),
+      { status: 303 },
     );
   }
 }
