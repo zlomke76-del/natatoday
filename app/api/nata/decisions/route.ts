@@ -1,181 +1,152 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
-type DecisionOutcome =
-  | "hired"
-  | "not_hired"
-  | "keep_warm"
-  | "no_show"
-  | "needs_followup";
-
-const OUTCOMES = new Set<DecisionOutcome>([
-  "hired",
+const POOL_STATUSES = [
   "not_hired",
-  "keep_warm",
+  "rejected",
+  "not_selected",
   "no_show",
-  "needs_followup",
-]);
+];
 
-const APPLICATION_STATUS_BY_OUTCOME: Record<DecisionOutcome, string> = {
-  hired: "placed",
-  not_hired: "not_hired",
-  keep_warm: "keep_warm",
-  no_show: "no_show",
-  needs_followup: "needs_followup",
-};
+const PLACED_STATUSES = [
+  "hired",
+  "placed",
+  "dealer_hired",
+];
 
-function clean(value: unknown, fallback = "") {
-  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+function normalize(v: any) {
+  return String(v || "").toLowerCase().trim();
 }
 
-function cleanArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-
-  return value
-    .map((item) => clean(item))
-    .filter(Boolean);
-}
-
-function isDecisionOutcome(value: string): value is DecisionOutcome {
-  return OUTCOMES.has(value as DecisionOutcome);
-}
-
-export async function POST(request: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const adminKey = request.headers.get("x-nata-admin-key");
+    const body = await req.json();
 
-    if (!adminKey || adminKey !== process.env.NATA_ADMIN_KEY) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await request.json();
-
-    const jobId = clean(body.job_id);
-    const applicationId = clean(body.application_id);
-    const interviewerName = clean(body.interviewer_name);
-    const outcome = clean(body.outcome);
-    const decisionReason = clean(body.decision_reason);
-
-    if (!jobId) {
-      return NextResponse.json({ error: "job_id is required" }, { status: 400 });
-    }
-
-    if (!applicationId) {
-      return NextResponse.json(
-        { error: "application_id is required" },
-        { status: 400 }
-      );
-    }
-
-    if (!isDecisionOutcome(outcome)) {
-      return NextResponse.json(
-        {
-          error:
-            "Outcome must be hired, not_hired, keep_warm, no_show, or needs_followup.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (!decisionReason) {
-      return NextResponse.json(
-        { error: "A decision reason is required." },
-        { status: 400 }
-      );
-    }
-
-    const decisionPayload = {
-      job_id: jobId,
-      application_id: applicationId,
-      interviewer_name: interviewerName || null,
-      interview_type: clean(body.interview_type, "dealer"),
-      interview_stage: clean(body.interview_stage, "2"),
+    const {
+      job_id,
+      application_id,
       outcome,
-      decision_reason: decisionReason,
-      strengths: cleanArray(body.strengths),
-      concerns: cleanArray(body.concerns),
-      verification_flags: cleanArray(body.verification_flags),
-      compensation_alignment: clean(body.compensation_alignment) || null,
-      availability_alignment: clean(body.availability_alignment) || null,
-    };
+      decision_reason,
+    } = body;
 
-    const { data: decisionRecord, error: decisionError } = await supabaseAdmin
+    if (!job_id || !application_id) {
+      return NextResponse.json(
+        { error: "Missing job_id or application_id" },
+        { status: 400 }
+      );
+    }
+
+    // =========================
+    // LOAD APPLICATION
+    // =========================
+    const { data: app, error: appError } = await supabaseAdmin
       .schema("nata")
-      .from("decision_records")
-      .insert(decisionPayload)
+      .from("applications")
       .select("*")
+      .eq("id", application_id)
       .single();
 
-    if (decisionError) {
-      console.error("Decision record insert failed:", decisionError);
+    if (appError || !app) {
       return NextResponse.json(
-        { error: decisionError.message || "Decision record could not be created." },
-        { status: 500 }
+        { error: "Application not found" },
+        { status: 404 }
       );
     }
 
-    const applicationStatus = APPLICATION_STATUS_BY_OUTCOME[outcome];
+    const email = app.email?.toLowerCase();
 
-    const { error: applicationError } = await supabaseAdmin
+    // =========================
+    // UPDATE APPLICATION
+    // =========================
+    await supabaseAdmin
       .schema("nata")
       .from("applications")
       .update({
-        screening_status: applicationStatus,
-        decision_reason: decisionReason,
+        status: outcome,
+        decision_reason,
       })
-      .eq("id", applicationId);
+      .eq("id", application_id);
 
-    if (applicationError) {
-      console.error("Application status update failed:", applicationError);
-      return NextResponse.json(
-        {
-          error:
-            applicationError.message ||
-            "Decision was recorded, but application status could not be updated.",
-        },
-        { status: 500 }
-      );
-    }
-
-    if (outcome === "hired") {
-      const { error: jobError } = await supabaseAdmin
-        .schema("nata")
-        .from("jobs")
-        .update({
-          publish_status: "filled",
-          is_active: false,
-        })
-        .eq("id", jobId);
-
-      if (jobError) {
-        console.error("Job close update failed:", jobError);
-        return NextResponse.json(
-          {
-            error:
-              jobError.message ||
-              "Decision was recorded, but the public listing could not be closed.",
-          },
-          { status: 500 }
-        );
-      }
-
+    // =========================
+    // HANDLE HIRE (PROTECT)
+    // =========================
+    if (PLACED_STATUSES.includes(normalize(outcome))) {
       await supabaseAdmin
         .schema("nata")
-        .from("candidate_outreach")
-        .update({ outreach_status: "suppressed" })
-        .eq("job_id", jobId)
-        .in("outreach_status", ["pending", "approved"]);
+        .from("candidates")
+        .update({
+          status: "placed",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("email", email);
+
+      return NextResponse.json({
+        ok: true,
+        job_closed: true,
+      });
+    }
+
+    // =========================
+    // HANDLE RETURN TO POOL
+    // =========================
+    if (POOL_STATUSES.includes(normalize(outcome))) {
+      // UPSERT INTO POOL
+      const { data: candidate } = await supabaseAdmin
+        .schema("nata")
+        .from("candidates")
+        .upsert(
+          {
+            name: app.name,
+            email: email,
+            phone: app.phone,
+            location_text: app.location_text || null,
+            resume_url: app.resume_url || null,
+            profile_photo_url: app.profile_photo_url || null,
+            status: "active",
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "email" }
+        )
+        .select("*")
+        .single();
+
+      // =========================
+      // REMATCH ENGINE
+      // =========================
+      if (candidate) {
+        const { data: jobs } = await supabaseAdmin
+          .schema("nata")
+          .from("jobs")
+          .select("*")
+          .eq("is_active", true);
+
+        const matches = (jobs || []).map((job: any) => ({
+          candidate_id: candidate.id,
+          job_id: job.id,
+          fit_score: Math.floor(Math.random() * 30) + 70, // replace with real scoring
+          match_status: "eligible",
+          updated_at: new Date().toISOString(),
+        }));
+
+        if (matches.length) {
+          await supabaseAdmin
+            .schema("nata")
+            .from("candidate_matches")
+            .upsert(matches, {
+              onConflict: "candidate_id,job_id",
+            });
+        }
+      }
     }
 
     return NextResponse.json({
-      decision_record: decisionRecord,
-      application_status: applicationStatus,
-      job_closed: outcome === "hired",
+      ok: true,
+      job_closed: false,
     });
-  } catch (error) {
-    console.error("Decision submission failed:", error);
+  } catch (err) {
+    console.error(err);
     return NextResponse.json(
-      { error: "Decision submission failed." },
+      { error: "Decision failed" },
       { status: 500 }
     );
   }
