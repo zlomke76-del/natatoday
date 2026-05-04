@@ -192,43 +192,51 @@ export default async function CareersPage({
           your area as new roles are published.
         </p>
 
-        <div style={candidatePoolCardStyle}>
-          <div style={candidatePoolGridStyle}>
-            <div>
-              <div style={poolBadgeStyle}>Candidate Pool</div>
-              <h2 style={poolTitleStyle}>Be considered for future openings.</h2>
-              <p style={poolCopyStyle}>
-                Upload your resume once. Solace will look for dealership roles
-                within 0–100 miles of your location and keep you eligible for
-                future opportunities unless you are already placed.
-              </p>
+<div style={candidatePoolCardStyle}>
+  <div style={candidatePoolGridStyle}>
+    <div>
+      <div style={poolBadgeStyle}>Candidate Pool</div>
 
-              <div style={poolRulesStyle}>
-                <span>✓ Resume-based review</span>
-                <span>✓ 0–100 mile role search</span>
-                <span>✓ No dealer handoff unless there is a potential fit</span>
-                <span>
-                  ✓ SMS/email updates only for your application process
-                </span>
-              </div>
-            </div>
+      <h2 style={poolTitleStyle}>
+        Stop applying. Start getting matched.
+      </h2>
 
-            <div style={poolCtaCardStyle}>
-              <div style={poolCtaHeaderStyle}>
-                <div style={poolCtaEyebrowStyle}>Candidate Pool</div>
-                <h2 style={poolCtaTitleStyle}>Want future openings?</h2>
-                <p style={poolCtaCopyStyle}>
-                  Keep the page focused on current roles, but make the pool
-                  impossible to miss. Candidates can open the form when they are
-                  ready to join.
-                </p>
-              </div>
+      <p style={poolCopyStyle}>
+        Join the candidate pool once and let our team work for you. Your profile
+        is continuously matched to active dealership opportunities, and we only
+        reach out when there’s a strong fit.
+      </p>
 
-              <div style={poolCtaRulesStyle}>
-                <span>Resume reviewed once</span>
-                <span>Matched to nearby roles</span>
-                <span>Contacted only when relevant</span>
-              </div>
+      <div style={poolRulesStyle}>
+        <span>✓ Resume-based review</span>
+        <span>✓ Continuous matching across active roles</span>
+        <span>✓ No dealer handoff without a strong fit</span>
+        <span>✓ SMS/email updates only when action is needed</span>
+      </div>
+    </div>
+
+    <div style={poolCtaCardStyle}>
+      <div style={poolCtaHeaderStyle}>
+        <div style={poolCtaEyebrowStyle}>Candidate Pool</div>
+
+        <h2 style={poolCtaTitleStyle}>
+          Let opportunities come to you
+        </h2>
+
+        <p style={poolCtaCopyStyle}>
+          Skip the back-and-forth. Join once, stay eligible, and we’ll reach out
+          when something is worth your time.
+        </p>
+      </div>
+
+      <div style={poolCtaRulesStyle}>
+        <span>Reviewed once</span>
+        <span>Continuously matched</span>
+        <span>Only contacted when relevant</span>
+      </div>
+    </div>
+  </div>
+</div>
 
               <a href={candidatePoolHref} style={poolOpenButtonStyle}>
                 Join candidate pool →
