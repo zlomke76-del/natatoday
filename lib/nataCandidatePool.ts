@@ -13,9 +13,40 @@ type RoleProfile = {
   autoRecommendSignals?: string[];
 };
 
-const MIN_ELIGIBLE_SCORE = 78;
-const MIN_REVIEW_SCORE = 62;
-const MIN_MORE_STATE_SCORE = 45;
+const ROLE_THRESHOLDS: Record<
+  string,
+  { eligible: number; review: number; moreState: number }
+> = {
+  "sales consultant": { eligible: 65, review: 45, moreState: 30 },
+  "senior sales consultant": { eligible: 68, review: 48, moreState: 32 },
+  "bdc representative": { eligible: 62, review: 42, moreState: 30 },
+  receptionist: { eligible: 58, review: 38, moreState: 25 },
+
+  "lube technician": { eligible: 60, review: 42, moreState: 30 },
+  "service technician": { eligible: 72, review: 55, moreState: 40 },
+  "master technician": { eligible: 60, review: 40, moreState: 25 },
+  "shop foreman": { eligible: 74, review: 58, moreState: 42 },
+
+  "service advisor": { eligible: 72, review: 55, moreState: 40 },
+  "service manager": { eligible: 76, review: 60, moreState: 45 },
+  "fixed ops director": { eligible: 82, review: 68, moreState: 50 },
+
+  "parts advisor": { eligible: 70, review: 52, moreState: 38 },
+  "parts manager": { eligible: 76, review: 60, moreState: 45 },
+  "warranty administrator": { eligible: 70, review: 52, moreState: 38 },
+
+  "finance manager": { eligible: 78, review: 62, moreState: 45 },
+  "sales manager": { eligible: 76, review: 60, moreState: 45 },
+  "used car manager": { eligible: 76, review: 60, moreState: 45 },
+  "general manager": { eligible: 82, review: 68, moreState: 50 },
+
+  "title clerk": { eligible: 62, review: 42, moreState: 30 },
+  accounting: { eligible: 68, review: 50, moreState: 35 },
+  "hr training": { eligible: 68, review: 50, moreState: 35 },
+
+  general: { eligible: 70, review: 50, moreState: 35 },
+  default: { eligible: 70, review: 50, moreState: 35 },
+};
 const MAX_MATCH_DISTANCE_MILES = 100;
 const DEFAULT_COOLDOWN_DAYS = 30;
 const NO_SHOW_COOLDOWN_DAYS = 45;
@@ -807,7 +838,10 @@ function determineMatchStatus(input: {
   roleScore: number;
   proofScore: number;
   autoRecommend: boolean;
+  roleKey: string;
 }) {
+  const thresholds = ROLE_THRESHOLDS[input.roleKey] || ROLE_THRESHOLDS.default;
+
   if (input.riskFlags.includes("cooldown_active")) return "cooldown";
 
   if (input.riskFlags.includes("resume_missing") || input.riskFlags.includes("location_missing")) {
@@ -826,12 +860,12 @@ function determineMatchStatus(input: {
     input.riskFlags.includes("unverified_claims") ||
     input.riskFlags.includes("role_specific_risk")
   ) {
-    return input.fitScore >= MIN_REVIEW_SCORE ? "recruiter_review" : "more_state_required";
+    return input.fitScore >= thresholds.review ? "recruiter_review" : "more_state_required";
   }
 
-  if (input.fitScore >= MIN_ELIGIBLE_SCORE && input.proofScore >= 12) return "eligible";
-  if (input.fitScore >= MIN_REVIEW_SCORE) return "recruiter_review";
-  if (input.fitScore >= MIN_MORE_STATE_SCORE) return "more_state_required";
+  if (input.fitScore >= thresholds.eligible && input.proofScore >= 12) return "eligible";
+  if (input.fitScore >= thresholds.review) return "recruiter_review";
+  if (input.fitScore >= thresholds.moreState) return "more_state_required";
 
   return "below_threshold";
 }
@@ -867,6 +901,7 @@ function computeMatch(candidate: AnyRow, job: AnyRow) {
     roleScore: roleFit.score,
     proofScore: proof.score,
     autoRecommend: roleFit.autoRecommend,
+    roleKey: roleFit.roleKey,
   });
 
   const reasons = uniqueList([
