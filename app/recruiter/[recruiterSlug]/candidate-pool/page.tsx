@@ -477,7 +477,16 @@ async function getCandidatePool(searchParams: SearchParams | undefined) {
   const role = normalize(getParam(searchParams, "role", "all"));
   const risk = normalize(getParam(searchParams, "risk", "all"));
   const search = getParam(searchParams, "search", "").trim();
-  const minScore = safeMinScore(getParam(searchParams, "minScore", String(MIN_VISIBLE_MATCH_SCORE)));
+  const rawMinScore = getParam(
+  searchParams,
+  "minScore",
+  String(MIN_VISIBLE_MATCH_SCORE)
+);
+
+const minScore =
+  rawMinScore === ""
+    ? MIN_VISIBLE_MATCH_SCORE
+    : Math.max(0, Number(rawMinScore));
 
   const matchLimit = PAGE_SIZE * MATCH_FETCH_MULTIPLIER;
   const matchOffset = (page - 1) * matchLimit;
