@@ -113,6 +113,203 @@ function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number) 
   return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+type Coordinates = { latitude: number; longitude: number };
+
+const KNOWN_LOCATION_COORDINATES: Record<string, Coordinates> = {
+  phoenix: { latitude: 33.4484, longitude: -112.074 },
+  "phoenix az": { latitude: 33.4484, longitude: -112.074 },
+  "phoenix arizona": { latitude: 33.4484, longitude: -112.074 },
+  mesa: { latitude: 33.4152, longitude: -111.8315 },
+  "mesa az": { latitude: 33.4152, longitude: -111.8315 },
+  tempe: { latitude: 33.4255, longitude: -111.94 },
+  "tempe az": { latitude: 33.4255, longitude: -111.94 },
+  scottsdale: { latitude: 33.4942, longitude: -111.9261 },
+  "scottsdale az": { latitude: 33.4942, longitude: -111.9261 },
+  tucson: { latitude: 32.2226, longitude: -110.9747 },
+  "tucson az": { latitude: 32.2226, longitude: -110.9747 },
+
+  houston: { latitude: 29.7604, longitude: -95.3698 },
+  "houston tx": { latitude: 29.7604, longitude: -95.3698 },
+  "houston texas": { latitude: 29.7604, longitude: -95.3698 },
+  cypress: { latitude: 29.9691, longitude: -95.6972 },
+  "cypress tx": { latitude: 29.9691, longitude: -95.6972 },
+  katy: { latitude: 29.7858, longitude: -95.8244 },
+  "katy tx": { latitude: 29.7858, longitude: -95.8244 },
+  "jersey village": { latitude: 29.8877, longitude: -95.563 },
+  "jersey village tx": { latitude: 29.8877, longitude: -95.563 },
+  "jersey-village-cdjr": { latitude: 29.8877, longitude: -95.563 },
+  "jersey village cdjr": { latitude: 29.8877, longitude: -95.563 },
+  austin: { latitude: 30.2672, longitude: -97.7431 },
+  "austin tx": { latitude: 30.2672, longitude: -97.7431 },
+  dallas: { latitude: 32.7767, longitude: -96.797 },
+  "dallas tx": { latitude: 32.7767, longitude: -96.797 },
+  "fort worth": { latitude: 32.7555, longitude: -97.3308 },
+  "fort worth tx": { latitude: 32.7555, longitude: -97.3308 },
+  "san antonio": { latitude: 29.4241, longitude: -98.4936 },
+  "san antonio tx": { latitude: 29.4241, longitude: -98.4936 },
+
+  atlanta: { latitude: 33.749, longitude: -84.388 },
+  "atlanta ga": { latitude: 33.749, longitude: -84.388 },
+  miami: { latitude: 25.7617, longitude: -80.1918 },
+  "miami fl": { latitude: 25.7617, longitude: -80.1918 },
+  orlando: { latitude: 28.5383, longitude: -81.3792 },
+  "orlando fl": { latitude: 28.5383, longitude: -81.3792 },
+  tampa: { latitude: 27.9506, longitude: -82.4572 },
+  "tampa fl": { latitude: 27.9506, longitude: -82.4572 },
+  charlotte: { latitude: 35.2271, longitude: -80.8431 },
+  "charlotte nc": { latitude: 35.2271, longitude: -80.8431 },
+  nashville: { latitude: 36.1627, longitude: -86.7816 },
+  "nashville tn": { latitude: 36.1627, longitude: -86.7816 },
+  chicago: { latitude: 41.8781, longitude: -87.6298 },
+  "chicago il": { latitude: 41.8781, longitude: -87.6298 },
+  columbus: { latitude: 39.9612, longitude: -82.9988 },
+  "columbus oh": { latitude: 39.9612, longitude: -82.9988 },
+  denver: { latitude: 39.7392, longitude: -104.9903 },
+  "denver co": { latitude: 39.7392, longitude: -104.9903 },
+  "los angeles": { latitude: 34.0522, longitude: -118.2437 },
+  "los angeles ca": { latitude: 34.0522, longitude: -118.2437 },
+  "san diego": { latitude: 32.7157, longitude: -117.1611 },
+  "san diego ca": { latitude: 32.7157, longitude: -117.1611 },
+  seattle: { latitude: 47.6062, longitude: -122.3321 },
+  "seattle wa": { latitude: 47.6062, longitude: -122.3321 },
+};
+
+function cleanLocationText(value: unknown) {
+  return String(value || "")
+    .replace(/\(.*?\)/g, " ")
+    .replace(/open to relocation/gi, " ")
+    .replace(/willing to relocate/gi, " ")
+    .replace(/willing to move/gi, " ")
+    .replace(/relocation/gi, " ")
+    .replace(/[^a-zA-Z0-9,\s-]/g, " ")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function locationLookupKeys(value: unknown) {
+  const cleaned = cleanLocationText(value);
+  const normalized = normalize(cleaned)
+    .replace(/\btexas\b/g, "tx")
+    .replace(/\barizona\b/g, "az")
+    .replace(/\bflorida\b/g, "fl")
+    .replace(/\bgeorgia\b/g, "ga")
+    .replace(/\bohio\b/g, "oh")
+    .replace(/\bcalifornia\b/g, "ca")
+    .replace(/\bnorth carolina\b/g, "nc")
+    .replace(/\btennessee\b/g, "tn")
+    .replace(/\billinois\b/g, "il")
+    .replace(/\bcolorado\b/g, "co")
+    .replace(/\bwashington\b/g, "wa")
+    .replace(/\./g, "")
+    .replace(/,/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const parts = normalized.split(" ").filter(Boolean);
+  const keys = new Set<string>();
+
+  if (normalized) keys.add(normalized);
+  if (parts.length >= 2) keys.add(`${parts[0]} ${parts[1]}`);
+  if (parts.length >= 1) keys.add(parts[0]);
+
+  return Array.from(keys);
+}
+
+function resolveCoordinatesFromText(value: unknown): Coordinates | null {
+  for (const key of locationLookupKeys(value)) {
+    const coordinates = KNOWN_LOCATION_COORDINATES[key];
+    if (coordinates) return coordinates;
+  }
+
+  const normalized = normalize(cleanLocationText(value));
+  for (const [key, coordinates] of Object.entries(KNOWN_LOCATION_COORDINATES)) {
+    if (normalized.includes(key)) return coordinates;
+  }
+
+  return null;
+}
+
+function resolveRowCoordinates(row: AnyRow, locationFields: string[]) {
+  const latitude = toNumber(row.latitude);
+  const longitude = toNumber(row.longitude);
+
+  if (latitude !== null && longitude !== null) {
+    return { latitude, longitude };
+  }
+
+  for (const field of locationFields) {
+    const coordinates = resolveCoordinatesFromText(row[field]);
+    if (coordinates) return coordinates;
+  }
+
+  return null;
+}
+
+async function persistCandidateCoordinatesIfMissing(candidate: AnyRow) {
+  if (!candidate?.id || (toNumber(candidate.latitude) !== null && toNumber(candidate.longitude) !== null)) {
+    return candidate;
+  }
+
+  const coordinates = resolveCoordinatesFromText(candidate.location_text);
+  if (!coordinates) return candidate;
+
+  const { error } = await supabaseAdmin
+    .schema("nata")
+    .from("candidates")
+    .update({
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", candidate.id);
+
+  if (error) {
+    console.error("Failed to persist candidate coordinates:", error);
+    return candidate;
+  }
+
+  return {
+    ...candidate,
+    latitude: coordinates.latitude,
+    longitude: coordinates.longitude,
+  };
+}
+
+async function persistJobCoordinatesIfMissing(job: AnyRow) {
+  if (!job?.id || (toNumber(job.latitude) !== null && toNumber(job.longitude) !== null)) {
+    return job;
+  }
+
+  const coordinates =
+    resolveCoordinatesFromText(job.location) ||
+    resolveCoordinatesFromText(job.public_location) ||
+    resolveCoordinatesFromText(job.dealer_slug) ||
+    resolveCoordinatesFromText(job.public_dealer_name);
+
+  if (!coordinates) return job;
+
+  const { error } = await supabaseAdmin
+    .schema("nata")
+    .from("jobs")
+    .update({
+      latitude: coordinates.latitude,
+      longitude: coordinates.longitude,
+    })
+    .eq("id", job.id);
+
+  if (error) {
+    console.error("Failed to persist job coordinates:", error);
+    return job;
+  }
+
+  return {
+    ...job,
+    latitude: coordinates.latitude,
+    longitude: coordinates.longitude,
+  };
+}
+
 const ROLE_PROFILES: RoleProfile[] = [
   {
     key: "sales consultant",
@@ -424,21 +621,24 @@ function getCandidateSearchText(candidate: AnyRow) {
 }
 
 function getDistanceMiles(candidate: AnyRow, job: AnyRow) {
-  const candidateLat = toNumber(candidate.latitude);
-  const candidateLon = toNumber(candidate.longitude);
-  const jobLat = toNumber(job.latitude);
-  const jobLon = toNumber(job.longitude);
+  const candidateCoordinates = resolveRowCoordinates(candidate, ["location_text"]);
+  const jobCoordinates = resolveRowCoordinates(job, [
+    "location",
+    "public_location",
+    "dealer_slug",
+    "public_dealer_name",
+  ]);
 
-  if (
-    candidateLat === null ||
-    candidateLon === null ||
-    jobLat === null ||
-    jobLon === null
-  ) {
+  if (!candidateCoordinates || !jobCoordinates) {
     return null;
   }
 
-  return haversineMiles(candidateLat, candidateLon, jobLat, jobLon);
+  return haversineMiles(
+    candidateCoordinates.latitude,
+    candidateCoordinates.longitude,
+    jobCoordinates.latitude,
+    jobCoordinates.longitude,
+  );
 }
 
 function getRoleKey(roleTitle: string) {
@@ -1116,11 +1316,14 @@ export async function syncCandidateMatches(candidate: AnyRow) {
     return;
   }
 
-  for (const job of (jobs || []) as AnyRow[]) {
-    const match = computeMatch(candidate, job);
+  const candidateForMatching = await persistCandidateCoordinatesIfMissing(candidate);
+
+  for (const rawJob of (jobs || []) as AnyRow[]) {
+    const job = await persistJobCoordinatesIfMissing(rawJob);
+    const match = computeMatch(candidateForMatching, job);
 
     await upsertCandidateMatch({
-      candidate_id: candidate.id,
+      candidate_id: candidateForMatching.id,
       job_id: job.id,
       distance_miles: match.distance_miles,
       fit_score: match.fit_score,
