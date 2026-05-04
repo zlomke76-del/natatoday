@@ -183,11 +183,42 @@ export default async function CareersPage({
               </div>
             </div>
 
-            <form
+            <div style={poolCtaCardStyle}>
+              <div style={poolCtaHeaderStyle}>
+                <div style={poolCtaEyebrowStyle}>Candidate Pool</div>
+                <h2 style={poolCtaTitleStyle}>Want future openings?</h2>
+                <p style={poolCtaCopyStyle}>
+                  Keep the page focused on current roles, but make the pool impossible to miss.
+                  Candidates can open the form when they are ready to join.
+                </p>
+              </div>
+
+              <div style={poolCtaRulesStyle}>
+                <span>Resume reviewed once</span>
+                <span>Matched to nearby roles</span>
+                <span>Contacted only when relevant</span>
+              </div>
+
+              <details style={poolPopoverDetailsStyle}>
+                <summary style={poolOpenButtonStyle}>Join candidate pool →</summary>
+                <div style={poolPopoverShadeStyle} />
+                <div style={poolPopoverPanelStyle}>
+                  <div style={poolPopoverTopStyle}>
+                    <div>
+                      <div style={poolCtaEyebrowStyle}>Candidate Pool</div>
+                      <h2 style={poolPopoverTitleStyle}>Join the NATA candidate pool.</h2>
+                      <p style={poolPopoverCopyStyle}>
+                        Submit your resume and contact details. Solace reviews the file and keeps you eligible for future dealership roles.
+                      </p>
+                    </div>
+                    <span style={poolCloseHintStyle}>Click outside or toggle the button to close</span>
+                  </div>
+
+                  <form
               method="POST"
               action="/api/nata/candidate-pool"
               encType="multipart/form-data"
-              style={poolFormStyle}
+              style={poolPopoverFormStyle}
             >
               <div style={compactPoolHeaderStyle}>
                 <strong>Join the pool</strong>
@@ -284,6 +315,9 @@ export default async function CareersPage({
                 Join candidate pool →
               </button>
             </form>
+                </div>
+              </details>
+            </div>
           </div>
         </div>
 
@@ -584,11 +618,11 @@ const candidatePoolCardStyle: CSSProperties = {
 
 const candidatePoolGridStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(0, 0.9fr) minmax(420px, 0.8fr)",
-  gap: 28,
-  alignItems: "start",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 340px)",
+  gap: 24,
+  alignItems: "stretch",
   borderRadius: 33,
-  padding: 30,
+  padding: 28,
   background:
     "radial-gradient(circle at 15% 0%, rgba(20,115,255,0.24), transparent 32%), linear-gradient(145deg, rgba(10,20,38,0.98), rgba(5,12,24,0.98))",
 };
@@ -627,6 +661,138 @@ const poolRulesStyle: CSSProperties = {
   color: "#dbeafe",
   fontWeight: 850,
   fontSize: 14,
+};
+
+const poolCtaCardStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "space-between",
+  gap: 18,
+  minHeight: "100%",
+  borderRadius: 26,
+  padding: 22,
+  background:
+    "linear-gradient(145deg, rgba(248,251,255,0.98), rgba(232,239,249,0.98))",
+  color: "#111827",
+  boxShadow: "0 24px 70px rgba(0,0,0,0.24)",
+  border: "1px solid rgba(255,255,255,0.88)",
+};
+
+const poolCtaHeaderStyle: CSSProperties = {
+  display: "grid",
+  gap: 8,
+};
+
+const poolCtaEyebrowStyle: CSSProperties = {
+  color: "#0757c9",
+  fontSize: 12,
+  fontWeight: 950,
+  letterSpacing: "0.12em",
+  textTransform: "uppercase",
+};
+
+const poolCtaTitleStyle: CSSProperties = {
+  margin: 0,
+  color: "#111827",
+  fontSize: 28,
+  lineHeight: 1,
+  letterSpacing: "-0.04em",
+};
+
+const poolCtaCopyStyle: CSSProperties = {
+  margin: 0,
+  color: "#475569",
+  lineHeight: 1.45,
+  fontSize: 14,
+};
+
+const poolCtaRulesStyle: CSSProperties = {
+  display: "grid",
+  gap: 8,
+  color: "#334155",
+  fontSize: 13,
+  fontWeight: 850,
+};
+
+const poolPopoverDetailsStyle: CSSProperties = {
+  position: "relative",
+};
+
+const poolOpenButtonStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minHeight: 52,
+  width: "100%",
+  borderRadius: 14,
+  background: "linear-gradient(135deg, #1473ff, #075fe7)",
+  color: "#fff",
+  fontWeight: 950,
+  cursor: "pointer",
+  fontSize: 15,
+  boxShadow: "0 16px 34px rgba(20,115,255,0.28)",
+  listStyle: "none",
+};
+
+const poolPopoverShadeStyle: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 40,
+  background: "rgba(2,6,23,0.72)",
+  backdropFilter: "blur(6px)",
+};
+
+const poolPopoverPanelStyle: CSSProperties = {
+  position: "fixed",
+  top: "50%",
+  left: "50%",
+  transform: "translate(-50%, -50%)",
+  zIndex: 50,
+  width: "min(760px, calc(100vw - 32px))",
+  maxHeight: "calc(100vh - 48px)",
+  overflowY: "auto",
+  borderRadius: 28,
+  padding: 22,
+  background:
+    "linear-gradient(145deg, rgba(248,251,255,0.99), rgba(232,239,249,0.99))",
+  color: "#111827",
+  boxShadow: "0 34px 110px rgba(0,0,0,0.55)",
+  border: "1px solid rgba(255,255,255,0.9)",
+};
+
+const poolPopoverTopStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 16,
+  alignItems: "flex-start",
+  marginBottom: 16,
+};
+
+const poolPopoverTitleStyle: CSSProperties = {
+  margin: "6px 0 0",
+  color: "#111827",
+  fontSize: 30,
+  lineHeight: 1,
+  letterSpacing: "-0.04em",
+};
+
+const poolPopoverCopyStyle: CSSProperties = {
+  margin: "8px 0 0",
+  color: "#475569",
+  lineHeight: 1.45,
+  fontSize: 14,
+};
+
+const poolCloseHintStyle: CSSProperties = {
+  color: "#64748b",
+  fontSize: 12,
+  fontWeight: 800,
+  whiteSpace: "nowrap",
+};
+
+const poolPopoverFormStyle: CSSProperties = {
+  display: "grid",
+  gap: 0,
 };
 
 const poolFormStyle: CSSProperties = {
