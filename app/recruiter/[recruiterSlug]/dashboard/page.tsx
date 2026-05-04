@@ -1304,7 +1304,10 @@ export default async function RecruiterDashboard({
 
         {surface === "candidate" ? (
           <div style={actionPanel}>
-            <form action={approveForInterview} style={actionForm}>
+            <form method="POST" action="/api/nata/recruiter-actions" style={actionForm}>
+              <input type="hidden" name="action" value="approve_interview" />
+              <input type="hidden" name="recruiter_id" value={String(recruiterId)} />
+              <input type="hidden" name="recruiter_slug" value={String(recruiterRecordSlug)} />
               <input type="hidden" name="application_id" value={String(application.id)} />
               <input
                 name="reason"
@@ -1333,12 +1336,18 @@ export default async function RecruiterDashboard({
                     : "Approve + send invite"}
               </button>
             </form>
-            <form action={holdCandidate} style={actionForm}>
+            <form method="POST" action="/api/nata/recruiter-actions" style={actionForm}>
+              <input type="hidden" name="action" value="hold_candidate" />
+              <input type="hidden" name="recruiter_id" value={String(recruiterId)} />
+              <input type="hidden" name="recruiter_slug" value={String(recruiterRecordSlug)} />
               <input type="hidden" name="application_id" value={String(application.id)} />
               <input name="reason" placeholder="What proof is missing?" style={miniInput} />
               <button className="btn btn-secondary" type="submit">Hold / request info</button>
             </form>
-            <form action={passCandidate} style={actionForm}>
+            <form method="POST" action="/api/nata/recruiter-actions" style={actionForm}>
+              <input type="hidden" name="action" value="pass_candidate" />
+              <input type="hidden" name="recruiter_id" value={String(recruiterId)} />
+              <input type="hidden" name="recruiter_slug" value={String(recruiterRecordSlug)} />
               <input type="hidden" name="application_id" value={String(application.id)} />
               <input name="reason" placeholder="Pass reason" style={miniInput} />
               <button className="btn btn-secondary" type="submit">Pass candidate</button>
@@ -1468,7 +1477,10 @@ export default async function RecruiterDashboard({
                     </div>
 
                     <div style={waitingActions}>
-                      <form action={reengageWaitingCandidate} style={waitingActionForm}>
+                      <form method="POST" action="/api/nata/recruiter-actions" style={waitingActionForm}>
+                        <input type="hidden" name="action" value="reengage_waiting" />
+                        <input type="hidden" name="recruiter_id" value={String(recruiterId)} />
+                        <input type="hidden" name="recruiter_slug" value={String(recruiterRecordSlug)} />
                         <input type="hidden" name="application_id" value={String(application.id)} />
                         <input
                           name="reason"
@@ -1480,7 +1492,10 @@ export default async function RecruiterDashboard({
                         </button>
                       </form>
 
-                      <form action={removeWaitingCandidate} style={waitingActionForm}>
+                      <form method="POST" action="/api/nata/recruiter-actions" style={waitingActionForm}>
+                        <input type="hidden" name="action" value="remove_waiting" />
+                        <input type="hidden" name="recruiter_id" value={String(recruiterId)} />
+                        <input type="hidden" name="recruiter_slug" value={String(recruiterRecordSlug)} />
                         <input type="hidden" name="application_id" value={String(application.id)} />
                         <input
                           name="reason"
