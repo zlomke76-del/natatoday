@@ -725,22 +725,15 @@ export default async function RecruiterCandidatePoolPage({
 
         <div style={headerStyle}>
           <div>
-            <div style={eyebrowStyle}>NATA Candidate Pool</div>
-            <h1 style={titleStyle}>Talent radar built for scale.</h1>
-            <p style={ledeStyle}>
-              Query-ranked candidate inventory. The page loads a bounded working
-              set instead of rendering the whole pool, so it remains usable at
-              20,000+ candidates.
-            </p>
+            <div style={eyebrowStyle}>Candidate Pool</div>
+            <h1 style={titleStyle}>Talent Radar</h1>
           </div>
 
           <div style={guardrailCardStyle}>
-            <div style={guardrailTitleStyle}>Protection mode active</div>
-            <div style={guardrailTextStyle}>
-              Prior applicants and placed candidates are surfaced with flags.
-              Same-rooftop conflicts are blocked. Recent placements or active
-              client-dealership conflicts require Don override.
-            </div>
+            <strong style={guardrailTitleStyle}>Protection active</strong>
+            <span style={guardrailTextStyle}>
+              Same-rooftop blocks · recent placement/client conflicts require Don override.
+            </span>
           </div>
         </div>
 
@@ -1089,14 +1082,13 @@ function Stat({ label, value }: { label: string; value: number }) {
 
 const pageStyle: React.CSSProperties = {
   minHeight: "100vh",
-  background:
-    "radial-gradient(circle at 20% 0%, rgba(20,115,255,0.2), transparent 34%), #07111f",
+  background: "radial-gradient(circle at 20% 0%, rgba(20,115,255,0.16), transparent 30%), #07111f",
   color: "#fff",
-  padding: "42px 0 80px",
+  padding: "22px 0 52px",
 };
 
 const wrapStyle: React.CSSProperties = {
-  width: "min(1240px, calc(100% - 40px))",
+  width: "min(1320px, calc(100% - 32px))",
   margin: "0 auto",
 };
 
@@ -1104,86 +1096,93 @@ const backLinkStyle: React.CSSProperties = {
   color: "#93c5fd",
   textDecoration: "none",
   fontWeight: 850,
+  fontSize: 13,
 };
 
 const headerStyle: React.CSSProperties = {
-  marginTop: 28,
+  marginTop: 14,
   display: "grid",
-  gridTemplateColumns: "1fr minmax(300px, 420px)",
-  gap: 24,
-  alignItems: "end",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 440px)",
+  gap: 14,
+  alignItems: "center",
 };
 
 const eyebrowStyle: React.CSSProperties = {
   color: "#facc15",
   fontWeight: 950,
-  letterSpacing: "0.16em",
+  letterSpacing: "0.14em",
   textTransform: "uppercase",
-  fontSize: 12,
+  fontSize: 11,
 };
 
 const titleStyle: React.CSSProperties = {
-  margin: "10px 0 0",
-  fontSize: "clamp(44px, 6vw, 76px)",
-  lineHeight: 0.92,
-  letterSpacing: "-0.055em",
+  margin: "4px 0 0",
+  fontSize: "clamp(30px, 4vw, 46px)",
+  lineHeight: 0.96,
+  letterSpacing: "-0.045em",
 };
 
 const ledeStyle: React.CSSProperties = {
   color: "#bfd6f5",
-  maxWidth: 780,
-  fontSize: 18,
-  lineHeight: 1.6,
+  maxWidth: 760,
+  fontSize: 14,
+  lineHeight: 1.35,
+  margin: "6px 0 0",
 };
 
 const guardrailCardStyle: React.CSSProperties = {
-  borderRadius: 24,
-  padding: 20,
-  background: "rgba(22,163,74,0.12)",
-  border: "1px solid rgba(74,222,128,0.24)",
+  borderRadius: 16,
+  padding: "12px 14px",
+  background: "rgba(22,163,74,0.10)",
+  border: "1px solid rgba(74,222,128,0.20)",
+  display: "grid",
+  gap: 4,
 };
 
 const guardrailTitleStyle: React.CSSProperties = {
   color: "#bbf7d0",
   fontWeight: 950,
-  fontSize: 18,
+  fontSize: 13,
 };
 
 const guardrailTextStyle: React.CSSProperties = {
   color: "#dcfce7",
-  marginTop: 8,
-  lineHeight: 1.5,
-  fontSize: 14,
+  lineHeight: 1.35,
+  fontSize: 12,
 };
 
 const filterBarStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(280px, 1fr) 170px 190px 92px auto",
-  gap: 10,
-  marginTop: 28,
-  padding: 14,
-  borderRadius: 22,
-  background: "rgba(255,255,255,0.06)",
-  border: "1px solid rgba(255,255,255,0.1)",
+  gridTemplateColumns: "minmax(320px, 1fr) 150px 170px 76px auto",
+  gap: 8,
+  marginTop: 14,
+  padding: 10,
+  borderRadius: 16,
+  background: "rgba(255,255,255,0.055)",
+  border: "1px solid rgba(255,255,255,0.09)",
+  position: "sticky",
+  top: 0,
+  zIndex: 10,
+  backdropFilter: "blur(12px)",
 };
 
 const filterInputStyle: React.CSSProperties = {
-  minHeight: 42,
-  borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(2,6,23,0.5)",
+  minHeight: 36,
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(2,6,23,0.66)",
   color: "#fff",
-  padding: "0 12px",
+  padding: "0 10px",
   outline: "none",
 };
 
 const filterSelectStyle: React.CSSProperties = {
-  minHeight: 42,
-  borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(2,6,23,0.9)",
+  minHeight: 36,
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(2,6,23,0.92)",
   color: "#fff",
-  padding: "0 10px",
+  padding: "0 8px",
   outline: "none",
 };
 
@@ -1194,33 +1193,34 @@ const scoreInputStyle: React.CSSProperties = {
 
 const statsGridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(3, 1fr)",
-  gap: 14,
-  marginTop: 28,
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: 10,
+  marginTop: 12,
 };
 
 const statCardStyle: React.CSSProperties = {
-  borderRadius: 22,
-  padding: 20,
-  background: "rgba(255,255,255,0.06)",
-  border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: 14,
+  padding: "10px 12px",
+  background: "rgba(255,255,255,0.055)",
+  border: "1px solid rgba(255,255,255,0.09)",
 };
 
 const statValueStyle: React.CSSProperties = {
-  fontSize: 36,
+  fontSize: 24,
   fontWeight: 950,
 };
 
 const statLabelStyle: React.CSSProperties = {
   color: "#9fb4d6",
-  marginTop: 4,
+  marginTop: 2,
   fontWeight: 800,
+  fontSize: 12,
 };
 
 const listStyle: React.CSSProperties = {
   display: "grid",
-  gap: 16,
-  marginTop: 28,
+  gap: 10,
+  marginTop: 12,
 };
 
 const emptyStyle: React.CSSProperties = {
@@ -1231,24 +1231,23 @@ const emptyStyle: React.CSSProperties = {
 };
 
 const candidateCardStyle: React.CSSProperties = {
-  borderRadius: 28,
-  padding: 24,
-  background:
-    "linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.035))",
-  border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: 18,
+  padding: 14,
+  background: "linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.028))",
+  border: "1px solid rgba(255,255,255,0.10)",
 };
 
 const candidateTopStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "64px 1fr",
-  gap: 16,
+  gridTemplateColumns: "46px minmax(0, 1fr)",
+  gap: 12,
   alignItems: "center",
 };
 
 const avatarStyle: React.CSSProperties = {
-  width: 64,
-  height: 64,
-  borderRadius: 999,
+  width: 46,
+  height: 46,
+  borderRadius: 14,
   display: "grid",
   placeItems: "center",
   background: "rgba(20,115,255,0.22)",
@@ -1266,158 +1265,162 @@ const avatarImageStyle: React.CSSProperties = {
 
 const candidateNameStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: 26,
+  fontSize: 20,
+  lineHeight: 1.05,
 };
 
 const candidateMetaStyle: React.CSSProperties = {
-  margin: "7px 0 0",
+  margin: "4px 0 0",
   color: "#bfd6f5",
+  fontSize: 12,
 };
 
 const pillRowStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 5,
+  flexWrap: "wrap",
+  marginTop: 6,
+};
+
+const safePillStyle: React.CSSProperties = {
+  padding: "4px 7px",
+  borderRadius: 999,
+  background: "rgba(22,163,74,0.14)",
+  border: "1px solid rgba(74,222,128,0.22)",
+  color: "#bbf7d0",
+  fontSize: 11,
+  fontWeight: 950,
+};
+
+const statusPillStyle: React.CSSProperties = {
+  padding: "4px 7px",
+  borderRadius: 999,
+  background: "rgba(147,197,253,0.12)",
+  border: "1px solid rgba(147,197,253,0.2)",
+  color: "#dbeafe",
+  fontSize: 11,
+  fontWeight: 950,
+  textTransform: "capitalize",
+};
+
+const thresholdPillStyle: React.CSSProperties = {
+  padding: "4px 7px",
+  borderRadius: 999,
+  background: "rgba(250,204,21,0.12)",
+  border: "1px solid rgba(250,204,21,0.22)",
+  color: "#fef3c7",
+  fontSize: 11,
+  fontWeight: 950,
+};
+
+const warningPillStyle: React.CSSProperties = {
+  padding: "4px 7px",
+  borderRadius: 999,
+  background: "rgba(250,204,21,0.12)",
+  border: "1px solid rgba(250,204,21,0.3)",
+  color: "#fde68a",
+  fontSize: 11,
+  fontWeight: 950,
+};
+
+const dangerPillStyle: React.CSSProperties = {
+  padding: "4px 7px",
+  borderRadius: 999,
+  background: "rgba(239,68,68,0.15)",
+  border: "1px solid rgba(248,113,113,0.4)",
+  color: "#fecaca",
+  fontSize: 11,
+  fontWeight: 950,
+};
+
+const conflictPillStyle: React.CSSProperties = {
+  padding: "4px 7px",
+  borderRadius: 999,
+  background: "rgba(147,51,234,0.18)",
+  border: "1px solid rgba(192,132,252,0.4)",
+  color: "#e9d5ff",
+  fontSize: 11,
+  fontWeight: 950,
+};
+
+const decayPillStyle: React.CSSProperties = {
+  padding: "4px 7px",
+  borderRadius: 999,
+  background: "rgba(14,165,233,0.16)",
+  border: "1px solid rgba(56,189,248,0.32)",
+  color: "#bae6fd",
+  fontSize: 11,
+  fontWeight: 950,
+};
+
+const historyNoticeStyle: React.CSSProperties = {
+  marginTop: 7,
+  padding: "7px 9px",
+  borderRadius: 10,
+  background: "rgba(250,204,21,0.08)",
+  border: "1px solid rgba(250,204,21,0.16)",
+  color: "#fde68a",
+  fontSize: 11,
+  lineHeight: 1.3,
+  fontWeight: 750,
+};
+
+const conflictNoticeStyle: React.CSSProperties = {
+  marginTop: 7,
+  padding: "7px 9px",
+  borderRadius: 10,
+  background: "rgba(147,51,234,0.11)",
+  border: "1px solid rgba(192,132,252,0.20)",
+  color: "#e9d5ff",
+  fontSize: 11,
+  lineHeight: 1.3,
+  fontWeight: 750,
+};
+
+const decayNoticeStyle: React.CSSProperties = {
+  marginTop: 7,
+  padding: "7px 9px",
+  borderRadius: 10,
+  background: "rgba(14,165,233,0.09)",
+  border: "1px solid rgba(56,189,248,0.18)",
+  color: "#bae6fd",
+  fontSize: 11,
+  lineHeight: 1.3,
+  fontWeight: 750,
+};
+
+const actionRowStyle: React.CSSProperties = {
   display: "flex",
   gap: 8,
   flexWrap: "wrap",
   marginTop: 10,
 };
 
-const safePillStyle: React.CSSProperties = {
-  padding: "6px 9px",
-  borderRadius: 999,
-  background: "rgba(22,163,74,0.14)",
-  border: "1px solid rgba(74,222,128,0.22)",
-  color: "#bbf7d0",
-  fontSize: 12,
-  fontWeight: 950,
-};
-
-const statusPillStyle: React.CSSProperties = {
-  padding: "6px 9px",
-  borderRadius: 999,
-  background: "rgba(147,197,253,0.12)",
-  border: "1px solid rgba(147,197,253,0.2)",
-  color: "#dbeafe",
-  fontSize: 12,
-  fontWeight: 950,
-  textTransform: "capitalize",
-};
-
-const thresholdPillStyle: React.CSSProperties = {
-  padding: "6px 9px",
-  borderRadius: 999,
-  background: "rgba(250,204,21,0.12)",
-  border: "1px solid rgba(250,204,21,0.22)",
-  color: "#fef3c7",
-  fontSize: 12,
-  fontWeight: 950,
-};
-
-const warningPillStyle: React.CSSProperties = {
-  padding: "6px 9px",
-  borderRadius: 999,
-  background: "rgba(250,204,21,0.12)",
-  border: "1px solid rgba(250,204,21,0.3)",
-  color: "#fde68a",
-  fontSize: 12,
-  fontWeight: 950,
-};
-
-const dangerPillStyle: React.CSSProperties = {
-  padding: "6px 9px",
-  borderRadius: 999,
-  background: "rgba(239,68,68,0.15)",
-  border: "1px solid rgba(248,113,113,0.4)",
-  color: "#fecaca",
-  fontSize: 12,
-  fontWeight: 950,
-};
-
-const conflictPillStyle: React.CSSProperties = {
-  padding: "6px 9px",
-  borderRadius: 999,
-  background: "rgba(147,51,234,0.18)",
-  border: "1px solid rgba(192,132,252,0.4)",
-  color: "#e9d5ff",
-  fontSize: 12,
-  fontWeight: 950,
-};
-
-const decayPillStyle: React.CSSProperties = {
-  padding: "6px 9px",
-  borderRadius: 999,
-  background: "rgba(14,165,233,0.16)",
-  border: "1px solid rgba(56,189,248,0.32)",
-  color: "#bae6fd",
-  fontSize: 12,
-  fontWeight: 950,
-};
-
-const historyNoticeStyle: React.CSSProperties = {
-  marginTop: 10,
-  padding: "10px 12px",
-  borderRadius: 14,
-  background: "rgba(250,204,21,0.08)",
-  border: "1px solid rgba(250,204,21,0.18)",
-  color: "#fde68a",
-  fontSize: 12,
-  lineHeight: 1.45,
-  fontWeight: 750,
-};
-
-const conflictNoticeStyle: React.CSSProperties = {
-  marginTop: 10,
-  padding: "10px 12px",
-  borderRadius: 14,
-  background: "rgba(147,51,234,0.12)",
-  border: "1px solid rgba(192,132,252,0.22)",
-  color: "#e9d5ff",
-  fontSize: 12,
-  lineHeight: 1.45,
-  fontWeight: 750,
-};
-
-const decayNoticeStyle: React.CSSProperties = {
-  marginTop: 10,
-  padding: "10px 12px",
-  borderRadius: 14,
-  background: "rgba(14,165,233,0.1)",
-  border: "1px solid rgba(56,189,248,0.2)",
-  color: "#bae6fd",
-  fontSize: 12,
-  lineHeight: 1.45,
-  fontWeight: 750,
-};
-
-const actionRowStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-  marginTop: 16,
-};
-
 const secondaryButtonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  minHeight: 40,
-  padding: "0 14px",
+  minHeight: 34,
+  padding: "0 10px",
   borderRadius: 999,
   background: "rgba(147,197,253,0.12)",
   border: "1px solid rgba(147,197,253,0.22)",
   color: "#dbeafe",
   fontWeight: 900,
+  fontSize: 12,
   textDecoration: "none",
 };
 
 const primaryButtonStyle: React.CSSProperties = {
-  minHeight: 40,
-  padding: "0 14px",
+  minHeight: 34,
+  padding: "0 10px",
   borderRadius: 999,
   border: "1px solid rgba(20,115,255,0.45)",
   background: "#1473ff",
   color: "#fff",
   fontWeight: 950,
   cursor: "pointer",
+  fontSize: 12,
 };
 
 const primaryLinkStyle: React.CSSProperties = {
@@ -1446,15 +1449,18 @@ const disabledButtonStyle: React.CSSProperties = {
 };
 
 const matchSectionStyle: React.CSSProperties = {
-  marginTop: 20,
-  paddingTop: 18,
-  borderTop: "1px solid rgba(255,255,255,0.1)",
+  marginTop: 12,
+  paddingTop: 10,
+  borderTop: "1px solid rgba(255,255,255,0.08)",
 };
 
 const sectionTitleStyle: React.CSSProperties = {
   color: "#f8fbff",
   fontWeight: 950,
-  marginBottom: 12,
+  marginBottom: 8,
+  fontSize: 12,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
 };
 
 const noMatchStyle: React.CSSProperties = {
@@ -1466,32 +1472,33 @@ const noMatchStyle: React.CSSProperties = {
 };
 
 const matchCardStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 14,
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gap: 10,
   alignItems: "center",
-  borderRadius: 18,
-  padding: 14,
-  background: "rgba(2,6,23,0.44)",
-  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 12,
+  padding: 10,
+  background: "rgba(2,6,23,0.48)",
+  border: "1px solid rgba(255,255,255,0.07)",
 };
 
 const matchTitleStyle: React.CSSProperties = {
   color: "#fff",
   fontWeight: 950,
+  fontSize: 14,
 };
 
 const matchMetaStyle: React.CSSProperties = {
   color: "#9fb4d6",
-  marginTop: 4,
-  fontSize: 13,
+  marginTop: 2,
+  fontSize: 12,
 };
 
 const reasonStyle: React.CSSProperties = {
   color: "#bfd6f5",
-  marginTop: 7,
-  fontSize: 12,
-  lineHeight: 1.45,
+  marginTop: 5,
+  fontSize: 11,
+  lineHeight: 1.35,
 };
 
 const conflictInlineStyle: React.CSSProperties = {
@@ -1521,25 +1528,25 @@ const decayInlineStyle: React.CSSProperties = {
 const matchScoreWrapStyle: React.CSSProperties = {
   display: "grid",
   justifyItems: "end",
-  gap: 6,
-  minWidth: 170,
+  gap: 4,
+  minWidth: 150,
 };
 
 const scoreStyle: React.CSSProperties = {
   color: "#facc15",
-  fontSize: 24,
+  fontSize: 20,
   fontWeight: 950,
 };
 
 const distanceStyle: React.CSSProperties = {
   color: "#bfd6f5",
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 850,
 };
 
 const formStackStyle: React.CSSProperties = {
   display: "grid",
-  gap: 8,
+  gap: 6,
   justifyItems: "end",
 };
 
@@ -1556,8 +1563,8 @@ const paginationStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "center",
   alignItems: "center",
-  gap: 12,
-  marginTop: 30,
+  gap: 10,
+  marginTop: 18,
 };
 
 const pageIndicatorStyle: React.CSSProperties = {
