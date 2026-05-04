@@ -182,60 +182,59 @@ export default async function CareersPage({
       `}</style>
 
       <section style={pageSectionStyle}>
-  <div className="eyebrow">Dealership Careers</div>
+        <div className="eyebrow">Dealership Careers</div>
 
-  <h1>Find your next dealership role.</h1>
+        <h1>Find your next dealership role.</h1>
 
-  <p className="lede">
-    Search active dealership roles—or skip the process and get matched automatically.
-  </p>
-
-  <div style={candidatePoolCardStyle}>
-    <div style={candidatePoolGridStyle}>
-      <div>
-        <div style={poolBadgeStyle}>Candidate Pool</div>
-
-        <h2 style={poolTitleStyle}>Stop applying. Start getting matched.</h2>
-
-        <p style={poolCopyStyle}>
-          Join once and let the system work for you. Your profile is continuously
-          matched to real dealership opportunities, and you’re only contacted
-          when there’s a strong fit.
+        <p className="lede">
+          Search active dealership roles—or skip the process and get matched automatically.
         </p>
 
-        <div style={poolRulesStyle}>
-          <span>✓ One-time profile review</span>
-          <span>✓ Continuous matching across active roles</span>
-          <span>✓ No dealer handoff without a strong fit</span>
-          <span>✓ Contact only when action is needed</span>
+        <div style={candidatePoolCardStyle}>
+          <div style={candidatePoolGridStyle}>
+            <div>
+              <div style={poolBadgeStyle}>Candidate Pool</div>
+
+              <h2 style={poolTitleStyle}>Stop applying. Start getting matched.</h2>
+
+              <p style={poolCopyStyle}>
+                Join the candidate pool once and let our team work for you. Your
+                profile is continuously matched to active dealership opportunities,
+                and we only reach out when there’s a strong fit.
+              </p>
+
+              <div style={poolRulesStyle}>
+                <span>✓ Resume-based review</span>
+                <span>✓ Continuous matching across active roles</span>
+                <span>✓ No dealer handoff without a strong fit</span>
+                <span>✓ SMS/email updates only when action is needed</span>
+              </div>
+            </div>
+
+            <div style={poolCtaCardStyle}>
+              <div style={poolCtaHeaderStyle}>
+                <div style={poolCtaEyebrowStyle}>Candidate Pool</div>
+
+                <h2 style={poolCtaTitleStyle}>Let opportunities come to you</h2>
+
+                <p style={poolCtaCopyStyle}>
+                  Skip the back-and-forth. Join once, stay eligible, and we’ll
+                  reach out when something is worth your time.
+                </p>
+              </div>
+
+              <div style={poolCtaRulesStyle}>
+                <span>Reviewed once</span>
+                <span>Continuously matched</span>
+                <span>Only contacted when relevant</span>
+              </div>
+
+              <a href={candidatePoolHref} style={poolOpenButtonStyle}>
+                Join candidate pool →
+              </a>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div style={poolCtaCardStyle}>
-        <div style={poolCtaHeaderStyle}>
-          <div style={poolCtaEyebrowStyle}>Candidate Pool</div>
-
-          <h2 style={poolCtaTitleStyle}>Let opportunities come to you</h2>
-
-          <p style={poolCtaCopyStyle}>
-            Skip the back-and-forth. Join once, stay eligible, and hear from us
-            only when it matters.
-          </p>
-        </div>
-
-        <div style={poolCtaRulesStyle}>
-          <span>Reviewed once</span>
-          <span>Continuously matched</span>
-          <span>Only contacted when relevant</span>
-        </div>
-
-        <a href={candidatePoolHref} style={poolOpenButtonStyle}>
-          Join candidate pool →
-        </a>
-      </div>
-    </div>
-  </div>
-</section>
 
         <div
           id="candidate-pool-form"
