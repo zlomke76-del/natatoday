@@ -454,14 +454,62 @@ async function linkOutboundAttachments(input: {
   }
 }
 
+async function findContactEmailForSms(input: {
+  applicationId: string | null;
+  recruiterId: string;
+}) {
+  if (!input.applicationId) return "";
+
+  const { data: application, error: applicationError } = await supabaseAdmin
+    .schema("nata")
+    .from("applications")
+    .select("email,candidate_email")
+    .eq("id", input.applicationId)
+    .maybeSingle();
+
+  if (applicationError) {
+    console.error("Failed to load SMS contact email from application:", applicationError);
+  }
+
+  const applicationEmail = label(
+    application?.email || application?.candidate_email,
+    "",
+  );
+
+  if (applicationEmail) return applicationEmail;
+
+  const { data: contact, error: contactError } = await supabaseAdmin
+    .schema("nata")
+    .from("contacts")
+    .select("email")
+    .eq("application_id", input.applicationId)
+    .or(`recruiter_id.eq.${input.recruiterId},recruiter_id.is.null`)
+    .eq("is_active", true)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (contactError) {
+    console.error("Failed to load SMS contact email from address book:", contactError);
+  }
+
+  return label(contact?.email, "");
+}
+
 export default async function CommunicationsCenter({
   recruiter,
   recruiterSlug,
   applications,
 }: CommunicationsCenterProps) {
   const recruiterId = String(recruiter.id);
+  const recruiterName = label(recruiter.name, "NATA Recruiter");
+  const recruiterTitle = label(
+    recruiter.title || recruiter.role,
+    "Recruiting Operations",
+  );
+  const recruiterPhone = label(recruiter.phone, "");
   const alias = getRecruiterAlias(recruiter, recruiterSlug);
-  const fromLine = getRecruiterFromLine(recruiter, recruiterSlug);
+  const fromLine = `${recruiterName} @ NATA <${alias}>`;
 
   const [messages, contacts, templates] = await Promise.all([
     loadMessages(recruiterId),
@@ -506,10 +554,10 @@ export default async function CommunicationsCenter({
         replyTo: alias,
         recruiterId,
         applicationId: applicationId || null,
-        signatureName: label(recruiter.name, "NATA Recruiting Team"),
-        signatureTitle: label(recruiter.title || recruiter.role, "Recruiting Operations"),
+        signatureName: recruiterName,
+        signatureTitle: recruiterTitle,
         signatureEmail: alias,
-        signaturePhone: label(recruiter.phone, ""),
+        signaturePhone: recruiterPhone,
         attachments: emailAttachments,
       } as any);
 
@@ -548,9 +596,10 @@ export default async function CommunicationsCenter({
         dealerSlug: dealerSlug || null,
       });
 
-      const contactEmailForSms = contacts.find(
-        (contact) => contact.applicationId && contact.applicationId === applicationId,
-      )?.email;
+      const contactEmailForSms = await findContactEmailForSms({
+        applicationId: applicationId || null,
+        recruiterId,
+      });
 
       if (contactEmailForSms) {
         await incrementCandidateContactByEmail(contactEmailForSms);
@@ -568,7 +617,7 @@ export default async function CommunicationsCenter({
             Communications Center
           </div>
           <h2 style={communicationsTitle}>
-            Inbox + sent for {label(recruiter.name, "recruiter")}
+            Inbox + sent for {recruiterName}
           </h2>
           <p style={communicationsCopy}>
             Send professional email or SMS from the recruiter identity, use the
@@ -588,7 +637,7 @@ export default async function CommunicationsCenter({
           action={sendRecruiterMessage}
           alias={alias}
           recruiterId={recruiterId}
-          recruiterName={label(recruiter.name, "NATA Recruiter")}
+          recruiterName={recruiterName}
           contacts={contacts}
           templates={templates}
         />
