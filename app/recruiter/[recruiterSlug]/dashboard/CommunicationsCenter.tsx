@@ -538,8 +538,27 @@ export default async function CommunicationsCenter({
 
           <label style={fieldLabel}>
             Message
-            <textarea name="body" placeholder="Write the message..." rows={5} style={textAreaStyle} />
+            <textarea name="body" placeholder="Write the message..." rows={4} style={textAreaStyle} />
           </label>
+
+          <div style={solaceRewriteRow}>
+            <label style={fieldLabel}>
+              Solace tone
+              <select name="solace_tone" defaultValue="professional" style={inputStyle}>
+                <option value="professional">Professional</option>
+                <option value="warm">Warm</option>
+                <option value="concise">Concise</option>
+                <option value="firm">Firm</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              style={solaceButtonStyle}
+              title="Rewrite assist stays on the composer surface without adding another scroll lane."
+            >
+              Rewrite with Solace
+            </button>
+          </div>
 
           <button className="btn btn-primary" type="submit" style={sendButtonStyle}>
             Send message
@@ -694,15 +713,15 @@ const identityCard: React.CSSProperties = {
 
 const communicationsGrid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(320px, 0.78fr) minmax(0, 1.22fr)",
-  gap: 14,
+  gridTemplateColumns: "420px minmax(0, 1fr)",
+  gap: 18,
   alignItems: "start",
 };
 
 const composerPanel: React.CSSProperties = {
   display: "grid",
-  gap: 10,
-  padding: 14,
+  gap: 8,
+  padding: 12,
   borderRadius: 20,
   border: "1px solid rgba(255,255,255,0.1)",
   background: "rgba(3,10,20,0.34)",
@@ -723,7 +742,7 @@ const channelGrid: React.CSSProperties = {
 };
 
 const channelPill: React.CSSProperties = {
-  minHeight: 42,
+  minHeight: 36,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -750,7 +769,7 @@ const recipientGrid: React.CSSProperties = {
 };
 
 const inputStyle: React.CSSProperties = {
-  minHeight: 38,
+  minHeight: 34,
   padding: "0 10px",
   borderRadius: 11,
   border: "1px solid rgba(255,255,255,0.14)",
@@ -762,13 +781,32 @@ const inputStyle: React.CSSProperties = {
 
 const textAreaStyle: React.CSSProperties = {
   ...inputStyle,
-  minHeight: 98,
+  minHeight: 82,
   padding: 10,
   resize: "vertical",
 };
 
 const sendButtonStyle: React.CSSProperties = {
-  minHeight: 44,
+  minHeight: 42,
+};
+
+const solaceRewriteRow: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gap: 8,
+  alignItems: "end",
+};
+
+const solaceButtonStyle: React.CSSProperties = {
+  minHeight: 34,
+  padding: "0 12px",
+  borderRadius: 999,
+  border: "1px solid rgba(251,191,36,0.34)",
+  background: "rgba(251,191,36,0.13)",
+  color: "#fde68a",
+  fontWeight: 950,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
 };
 
 const rightPanel: React.CSSProperties = {
@@ -795,7 +833,7 @@ const filterPill: React.CSSProperties = {
 };
 
 const singleScrollPane: React.CSSProperties = {
-  maxHeight: 506,
+  maxHeight: 500,
   overflowY: "auto",
   paddingRight: 4,
   display: "grid",
