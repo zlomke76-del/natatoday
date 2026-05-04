@@ -48,6 +48,10 @@ type AssignmentRow = {
   job_id?: string | null;
   created_at?: string | null;
   virtual_interview_status?: string | null;
+  packet_status?: string | null;
+  interview_packet_status?: string | null;
+  archived?: boolean | null;
+  archived_at?: string | null;
   jobs?: {
     id?: string | null;
     dealer_id?: string | null;
@@ -97,6 +101,27 @@ type RecruiterAdminPageProps = {
 const BACKLOG_THRESHOLD = 10;
 const LOAD_VARIANCE_THRESHOLD = 6;
 const LEAD_RECRUITER_OVERLOAD_THRESHOLD = 15;
+
+const TERMINAL_APPLICATION_STATUSES = new Set([
+  "placed",
+  "hired",
+  "dealer_hired",
+  "placement_complete",
+  "completed_placement",
+  "rejected",
+  "not_hired",
+  "not_selected",
+  "no_show",
+  "withdrawn",
+  "archived",
+]);
+
+const TERMINAL_PACKET_STATUSES = new Set([
+  "closed",
+  "archived",
+  "placement_closed",
+  "placement_archived",
+]);
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Admin",
@@ -192,6 +217,19 @@ function mergePermissions(role: RecruiterRole, permissions?: PermissionSet | nul
   };
 }
 
+function isTerminalApplication(application: AssignmentRow) {
+  const status = normalizeLower(application.status);
+  const screening = normalizeLower(application.screening_status);
+  const packetStatus = normalizeLower(application.packet_status || application.interview_packet_status);
+
+  if (application.archived === true || Boolean(application.archived_at)) return true;
+  if (TERMINAL_APPLICATION_STATUSES.has(status)) return true;
+  if (TERMINAL_APPLICATION_STATUSES.has(screening)) return true;
+  if (TERMINAL_PACKET_STATUSES.has(packetStatus)) return true;
+
+  return false;
+}
+
 function canReceiveInterviewWork(recruiter: Recruiter) {
   const status = normalizeStatus(recruiter.status, recruiter.is_active);
   const role = normalizeRole(recruiter.role);
@@ -209,8 +247,8 @@ function isInterviewBacklog(application: AssignmentRow) {
   const screening = normalizeLower(application.screening_status);
   const virtualStatus = normalizeLower(application.virtual_interview_status);
 
-  if (status === "not_fit" || status === "placed" || status === "rejected") return false;
-  if (screening === "not_fit" || screening === "rejected") return false;
+  if (isTerminalApplication(application)) return false;
+  if (status === "not_fit" || screening === "not_fit") return false;
   if (virtualStatus === "completed" || status === "virtual_completed") return false;
 
   return (
@@ -229,8 +267,8 @@ function isOpenAssignedWork(application: AssignmentRow) {
   const virtualStatus = normalizeLower(application.virtual_interview_status);
 
   if (!application.recruiter_id) return false;
-  if (status === "not_fit" || status === "placed" || status === "rejected") return false;
-  if (screening === "not_fit" || screening === "rejected") return false;
+  if (isTerminalApplication(application)) return false;
+  if (status === "not_fit" || screening === "not_fit") return false;
   if (virtualStatus === "completed" || status === "virtual_completed") return false;
 
   return true;
@@ -239,6 +277,9 @@ function isOpenAssignedWork(application: AssignmentRow) {
 function isScheduledInterview(application: AssignmentRow) {
   const status = normalizeLower(application.status);
   const virtualStatus = normalizeLower(application.virtual_interview_status);
+
+  if (isTerminalApplication(application)) return false;
+
   return status === "virtual_scheduled" || virtualStatus === "scheduled";
 }
 
@@ -253,6 +294,8 @@ function isCompletedRecently(application: AssignmentRow) {
   const createdAt = application.created_at ? new Date(application.created_at).getTime() : 0;
   const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
 
+  if (isTerminalApplication(application)) return false;
+
   return (status === "virtual_completed" || virtualStatus === "completed") && createdAt >= oneDayAgo;
 }
 
@@ -261,13 +304,13 @@ function buildLoadSnapshots(recruiters: Recruiter[], applications: AssignmentRow
     .filter(canReceiveInterviewWork)
     .map((recruiter) => {
       const assignedCount = applications.filter(
-        (application) => application.recruiter_id === recruiter.id && isOpenAssignedWork(application)
+        (application) => application.recruiter_id === recruiter.id && isOpenAssignedWork(application),
       ).length;
       const interviewCount =
         bookings.filter((booking) => booking.recruiter_id === recruiter.id && isActiveBooking(booking)).length ||
         applications.filter((application) => application.recruiter_id === recruiter.id && isScheduledInterview(application)).length;
       const completedRecentCount = applications.filter(
-        (application) => application.recruiter_id === recruiter.id && isCompletedRecently(application)
+        (application) => application.recruiter_id === recruiter.id && isCompletedRecently(application),
       ).length;
       const loadScore = assignedCount + interviewCount * 3 - completedRecentCount * 2;
       const capacityStatus: LoadSnapshot["capacityStatus"] =
@@ -388,7 +431,7 @@ async function getAdminData() {
       .schema("nata")
       .from("applications")
       .select(
-        "id,name,email,phone,status,screening_status,recruiter_id,assigned_recruiter,fit_score,job_id,created_at,virtual_interview_status,jobs(id,dealer_id,title,public_dealer_name,dealer_slug)"
+        "id,name,email,phone,status,screening_status,recruiter_id,assigned_recruiter,fit_score,job_id,created_at,virtual_interview_status,packet_status,interview_packet_status,archived,archived_at,jobs(id,dealer_id,title,public_dealer_name,dealer_slug)",
       )
       .order("created_at", { ascending: false })
       .limit(150),
@@ -443,16 +486,16 @@ async function getAdminData() {
 export default async function RecruiterAdminPage({ searchParams }: RecruiterAdminPageProps) {
   const { recruiters, applications, bookings, dealers } = await getAdminData();
 
+  const activeApplications = applications.filter((application) => !isTerminalApplication(application));
   const activeRecruiters = recruiters.filter((recruiter) => normalizeStatus(recruiter.status, recruiter.is_active) === "active");
   const assignableRecruiters = activeRecruiters.filter(canReceiveInterviewWork);
   const admins = groupRecruiters(recruiters, "admin");
   const workingRecruiters = groupRecruiters(recruiters, "recruiter");
   const agents = groupRecruiters(recruiters, "agent");
-  const backlogCandidates = applications.filter(isInterviewBacklog);
-  const unassignedCandidates = applications.filter((application) => !application.recruiter_id);
+  const backlogCandidates = activeApplications.filter(isInterviewBacklog);
   const unassignedBacklogCandidates = backlogCandidates.filter((application) => !application.recruiter_id);
-  const scheduledInterviewCount = applications.filter(isScheduledInterview).length;
-  const loadSnapshots = buildLoadSnapshots(assignableRecruiters, applications, bookings);
+  const scheduledInterviewCount = activeApplications.filter(isScheduledInterview).length;
+  const loadSnapshots = buildLoadSnapshots(assignableRecruiters, activeApplications, bookings);
   const highestLoad = loadSnapshots.length ? Math.max(...loadSnapshots.map((snapshot) => snapshot.loadScore)) : 0;
   const lowestLoad = loadSnapshots.length ? Math.min(...loadSnapshots.map((snapshot) => snapshot.loadScore)) : 0;
   const loadVariance = highestLoad - lowestLoad;
@@ -463,7 +506,7 @@ export default async function RecruiterAdminPage({ searchParams }: RecruiterAdmi
     highestLoad,
   });
   const pressureActive = reasons.length > 0;
-  const suggested = buildSuggestedAction({ applications, snapshots: loadSnapshots, pressureActive });
+  const suggested = buildSuggestedAction({ applications: activeApplications, snapshots: loadSnapshots, pressureActive });
 
   const inviteStatus = getQueryValue(searchParams, "invite");
   const assignStatus = getQueryValue(searchParams, "assign");
@@ -499,7 +542,7 @@ export default async function RecruiterAdminPage({ searchParams }: RecruiterAdmi
           <Metric label="Recruiters / agents" value={recruiters.length} />
           <Metric label="Active operators" value={activeRecruiters.length} />
           <Metric label="Dealers" value={dealers.length} />
-          <Metric label="Candidates tracked" value={applications.length} />
+          <Metric label="Active candidates" value={activeApplications.length} />
           <Metric label="Interview backlog" value={backlogCandidates.length} tone={backlogCandidates.length >= BACKLOG_THRESHOLD ? "warn" : "normal"} />
           <Metric label="Unassigned backlog" value={unassignedBacklogCandidates.length} tone={unassignedBacklogCandidates.length ? "warn" : "normal"} />
           <Metric label="Scheduled interviews" value={scheduledInterviewCount} />
@@ -613,7 +656,7 @@ export default async function RecruiterAdminPage({ searchParams }: RecruiterAdmi
               <div style={eyebrowStyle}>Recruiter load matrix</div>
               <h2 style={panelTitleStyle}>Capacity by operator</h2>
             </div>
-            <span style={subtleNoteStyle}>Load = assigned candidates + active interviews × 3 - recent completions × 2</span>
+            <span style={subtleNoteStyle}>Load = active assigned candidates + active interviews × 3 - recent completions × 2</span>
           </div>
 
           {loadSnapshots.length ? (
@@ -708,14 +751,14 @@ export default async function RecruiterAdminPage({ searchParams }: RecruiterAdmi
               <div style={eyebrowStyle}>Candidate ownership</div>
               <h2 style={panelTitleStyle}>Assignment queue</h2>
             </div>
-            <span style={subtleNoteStyle}>Dealer and manual assignment remain primary.</span>
+            <span style={subtleNoteStyle}>Terminal candidates are removed from active assignment.</span>
           </div>
 
-          {applications.length === 0 ? (
-            <div style={emptyStateStyle}>No candidates found yet.</div>
+          {activeApplications.length === 0 ? (
+            <div style={emptyStateStyle}>No active candidates found. Placed and archived candidates are hidden from assignment.</div>
           ) : (
             <div style={assignmentListStyle}>
-              {applications.slice(0, 40).map((application) => {
+              {activeApplications.slice(0, 40).map((application) => {
                 const assigned = recruiters.find((recruiter) => recruiter.id === application.recruiter_id);
                 const dealerDefault = application.dealer_assigned_recruiter_id
                   ? recruiters.find((recruiter) => recruiter.id === application.dealer_assigned_recruiter_id)
@@ -929,45 +972,10 @@ const primaryButtonStyle: CSSProperties = { minHeight: 48, borderRadius: 999, bo
 const rosterGroupStyle: CSSProperties = { display: "grid", gap: 10, marginTop: 18 };
 const rosterGroupTitleStyle: CSSProperties = { margin: 0, color: "#facc15", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.12em" };
 const rosterCardStyle: CSSProperties = { display: "grid", gridTemplateColumns: "54px minmax(0, 1fr) auto", gap: 14, alignItems: "center", padding: 14, borderRadius: 20, background: "rgba(2,6,23,0.36)", border: "1px solid rgba(255,255,255,0.08)" };
-const avatarStyle: CSSProperties = {
-  width: 54,
-  height: 54,
-  minWidth: 54,
-  borderRadius: 16,
-  display: "grid",
-  placeItems: "center",
-  background: "rgba(20,115,255,0.22)",
-  border: "1px solid rgba(147,197,253,0.22)",
-  color: "#dbeafe",
-  fontWeight: 950,
-  overflow: "hidden",
-  boxShadow: "0 10px 24px rgba(0,0,0,0.22)",
-};
-
+const avatarStyle: CSSProperties = { width: 54, height: 54, minWidth: 54, borderRadius: 16, display: "grid", placeItems: "center", background: "rgba(20,115,255,0.22)", border: "1px solid rgba(147,197,253,0.22)", color: "#dbeafe", fontWeight: 950, overflow: "hidden", boxShadow: "0 10px 24px rgba(0,0,0,0.22)" };
 function avatarPhotoStyle(url: string): CSSProperties {
-  return {
-    ...avatarStyle,
-    backgroundColor: "rgba(15,23,42,0.82)",
-    backgroundImage: `url("${url}")`,
-    backgroundSize: "cover",
-    backgroundPosition: "center center",
-    backgroundRepeat: "no-repeat",
-    border: "1px solid rgba(147,197,253,0.30)",
-  };
+  return { ...avatarStyle, backgroundColor: "rgba(15,23,42,0.82)", backgroundImage: `url("${url}")`, backgroundSize: "cover", backgroundPosition: "center center", backgroundRepeat: "no-repeat", border: "1px solid rgba(147,197,253,0.30)" };
 }
-
-const avatarImageStyle: CSSProperties = {
-  width: 54,
-  height: 54,
-  minWidth: 54,
-  borderRadius: 16,
-  objectFit: "cover",
-  objectPosition: "center center",
-  border: "1px solid rgba(147,197,253,0.26)",
-  background: "rgba(15,23,42,0.82)",
-  boxShadow: "0 10px 24px rgba(0,0,0,0.22)",
-  display: "block",
-};
 const rosterNameStyle: CSSProperties = { margin: 0, fontSize: 18 };
 const rosterMetaStyle: CSSProperties = { margin: "4px 0 0", color: "#9fb4d6", fontSize: 13 };
 const permissionPillRowStyle: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 };
