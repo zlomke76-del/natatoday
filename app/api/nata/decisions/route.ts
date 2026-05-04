@@ -29,6 +29,104 @@ function normalize(value: unknown) {
   return String(value || "").toLowerCase().trim();
 }
 
+async function safeUpdateApplication(applicationId: string, payload: AnyRow) {
+  const attempts: AnyRow[] = [
+    payload,
+    Object.fromEntries(
+      Object.entries(payload).filter(
+        ([key]) =>
+          ![
+            "packet_status",
+            "interview_packet_status",
+            "packet_closed_at",
+            "archived_at",
+            "placement_completed_at",
+            "placed_at",
+          ].includes(key),
+      ),
+    ),
+    Object.fromEntries(
+      Object.entries(payload).filter(
+        ([key]) =>
+          ![
+            "packet_status",
+            "interview_packet_status",
+            "packet_closed_at",
+            "archived_at",
+            "placement_completed_at",
+            "placed_at",
+            "dealer_hired_at",
+            "last_rejected_at",
+          ].includes(key),
+      ),
+    ),
+  ];
+
+  let lastError: unknown = null;
+
+  for (const attempt of attempts) {
+    const { error } = await supabaseAdmin
+      .schema("nata")
+      .from("applications")
+      .update(attempt)
+      .eq("id", applicationId);
+
+    if (!error) return null;
+    lastError = error;
+
+    const message = String(error.message || "").toLowerCase();
+    if (!message.includes("column") && !message.includes("schema cache")) {
+      break;
+    }
+  }
+
+  return lastError;
+}
+
+async function safeCloseJob(jobId: string, applicationId: string, decisionReason: string, now: string) {
+  const attempts: AnyRow[] = [
+    {
+      is_active: false,
+      publish_status: "filled",
+      filled_at: now,
+      filled_by_application_id: applicationId,
+      filled_note: decisionReason,
+      closed_reason: "filled",
+      updated_at: now,
+    },
+    {
+      is_active: false,
+      publish_status: "filled",
+      filled_at: now,
+      filled_note: decisionReason,
+      closed_reason: "filled",
+      updated_at: now,
+    },
+    {
+      is_active: false,
+      publish_status: "filled",
+      filled_at: now,
+      updated_at: now,
+    },
+  ];
+
+  for (const attempt of attempts) {
+    const { error } = await supabaseAdmin
+      .schema("nata")
+      .from("jobs")
+      .update(attempt)
+      .eq("id", jobId);
+
+    if (!error) return;
+
+    const message = String(error.message || "").toLowerCase();
+    if (!message.includes("column") && !message.includes("schema cache")) {
+      console.error("Failed to close filled job:", error);
+      return;
+    }
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -119,19 +217,22 @@ export async function POST(req: Request) {
     }
 
     if (PLACED_STATUSES.includes(normalizedOutcome)) {
-      decisionPayload.status = "hired";
+      decisionPayload.status = "placed";
+      decisionPayload.screening_status = "placed";
       decisionPayload.dealer_hired_at = now;
+      decisionPayload.placed_at = now;
+      decisionPayload.placement_completed_at = now;
+      decisionPayload.packet_status = "closed";
+      decisionPayload.interview_packet_status = "closed";
+      decisionPayload.packet_closed_at = now;
+      decisionPayload.archived_at = now;
     }
 
     if (POOL_STATUSES.includes(normalizedOutcome)) {
       decisionPayload.last_rejected_at = now;
     }
 
-    const { error: updateError } = await supabaseAdmin
-      .schema("nata")
-      .from("applications")
-      .update(decisionPayload)
-      .eq("id", application_id);
+    const updateError = await safeUpdateApplication(application_id, decisionPayload);
 
     if (updateError) {
       console.error("Failed to update application decision:", updateError);
@@ -143,25 +244,13 @@ export async function POST(req: Request) {
 
     if (PLACED_STATUSES.includes(normalizedOutcome)) {
       await markCandidatePlacedFromApplication(application_id);
-
-      const { error: jobCloseError } = await supabaseAdmin
-        .schema("nata")
-        .from("jobs")
-        .update({
-          is_active: false,
-          publish_status: "filled",
-          filled_at: now,
-          updated_at: now,
-        })
-        .eq("id", job_id);
-
-      if (jobCloseError) {
-        console.error("Failed to close filled job:", jobCloseError);
-      }
+      await safeCloseJob(job_id, application_id, decision_reason, now);
 
       return NextResponse.json({
         ok: true,
         job_closed: true,
+        packet_closed: true,
+        archived: true,
       });
     }
 
