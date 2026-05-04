@@ -157,7 +157,7 @@ async function loadMessages(recruiterId: string) {
     .select("*")
     .eq("recruiter_id", recruiterId)
     .order("created_at", { ascending: false })
-    .limit(50);
+    .limit(24);
 
   if (error) {
     console.error("Failed to load recruiter messages:", error);
@@ -629,11 +629,11 @@ export default async function CommunicationsCenter({
   ]);
 
   const threads = buildThreadSummaries(messages);
-  const needsReply = threads.filter((thread) => thread.needsReply).slice(0, 6);
-  const activeThreads = threads.filter((thread) => !thread.needsReply).slice(0, 5);
+  const needsReply = threads.filter((thread) => thread.needsReply).slice(0, 4);
+  const activeThreads = threads.filter((thread) => !thread.needsReply).slice(0, 3);
   const recentSent = messages
     .filter((message) => message.direction === "outbound")
-    .slice(0, 3);
+    .slice(0, 2);
 
   async function sendRecruiterMessage(formData: FormData) {
     "use server";
@@ -733,8 +733,7 @@ export default async function CommunicationsCenter({
           </div>
           <h2 style={communicationsTitle}>Action inbox for {recruiterName}</h2>
           <p style={communicationsCopy}>
-            The default view now stays focused on replies and active conversations.
-            Outbound history is capped so the workspace does not become a growing log wall.
+            Focused on replies, active conversations, and the latest outbound signal.
           </p>
         </div>
 
@@ -745,14 +744,16 @@ export default async function CommunicationsCenter({
       </div>
 
       <div style={communicationsGrid}>
-        <CommunicationsComposerClient
-          action={sendRecruiterMessage}
-          alias={alias}
-          recruiterId={recruiterId}
-          recruiterName={recruiterName}
-          contacts={contacts}
-          templates={templates}
-        />
+        <div style={composerPane}>
+          <CommunicationsComposerClient
+            action={sendRecruiterMessage}
+            alias={alias}
+            recruiterId={recruiterId}
+            recruiterName={recruiterName}
+            contacts={contacts}
+            templates={templates}
+          />
+        </div>
 
         <div style={messageColumn}>
           <ThreadPanel
@@ -893,8 +894,8 @@ function RecentSentPanel({
 
 const communicationsShell: CSSProperties = {
   marginTop: 42,
-  padding: 24,
-  borderRadius: 28,
+  padding: 18,
+  borderRadius: 24,
   border: "1px solid rgba(255,255,255,0.12)",
   background:
     "linear-gradient(145deg, rgba(20,115,255,0.12), rgba(255,255,255,0.045)), rgba(7,16,31,0.74)",
@@ -912,24 +913,25 @@ const communicationsHeader: CSSProperties = {
 const communicationsTitle: CSSProperties = {
   margin: 0,
   color: "#ffffff",
-  fontSize: 30,
+  fontSize: 24,
   lineHeight: 1,
   letterSpacing: "-0.04em",
 };
 
 const communicationsCopy: CSSProperties = {
-  maxWidth: 860,
-  margin: "12px 0 0",
+  maxWidth: 720,
+  margin: "8px 0 0",
   color: "#bfd6f5",
-  lineHeight: 1.55,
+  lineHeight: 1.45,
+  fontSize: 13,
 };
 
 const identityCard: CSSProperties = {
-  minWidth: 230,
+  minWidth: 210,
   display: "grid",
-  gap: 6,
-  padding: 16,
-  borderRadius: 18,
+  gap: 5,
+  padding: 12,
+  borderRadius: 16,
   border: "1px solid rgba(96,165,250,0.22)",
   background: "rgba(20,115,255,0.12)",
   color: "#dbeafe",
@@ -937,20 +939,33 @@ const identityCard: CSSProperties = {
 
 const communicationsGrid: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(360px, 0.94fr) minmax(0, 1.06fr)",
-  gap: 18,
-  marginTop: 22,
+  gridTemplateColumns: "minmax(300px, 380px) minmax(0, 1fr)",
+  gap: 14,
+  marginTop: 16,
+  alignItems: "start",
+};
+
+const composerPane: CSSProperties = {
+  maxHeight: 620,
+  overflowY: "auto",
+  overflowX: "hidden",
+  paddingRight: 4,
+  borderRadius: 20,
 };
 
 const messageColumn: CSSProperties = {
   display: "grid",
-  gap: 14,
+  gap: 10,
   alignContent: "start",
+  maxHeight: 620,
+  overflowY: "auto",
+  overflowX: "hidden",
+  paddingRight: 4,
 };
 
 const messagePanel: CSSProperties = {
-  padding: 16,
-  borderRadius: 22,
+  padding: 12,
+  borderRadius: 18,
   border: "1px solid rgba(255,255,255,0.1)",
   background: "rgba(3,10,20,0.28)",
 };
@@ -970,20 +985,20 @@ const messagePanelHeader: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  marginBottom: 12,
+  marginBottom: 8,
   color: "#ffffff",
 };
 
 const threadRow: CSSProperties = {
-  padding: 14,
-  borderRadius: 16,
+  padding: 10,
+  borderRadius: 14,
   border: "1px solid rgba(255,255,255,0.08)",
   background: "rgba(255,255,255,0.045)",
 };
 
 const compactMessageRow: CSSProperties = {
-  padding: 12,
-  borderRadius: 14,
+  padding: 10,
+  borderRadius: 13,
   border: "1px solid rgba(255,255,255,0.07)",
   background: "rgba(255,255,255,0.035)",
 };
@@ -1002,19 +1017,23 @@ const threadSubtitle: CSSProperties = {
 };
 
 const messagePreview: CSSProperties = {
-  margin: "8px 0 0",
+  margin: "6px 0 0",
   color: "#bfd6f5",
-  lineHeight: 1.45,
-  fontSize: 13,
+  lineHeight: 1.35,
+  fontSize: 12,
+  display: "-webkit-box",
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: "vertical",
+  overflow: "hidden",
 };
 
 const threadFooter: CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
-  gap: 8,
-  marginTop: 10,
+  gap: 6,
+  marginTop: 8,
   color: "#8fa6ca",
-  fontSize: 12,
+  fontSize: 11,
 };
 
 const threadBadge: CSSProperties = {
@@ -1059,10 +1078,10 @@ const secondarySmallButton: CSSProperties = {
 const messageFooter: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
-  gap: 10,
-  marginTop: 10,
+  gap: 8,
+  marginTop: 8,
   color: "#8fa6ca",
-  fontSize: 12,
+  fontSize: 11,
 };
 
 const emptyState: CSSProperties = {
