@@ -172,6 +172,60 @@ function isWaitingInviteStale(application: AnyRow) {
   return ageDays !== null && ageDays >= WAITING_INVITE_STALE_DAYS;
 }
 
+function getSchedulingFollowupStage(application: AnyRow) {
+  const values = [
+    application.virtual_interview_status,
+    application.screening_status,
+    application.status,
+  ].map(normalize);
+
+  if (values.includes("removal_review_required")) return "removal_review_required";
+  if (values.includes("final_notice_sent")) return "final_notice_sent";
+  if (values.includes("reengage_2_sent")) return "reengage_2_sent";
+  if (values.includes("reengage_1_sent")) return "reengage_1_sent";
+
+  return "initial_invite_sent";
+}
+
+function getSchedulingStageLabel(application: AnyRow) {
+  const stage = getSchedulingFollowupStage(application);
+
+  if (stage === "removal_review_required") return "Removal review required";
+  if (stage === "final_notice_sent") return "Final notice sent";
+  if (stage === "reengage_2_sent") return "Attempt 2 sent";
+  if (stage === "reengage_1_sent") return "Attempt 1 sent";
+
+  return isWaitingInviteStale(application)
+    ? "Initial invite stale"
+    : "Initial invite sent";
+}
+
+function getSchedulingStageCopy(application: AnyRow) {
+  const stage = getSchedulingFollowupStage(application);
+
+  if (stage === "removal_review_required") {
+    return "Automated follow-ups are complete. Recruiter approval is required before this candidate is removed and returned to the pool.";
+  }
+
+  if (stage === "final_notice_sent") {
+    return "Final scheduling notice has been sent. If the candidate does not schedule, this will move to removal review.";
+  }
+
+  if (stage === "reengage_2_sent") {
+    return "Second follow-up has been sent. The next automated step is a final scheduling notice.";
+  }
+
+  if (stage === "reengage_1_sent") {
+    return "First follow-up has been sent. The next automated step is a second check-in.";
+  }
+
+  return "Initial invite has been sent. Follow-ups now run automatically before recruiter removal review.";
+}
+
+function isRemovalReviewRequired(application: AnyRow) {
+  return getSchedulingFollowupStage(application) === "removal_review_required";
+}
+
 function cleanFormValue(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -419,7 +473,14 @@ function isWaitingOnCandidate(app: AnyRow) {
   if (app.virtual_interview_completed_at) return false;
   if (isInterviewToComplete(app)) return false;
 
-  return hasAnyState(app, ["virtual_invited", "invited"]);
+  return hasAnyState(app, [
+    "virtual_invited",
+    "invited",
+    "reengage_1_sent",
+    "reengage_2_sent",
+    "final_notice_sent",
+    "removal_review_required",
+  ]);
 }
 
 function isCandidateQueueActionable(app: AnyRow) {
@@ -1458,8 +1519,8 @@ export default async function RecruiterDashboard({
                     <div>
                       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                         <h3 style={{ margin: 0, fontSize: 22 }}>{application.name || application.email || "Candidate"}</h3>
-                        <span style={stale ? dangerPill : historyPill}>
-                          {stale ? "Stale scheduling signal" : "Waiting on candidate"}
+                        <span style={isRemovalReviewRequired(application) ? conflictPill : stale ? dangerPill : historyPill}>
+                          {getSchedulingStageLabel(application)}
                         </span>
                       </div>
 
@@ -1477,35 +1538,48 @@ export default async function RecruiterDashboard({
                     </div>
 
                     <div style={waitingActions}>
-                      <form method="POST" action="/api/nata/recruiter-actions" style={waitingActionForm}>
-                        <input type="hidden" name="action" value="reengage_waiting" />
-                        <input type="hidden" name="recruiter_id" value={String(recruiterId)} />
-                        <input type="hidden" name="recruiter_slug" value={String(recruiterRecordSlug)} />
-                        <input type="hidden" name="application_id" value={String(application.id)} />
-                        <input
-                          name="reason"
-                          placeholder={stale ? "Re-engagement note" : "Optional follow-up note"}
-                          style={miniInput}
-                        />
-                        <button className="btn btn-primary" type="submit">
-                          Re-engage
-                        </button>
-                      </form>
+                      <div style={automationStatusBox}>
+                        <strong style={{ color: "#fff" }}>{getSchedulingStageLabel(application)}</strong>
+                        <span>{getSchedulingStageCopy(application)}</span>
+                      </div>
 
-                      <form method="POST" action="/api/nata/recruiter-actions" style={waitingActionForm}>
-                        <input type="hidden" name="action" value="remove_waiting" />
-                        <input type="hidden" name="recruiter_id" value={String(recruiterId)} />
-                        <input type="hidden" name="recruiter_slug" value={String(recruiterRecordSlug)} />
-                        <input type="hidden" name="application_id" value={String(application.id)} />
-                        <input
-                          name="reason"
-                          placeholder="Removal reason"
-                          style={miniInput}
-                        />
-                        <button className="btn btn-secondary" type="submit">
-                          Remove
-                        </button>
-                      </form>
+                      {isRemovalReviewRequired(application) ? (
+                        <>
+                          <form method="POST" action="/api/nata/recruiter-actions" style={waitingActionForm}>
+                            <input type="hidden" name="action" value="approve_scheduling_removal" />
+                            <input type="hidden" name="recruiter_id" value={String(recruiterId)} />
+                            <input type="hidden" name="recruiter_slug" value={String(recruiterRecordSlug)} />
+                            <input type="hidden" name="application_id" value={String(application.id)} />
+                            <input
+                              name="reason"
+                              placeholder="Removal approval reason"
+                              style={miniInput}
+                            />
+                            <button className="btn btn-secondary" type="submit">
+                              Approve removal
+                            </button>
+                          </form>
+
+                          <form method="POST" action="/api/nata/recruiter-actions" style={waitingActionForm}>
+                            <input type="hidden" name="action" value="keep_waiting" />
+                            <input type="hidden" name="recruiter_id" value={String(recruiterId)} />
+                            <input type="hidden" name="recruiter_slug" value={String(recruiterRecordSlug)} />
+                            <input type="hidden" name="application_id" value={String(application.id)} />
+                            <input
+                              name="reason"
+                              placeholder="Manual contact / keep-warm note"
+                              style={miniInput}
+                            />
+                            <button className="btn btn-primary" type="submit">
+                              Keep active
+                            </button>
+                          </form>
+                        </>
+                      ) : (
+                        <div style={automationNoteStyle}>
+                          Automated follow-up sequence is active. Removal unlocks only after the final notice window.
+                        </div>
+                      )}
                     </div>
                   </article>
                 );
@@ -1641,6 +1715,28 @@ const waitingCandidateCard: React.CSSProperties = {
 const waitingActions: React.CSSProperties = {
   display: "grid",
   gap: 10,
+};
+
+const automationStatusBox: React.CSSProperties = {
+  display: "grid",
+  gap: 6,
+  padding: 13,
+  borderRadius: 16,
+  border: "1px solid rgba(96,165,250,0.18)",
+  background: "rgba(20,115,255,0.09)",
+  color: "#bfd6f5",
+  fontSize: 13,
+  lineHeight: 1.45,
+};
+
+const automationNoteStyle: React.CSSProperties = {
+  padding: 13,
+  borderRadius: 16,
+  border: "1px dashed rgba(251,191,36,0.24)",
+  background: "rgba(251,191,36,0.07)",
+  color: "#fde68a",
+  fontSize: 13,
+  lineHeight: 1.45,
 };
 
 const waitingActionForm: React.CSSProperties = {
