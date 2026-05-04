@@ -141,22 +141,21 @@ async function upsertCandidateFromForm(formData: FormData) {
     .toLowerCase();
 
   const payload = {
-    name,
-    email,
-    phone,
-    linkedin: linkedin || null,
-    location_text: location,
-    resume_url: resumeUrl,
-    profile_photo_url: profilePhotoUrl,
-    status: "active",
-    availability_status: "available",
-    sms_email_consent: true,
-    search_text: searchText,
-    experience_summary:
-      "Candidate joined the NATA candidate pool for continuous dealership role matching.",
-    updated_at: now,
-  };
-
+  name,
+  email,
+  phone,
+  linkedin: linkedin || null,
+  location_text: location,
+  resume_url: resumeUrl,
+  profile_photo_url: profilePhotoUrl,
+  status: "active",
+  availability_status: "available",
+  target_roles: [],
+  search_text: searchText,
+  experience_summary:
+    "Candidate joined the NATA candidate pool for continuous dealership role matching.",
+  updated_at: now,
+};
   const { data: existingCandidate, error: existingError } = await supabaseAdmin
     .schema("nata")
     .from("candidates")
