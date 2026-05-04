@@ -35,6 +35,7 @@ type MusicTrack = {
 const MUSIC_BUCKET = "nata-music-library";
 const MIN_MATCH_SCORE = 70;
 const MAX_MATCH_DISTANCE_MILES = 100;
+const WAITING_INVITE_STALE_DAYS = 3;
 
 const POOL_RETURN_STATUSES = [
   "not_fit",
@@ -64,6 +65,9 @@ const TERMINAL_STATUSES = [
   "not_selected",
   "dealer_rejected",
   "no_show",
+  "withdrawn",
+  "candidate_unresponsive",
+  "invite_expired",
 ];
 
 async function loadInitialMusicTracks(): Promise<MusicTrack[]> {
@@ -126,6 +130,46 @@ function formatDate(value: unknown) {
   } catch {
     return "Not scheduled";
   }
+}
+
+
+function formatShortDateTime(value: unknown) {
+  if (!value || typeof value !== "string") return "Unknown";
+
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(value));
+  } catch {
+    return "Unknown";
+  }
+}
+
+function getAgeInDays(value: unknown) {
+  if (!value || typeof value !== "string") return null;
+
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return null;
+
+  return Math.max(0, Math.floor((Date.now() - time) / (1000 * 60 * 60 * 24)));
+}
+
+function getWaitingSince(application: AnyRow) {
+  return String(
+    application.virtual_invited_at ||
+      application.invited_at ||
+      application.updated_at ||
+      application.created_at ||
+      "",
+  );
+}
+
+function isWaitingInviteStale(application: AnyRow) {
+  const ageDays = getAgeInDays(getWaitingSince(application));
+  return ageDays !== null && ageDays >= WAITING_INVITE_STALE_DAYS;
 }
 
 function cleanFormValue(value: FormDataEntryValue | null) {
@@ -861,6 +905,128 @@ export default async function RecruiterDashboard({
     redirect(`/recruiter/${recruiterSlug}/dashboard`);
   }
 
+  async function reengageWaitingCandidate(formData: FormData) {
+    "use server";
+
+    const applicationId = cleanFormValue(formData.get("application_id"));
+    const reason =
+      cleanFormValue(formData.get("reason")) ||
+      "Recruiter re-engaged candidate after schedule invite went stale.";
+
+    if (!applicationId) throw new Error("Application id is required.");
+
+    const { data: application, error: applicationLoadError } = await supabaseAdmin
+      .schema("nata")
+      .from("applications")
+      .select("*")
+      .eq("id", applicationId)
+      .eq("recruiter_id", recruiter.id)
+      .maybeSingle();
+
+    if (applicationLoadError) throw new Error(applicationLoadError.message);
+    if (!application) throw new Error("Application not found for this recruiter.");
+    if (!isWaitingOnCandidate(application)) {
+      throw new Error("Only candidates waiting on scheduling can be re-engaged from this queue.");
+    }
+
+    const { data: job } = await supabaseAdmin
+      .schema("nata")
+      .from("jobs")
+      .select("*")
+      .eq("id", application.job_id)
+      .maybeSingle();
+
+    const bookingUrl = buildCandidateScheduleUrl(applicationId);
+    const now = new Date().toISOString();
+    const previousReason = label(application.decision_reason, "");
+    const reengageNote = `[Candidate re-engaged ${now}] ${reason}`;
+
+    const { error } = await supabaseAdmin
+      .schema("nata")
+      .from("applications")
+      .update({
+        status: "virtual_invited",
+        screening_status: "virtual_invited",
+        virtual_interview_status: "invited",
+        virtual_interview_url: bookingUrl,
+        decision_reason: previousReason ? `${previousReason}\n${reengageNote}` : reengageNote,
+        updated_at: now,
+      })
+      .eq("id", applicationId)
+      .eq("recruiter_id", recruiter.id);
+
+    if (error) throw new Error(error.message);
+
+    try {
+      await sendInterviewInvite({
+        applicationId,
+        candidateName: label(application.name || application.email, "Candidate"),
+        candidateEmail: application.email || null,
+        candidatePhone: application.phone || null,
+        roleTitle: label(job?.title || application.role, "Candidate"),
+        dealerName: label(job?.public_dealer_name || job?.dealer_slug, "Dealer"),
+        recruiterName: label(recruiter.name, "your recruiter"),
+        bookingUrl,
+      });
+    } catch (notificationError) {
+      console.error("Candidate re-engagement notification failed:", notificationError);
+    }
+
+    redirect(`/recruiter/${recruiterSlug}/dashboard#candidate-scheduling-pending`);
+  }
+
+  async function removeWaitingCandidate(formData: FormData) {
+    "use server";
+
+    const applicationId = cleanFormValue(formData.get("application_id"));
+    const reason =
+      cleanFormValue(formData.get("reason")) ||
+      "Candidate removed from scheduling queue after stale or inactive response state.";
+
+    if (!applicationId) throw new Error("Application id is required.");
+
+    const { data: application, error: applicationLoadError } = await supabaseAdmin
+      .schema("nata")
+      .from("applications")
+      .select("*")
+      .eq("id", applicationId)
+      .eq("recruiter_id", recruiter.id)
+      .maybeSingle();
+
+    if (applicationLoadError) throw new Error(applicationLoadError.message);
+    if (!application) throw new Error("Application not found for this recruiter.");
+    if (!isWaitingOnCandidate(application)) {
+      throw new Error("Only candidates waiting on scheduling can be removed from this queue.");
+    }
+
+    const now = new Date().toISOString();
+    const previousReason = label(application.decision_reason, "");
+    const removalNote = `[Scheduling queue removal ${now}] ${reason}`;
+
+    const { error } = await supabaseAdmin
+      .schema("nata")
+      .from("applications")
+      .update({
+        status: "withdrawn",
+        screening_status: "withdrawn",
+        virtual_interview_status: "expired",
+        decision_reason: previousReason ? `${previousReason}\n${removalNote}` : removalNote,
+        updated_at: now,
+      })
+      .eq("id", applicationId)
+      .eq("recruiter_id", recruiter.id);
+
+    if (error) throw new Error(error.message);
+
+    await returnApplicationToCandidatePool({
+      applicationId,
+      source: "withdrawn",
+      reason,
+    });
+
+    redirect(`/recruiter/${recruiterSlug}/dashboard#candidate-scheduling-pending`);
+  }
+
   async function holdCandidate(formData: FormData) {
     "use server";
 
@@ -1188,17 +1354,85 @@ export default async function RecruiterDashboard({
         </div>
 
         <div style={noticeGrid}>
-          <div style={noticeCard}>
+          <Link href="#candidate-scheduling-pending" style={noticeCardLink}>
             <strong>Waiting on candidate scheduling</strong>
             <span>{waitingOnCandidate.length}</span>
-            <p>Approved candidates are hidden until they book a time.</p>
-          </div>
+            <p>Approved candidates are hidden until they book a time. Open pending list →</p>
+          </Link>
           <div style={noticeCard}>
             <strong>Actionable candidate queue</strong>
             <span>{candidateQueue.length}</span>
             <p>Rejected candidates are returned to the candidate pool and rematched when eligible.</p>
           </div>
         </div>
+
+        <section id="candidate-scheduling-pending" style={{ marginTop: 48, scrollMarginTop: 120 }}>
+          <div className="section-kicker">Candidate Scheduling Pending</div>
+
+          {waitingOnCandidate.length === 0 ? (
+            <EmptyState>No approved candidates are waiting on scheduling right now.</EmptyState>
+          ) : (
+            <div style={{ display: "grid", gap: 14 }}>
+              {waitingOnCandidate.map((application) => {
+                const job = jobs.find((item) => item.id === application.job_id);
+                const waitingSince = getWaitingSince(application);
+                const ageDays = getAgeInDays(waitingSince);
+                const stale = isWaitingInviteStale(application);
+
+                return (
+                  <article key={application.id} style={waitingCandidateCard}>
+                    <div>
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                        <h3 style={{ margin: 0, fontSize: 22 }}>{application.name || application.email || "Candidate"}</h3>
+                        <span style={stale ? dangerPill : historyPill}>
+                          {stale ? "Stale scheduling signal" : "Waiting on candidate"}
+                        </span>
+                      </div>
+
+                      <p style={{ margin: "8px 0 0", color: "#bfd6f5" }}>
+                        {label(job?.title || application.role, "Candidate")} · {label(job?.public_dealer_name || job?.dealer_slug, "Dealer pending")}
+                      </p>
+
+                      <p style={{ margin: "8px 0 0", color: "#9fb1cc", fontSize: 13 }}>
+                        Invited {formatShortDateTime(waitingSince)}{ageDays === null ? "" : ` · ${ageDays} day${ageDays === 1 ? "" : "s"} waiting`}
+                      </p>
+
+                      <p style={{ margin: "8px 0 0", color: "#9fb1cc", fontSize: 13 }}>
+                        Email: {application.email || "Not provided"} · Phone: {application.phone || "Not provided"}
+                      </p>
+                    </div>
+
+                    <div style={waitingActions}>
+                      <form action={reengageWaitingCandidate} style={waitingActionForm}>
+                        <input type="hidden" name="application_id" value={String(application.id)} />
+                        <input
+                          name="reason"
+                          placeholder={stale ? "Re-engagement note" : "Optional follow-up note"}
+                          style={miniInput}
+                        />
+                        <button className="btn btn-primary" type="submit">
+                          Re-engage
+                        </button>
+                      </form>
+
+                      <form action={removeWaitingCandidate} style={waitingActionForm}>
+                        <input type="hidden" name="application_id" value={String(application.id)} />
+                        <input
+                          name="reason"
+                          placeholder="Removal reason"
+                          style={miniInput}
+                        />
+                        <button className="btn btn-secondary" type="submit">
+                          Remove
+                        </button>
+                      </form>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
         <div className="section-kicker" style={{ marginTop: 48 }}>Dealer Priority Board</div>
         <div style={{ display: "grid", gap: 14 }}>
@@ -1305,6 +1539,35 @@ const noticeCard: React.CSSProperties = {
   border: "1px solid rgba(96,165,250,0.18)",
   background: "rgba(37,99,235,0.08)",
   color: "#dbeafe",
+};
+
+const noticeCardLink: React.CSSProperties = {
+  ...noticeCard,
+  textDecoration: "none",
+  cursor: "pointer",
+};
+
+const waitingCandidateCard: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 0.75fr)",
+  gap: 16,
+  alignItems: "start",
+  padding: 20,
+  borderRadius: 22,
+  border: "1px solid rgba(251,191,36,0.2)",
+  background: "linear-gradient(145deg, rgba(251,191,36,0.09), rgba(37,99,235,0.06))",
+};
+
+const waitingActions: React.CSSProperties = {
+  display: "grid",
+  gap: 10,
+};
+
+const waitingActionForm: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gap: 10,
+  alignItems: "center",
 };
 
 const metricCard: React.CSSProperties = { padding: 20, borderRadius: 20, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)" };
