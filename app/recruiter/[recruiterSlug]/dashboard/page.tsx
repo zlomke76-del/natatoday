@@ -56,6 +56,16 @@ const PLACED_STATUSES = [
   "completed_placement",
 ];
 
+const TERMINAL_STATUSES = [
+  ...PLACED_STATUSES,
+  "archived",
+  "closed",
+  "not_hired",
+  "not_selected",
+  "dealer_rejected",
+  "no_show",
+];
+
 async function loadInitialMusicTracks(): Promise<MusicTrack[]> {
   const { data, error } = await supabaseAdmin
     .schema("nata")
@@ -314,8 +324,13 @@ function hasAnyState(app: AnyRow, states: string[]) {
   return values.some((value) => states.includes(value));
 }
 
+function isTerminalApplication(app: AnyRow) {
+  return hasAnyState(app, TERMINAL_STATUSES);
+}
+
 function isPassedOrBlocked(app: AnyRow) {
   return hasAnyState(app, [
+    ...TERMINAL_STATUSES,
     "not_fit",
     "passed",
     "pass",
@@ -327,6 +342,8 @@ function isPassedOrBlocked(app: AnyRow) {
 }
 
 function isDealerScheduled(app: AnyRow) {
+  if (isTerminalApplication(app)) return false;
+
   return (
     hasAnyState(app, ["dealer_interview_scheduled"]) ||
     Boolean(app.dealer_interview_at && app.interview_packet_ready)
@@ -334,16 +351,19 @@ function isDealerScheduled(app: AnyRow) {
 }
 
 function isPacketPending(app: AnyRow) {
+  if (isTerminalApplication(app)) return false;
   return Boolean(app.virtual_interview_completed_at && !app.interview_packet_ready);
 }
 
 function isInterviewToComplete(app: AnyRow) {
+  if (isTerminalApplication(app)) return false;
   if (app.virtual_interview_completed_at) return false;
 
   return hasAnyState(app, ["virtual_scheduled", "scheduled"]);
 }
 
 function isWaitingOnCandidate(app: AnyRow) {
+  if (isTerminalApplication(app)) return false;
   if (app.virtual_interview_completed_at) return false;
   if (isInterviewToComplete(app)) return false;
 
@@ -351,6 +371,7 @@ function isWaitingOnCandidate(app: AnyRow) {
 }
 
 function isCandidateQueueActionable(app: AnyRow) {
+  if (isTerminalApplication(app)) return false;
   if (isPassedOrBlocked(app)) return false;
   if (isDealerScheduled(app)) return false;
   if (isPacketPending(app)) return false;
@@ -913,7 +934,9 @@ export default async function RecruiterDashboard({
   if (applicationsError) console.error("Failed to load recruiter applications:", applicationsError);
 
   const jobs = (jobsData || []) as AnyRow[];
-  const applications = (applicationsData || []) as AnyRow[];
+  const allApplications = (applicationsData || []) as AnyRow[];
+  const applications = allApplications.filter((application) => !isTerminalApplication(application));
+  const archivedApplications = allApplications.filter(isTerminalApplication);
   const canOpenAdmin = hasAdminAccess(recruiter);
   const musicTracks = await loadInitialMusicTracks();
 
@@ -925,7 +948,7 @@ export default async function RecruiterDashboard({
   const reviewRequired = candidateQueue.filter((app) => hasAnyState(app, ["needs_review", "review"]));
   const packetPending = applications.filter(isPacketPending);
   const dealerScheduled = applications.filter(isDealerScheduled);
-  const blocked = applications.filter(isPassedOrBlocked);
+  const blocked = archivedApplications;
 
   const dealers = Array.from(new Set(openJobs.map((job) => label(job.dealer_slug || job.public_dealer_name, "unknown-dealer")))).map((dealerSlug) => {
     const dealerJobs = openJobs.filter((job) => label(job.dealer_slug || job.public_dealer_name, "unknown-dealer") === dealerSlug);
