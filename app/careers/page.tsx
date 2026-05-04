@@ -188,8 +188,7 @@ export default async function CareersPage({
 
         <p className="lede">
           Search active dealership roles—or skip the process and let us match you automatically.
-          Our team reviews your profile for dealership opportunities within
-          your area as new roles are published.
+          We continuously match your profile to real opportunities and only reach out when there’s a strong fit.
         </p>
 
         <div style={candidatePoolCardStyle}>
@@ -200,8 +199,9 @@ export default async function CareersPage({
               <h2 style={poolTitleStyle}>Stop applying. Start getting matched.</h2>
 
               <p style={poolCopyStyle}>
-                Search active dealership roles—or skip the process and let us match you automatically.
-                We continuously match your profile to real opportunities and only reach out when there’s a strong fit.
+                Join the candidate pool once and let our team work for you. Your
+                profile is continuously matched to active dealership opportunities,
+                and we only reach out when there’s a strong fit.
               </p>
 
               <div style={poolRulesStyle}>
