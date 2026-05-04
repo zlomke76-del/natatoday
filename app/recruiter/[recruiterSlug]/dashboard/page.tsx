@@ -1423,7 +1423,7 @@ export default async function RecruiterDashboard({
     <main className="shell">
       <Nav />
 
-      <section style={{ width: "min(1180px, calc(100% - 40px))", margin: "0 auto", padding: "60px 0" }}>
+      <section style={opsShell}>
         <NataSoundStateBridge
           candidateQueue={candidateQueue.length}
           interviewQueue={interviewQueue.length}
@@ -1433,224 +1433,240 @@ export default async function RecruiterDashboard({
           blocked={blocked.length}
         />
 
-        <div className="eyebrow">Recruiter Control Center</div>
-
-        <div style={headerRow}>
+        <div style={compactTopBar}>
           <div>
-            <h1 style={{ marginTop: 0 }}>{recruiterDisplayName} — Operations Command Center</h1>
-            <p style={{ color: "#cfe2ff", maxWidth: 860 }}>
-              Daily visibility for dealer demand, role-specific scoring, recruiter review, candidate coaching, interview readiness, dealer handoff status, and protected candidate relationships.
+            <div className="eyebrow">Recruiter Ops</div>
+            <h1 style={compactTitleStyle}>{recruiterDisplayName}</h1>
+            <p style={compactSublineStyle}>
+              Active work first. State controls visibility; completed and waiting states stay out of recruiter decision flow.
             </p>
           </div>
 
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <div style={compactNavActions}>
             {canOpenAdmin ? (
-              <Link
-                href="/recruiter/admin"
-                className="btn btn-primary"
-                style={{ whiteSpace: "nowrap" }}
-              >
-                Admin Control Layer →
+              <Link href="/recruiter/admin" className="btn btn-primary" style={compactActionButton}>
+                Admin
               </Link>
             ) : null}
-
-            <Link
-              href={`/recruiter/${recruiterSlug}/candidate-pool`}
-              className="btn btn-primary"
-              style={{ whiteSpace: "nowrap" }}
-            >
-              Candidate Pool →
+            <Link href={`/recruiter/${recruiterSlug}/candidate-pool`} className="btn btn-primary" style={compactActionButton}>
+              Pool
             </Link>
-
-            <Link
-              href={`/recruiter/${recruiterSlug}/availability`}
-              className="btn btn-secondary"
-              style={{ whiteSpace: "nowrap" }}
-            >
-              Manage availability
+            <Link href={`/recruiter/${recruiterSlug}/availability`} className="btn btn-secondary" style={compactActionButton}>
+              Availability
             </Link>
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 14, marginTop: 34 }}>
+        <div style={denseMetricBar}>
           {[
-            ["Active clients", dealers.length],
-            ["Open jobs", openJobs.length],
+            ["Clients", dealers.length],
+            ["Jobs", openJobs.length],
             ["Assigned", applications.length],
             ["Review", reviewRequired.length],
             ["Interviews", interviewQueue.length],
-            ["Ready dealer", dealerScheduled.length],
+            ["Ready", dealerScheduled.length],
+            ["Waiting", waitingOnCandidate.length],
+            ["Blocked", blocked.length],
           ].map(([title, value]) => (
-            <div key={String(title)} style={metricCard}>
-              <div style={{ color: "#9fb1cc", fontSize: 13 }}>{title}</div>
-              <div style={{ fontSize: 34, fontWeight: 900, marginTop: 8 }}>{value}</div>
+            <div key={String(title)} style={denseMetricCard}>
+              <span>{title}</span>
+              <strong>{value}</strong>
             </div>
           ))}
         </div>
 
-        <div style={noticeGrid}>
-          <Link href="#candidate-scheduling-pending" style={noticeCardLink}>
-            <strong>Waiting on candidate scheduling</strong>
-            <span>{waitingOnCandidate.length}</span>
-            <p>Approved candidates are hidden until they book a time. Open pending list →</p>
-          </Link>
-          <div style={noticeCard}>
-            <strong>Actionable candidate queue</strong>
-            <span>{candidateQueue.length}</span>
-            <p>Rejected candidates are returned to the candidate pool and rematched when eligible.</p>
-          </div>
-        </div>
-
-        <section id="candidate-scheduling-pending" style={{ marginTop: 48, scrollMarginTop: 120 }}>
-          <div className="section-kicker">Candidate Scheduling Pending</div>
-
-          {waitingOnCandidate.length === 0 ? (
-            <EmptyState>No approved candidates are waiting on scheduling right now.</EmptyState>
-          ) : (
-            <div style={{ display: "grid", gap: 14 }}>
-              {waitingOnCandidate.map((application) => {
-                const job = jobs.find((item) => item.id === application.job_id);
-                const waitingSince = getWaitingSince(application);
-                const ageDays = getAgeInDays(waitingSince);
-                const stale = isWaitingInviteStale(application);
-
-                return (
-                  <article key={application.id} style={waitingCandidateCard}>
-                    <div>
-                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                        <h3 style={{ margin: 0, fontSize: 22 }}>{application.name || application.email || "Candidate"}</h3>
-                        <span style={isRemovalReviewRequired(application) ? conflictPill : stale ? dangerPill : historyPill}>
-                          {getSchedulingStageLabel(application)}
-                        </span>
-                      </div>
-
-                      <p style={{ margin: "8px 0 0", color: "#bfd6f5" }}>
-                        {label(job?.title || application.role, "Candidate")} · {label(job?.public_dealer_name || job?.dealer_slug, "Dealer pending")}
-                      </p>
-
-                      <p style={{ margin: "8px 0 0", color: "#9fb1cc", fontSize: 13 }}>
-                        Invited {formatShortDateTime(waitingSince)}{ageDays === null ? "" : ` · ${ageDays} day${ageDays === 1 ? "" : "s"} waiting`}
-                      </p>
-
-                      <p style={{ margin: "8px 0 0", color: "#9fb1cc", fontSize: 13 }}>
-                        Email: {application.email || "Not provided"} · Phone: {application.phone || "Not provided"}
-                      </p>
-                    </div>
-
-                    <div style={waitingActions}>
-                      <div style={automationStatusBox}>
-                        <strong style={{ color: "#fff" }}>{getSchedulingStageLabel(application)}</strong>
-                        <span>{getSchedulingStageCopy(application)}</span>
-                      </div>
-
-                      {isRemovalReviewRequired(application) ? (
-                        <>
-                          <form method="POST" action="/api/nata/recruiter-actions" style={waitingActionForm}>
-                            <input type="hidden" name="action" value="approve_scheduling_removal" />
-                            <input type="hidden" name="recruiter_id" value={String(recruiterId)} />
-                            <input type="hidden" name="recruiter_slug" value={String(recruiterRecordSlug)} />
-                            <input type="hidden" name="application_id" value={String(application.id)} />
-                            <input
-                              name="reason"
-                              placeholder="Removal approval reason"
-                              style={miniInput}
-                            />
-                            <button className="btn btn-secondary" type="submit">
-                              Approve removal
-                            </button>
-                          </form>
-
-                          <form method="POST" action="/api/nata/recruiter-actions" style={waitingActionForm}>
-                            <input type="hidden" name="action" value="keep_waiting" />
-                            <input type="hidden" name="recruiter_id" value={String(recruiterId)} />
-                            <input type="hidden" name="recruiter_slug" value={String(recruiterRecordSlug)} />
-                            <input type="hidden" name="application_id" value={String(application.id)} />
-                            <input
-                              name="reason"
-                              placeholder="Manual contact / keep-warm note"
-                              style={miniInput}
-                            />
-                            <button className="btn btn-primary" type="submit">
-                              Keep active
-                            </button>
-                          </form>
-                        </>
-                      ) : (
-                        <div style={automationNoteStyle}>
-                          Automated follow-up sequence is active. Removal unlocks only after the final notice window.
-                        </div>
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <div className="section-kicker" style={{ marginTop: 48 }}>Dealer Priority Board</div>
-        <div style={{ display: "grid", gap: 14 }}>
-          {dealers.length === 0 ? (
-            <EmptyState>No active dealer jobs are currently open.</EmptyState>
-          ) : (
-            dealers.map((dealer) => (
-              <article key={dealer.dealerSlug} style={dealerRow}>
+        <div style={opsGrid}>
+          <div style={primaryOpsColumn}>
+            <section id="candidate-scheduling-pending" style={sectionPanel}>
+              <div style={sectionHeaderCompact}>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: 21 }}>{dealer.dealerName}</h2>
-                  <p style={{ margin: "6px 0 0", color: "#9fb1cc" }}>{dealer.dealerSlug}</p>
+                  <div className="section-kicker">Blocking Queue</div>
+                  <h2 style={sectionTitleCompact}>Candidate scheduling</h2>
                 </div>
-                <strong>{dealer.openJobs}</strong>
-                <strong>{dealer.pipeline}</strong>
-                <strong>{dealer.needsInterview}</strong>
-                <strong>{dealer.packetPending}</strong>
-                <span style={{ ...pill, background: dealer.priority === "Action" ? "#1473ff" : "rgba(255,255,255,0.08)" }}>{dealer.priority}</span>
-              </article>
-            ))
-          )}
+                <span style={countPill}>{waitingOnCandidate.length}</span>
+              </div>
+
+              {waitingOnCandidate.length === 0 ? (
+                <EmptyState>No approved candidates are waiting on scheduling right now.</EmptyState>
+              ) : (
+                <div style={denseList}>
+                  {waitingOnCandidate.map((application) => {
+                    const job = jobs.find((item) => item.id === application.job_id);
+                    const waitingSince = getWaitingSince(application);
+                    const ageDays = getAgeInDays(waitingSince);
+                    const stale = isWaitingInviteStale(application);
+
+                    return (
+                      <article key={application.id} style={denseWaitingRow}>
+                        <div style={denseCandidateMain}>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                            <strong style={denseCandidateName}>{application.name || application.email || "Candidate"}</strong>
+                            <span style={isRemovalReviewRequired(application) ? conflictPill : stale ? dangerPill : historyPill}>
+                              {getSchedulingStageLabel(application)}
+                            </span>
+                          </div>
+                          <span style={denseMetaLine}>
+                            {label(job?.title || application.role, "Candidate")} · {label(job?.public_dealer_name || job?.dealer_slug, "Dealer pending")}
+                          </span>
+                          <span style={denseMetaLine}>
+                            {formatShortDateTime(waitingSince)}{ageDays === null ? "" : ` · ${ageDays} day${ageDays === 1 ? "" : "s"}`} · {application.email || "No email"} · {application.phone || "No phone"}
+                          </span>
+                        </div>
+
+                        <div style={denseActionStack}>
+                          <span style={compactStatusNote}>{getSchedulingStageCopy(application)}</span>
+                          {isRemovalReviewRequired(application) ? (
+                            <div style={denseButtonRow}>
+                              <form method="POST" action="/api/nata/recruiter-actions" style={denseInlineForm}>
+                                <input type="hidden" name="action" value="approve_scheduling_removal" />
+                                <input type="hidden" name="recruiter_id" value={String(recruiterId)} />
+                                <input type="hidden" name="recruiter_slug" value={String(recruiterRecordSlug)} />
+                                <input type="hidden" name="application_id" value={String(application.id)} />
+                                <input name="reason" placeholder="Removal reason" style={denseInput} />
+                                <button className="btn btn-secondary" type="submit" style={denseButton}>Remove</button>
+                              </form>
+                              <form method="POST" action="/api/nata/recruiter-actions" style={denseInlineForm}>
+                                <input type="hidden" name="action" value="keep_waiting" />
+                                <input type="hidden" name="recruiter_id" value={String(recruiterId)} />
+                                <input type="hidden" name="recruiter_slug" value={String(recruiterRecordSlug)} />
+                                <input type="hidden" name="application_id" value={String(application.id)} />
+                                <input name="reason" placeholder="Keep active note" style={denseInput} />
+                                <button className="btn btn-primary" type="submit" style={denseButton}>Keep</button>
+                              </form>
+                            </div>
+                          ) : (
+                            <span style={automationCompactPill}>Auto follow-up active</span>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <section style={sectionPanel}>
+              <div style={sectionHeaderCompact}>
+                <div>
+                  <div className="section-kicker">Action Queue</div>
+                  <h2 style={sectionTitleCompact}>Candidate decisions</h2>
+                </div>
+                <span style={countPill}>{candidateQueue.length}</span>
+              </div>
+
+              {candidateQueue.length === 0 ? (
+                <EmptyState>No candidates require a recruiter decision right now.</EmptyState>
+              ) : (
+                <div style={denseList}>
+                  {candidateQueue.map((application) => (
+                    <details key={application.id} style={denseDetailsCard}>
+                      <summary style={denseSummary}>
+                        <span>{application.name || application.email || "Candidate"}</span>
+                        <span>{application.status || "new"} · Fit {application.fit_score ?? "—"}</span>
+                      </summary>
+                      <div style={{ marginTop: 12 }}>{renderApplicationCard(application, "candidate")}</div>
+                    </details>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section style={sectionPanel}>
+              <div style={sectionHeaderCompact}>
+                <div>
+                  <div className="section-kicker">Interview Work</div>
+                  <h2 style={sectionTitleCompact}>Interviews to complete</h2>
+                </div>
+                <span style={countPill}>{interviewQueue.length}</span>
+              </div>
+
+              {interviewQueue.length === 0 ? (
+                <EmptyState>No scheduled virtual interviews require action right now.</EmptyState>
+              ) : (
+                <div style={denseList}>
+                  {interviewQueue.map((application) => (
+                    <details key={application.id} style={denseDetailsCard}>
+                      <summary style={denseSummary}>
+                        <span>{application.name || application.email || "Candidate"}</span>
+                        <span>{application.virtual_interview_status || application.status || "scheduled"}</span>
+                      </summary>
+                      <div style={{ marginTop: 12 }}>{renderApplicationCard(application, "interview")}</div>
+                    </details>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          <aside style={secondaryOpsColumn}>
+            <section style={sectionPanel}>
+              <div style={sectionHeaderCompact}>
+                <div>
+                  <div className="section-kicker">Dealer Board</div>
+                  <h2 style={sectionTitleCompact}>Priority</h2>
+                </div>
+                <span style={countPill}>{dealers.length}</span>
+              </div>
+
+              {dealers.length === 0 ? (
+                <EmptyState>No active dealer jobs are currently open.</EmptyState>
+              ) : (
+                <div style={denseList}>
+                  {dealers.map((dealer) => (
+                    <article key={dealer.dealerSlug} style={compactDealerRow}>
+                      <div style={{ display: "grid", gap: 3 }}>
+                        <strong>{dealer.dealerName}</strong>
+                        <span style={{ color: "#9fb4d6", fontSize: 12 }}>{dealer.dealerSlug}</span>
+                      </div>
+                      <div style={dealerMiniStats}>
+                        <span>Jobs {dealer.openJobs}</span>
+                        <span>Pipe {dealer.pipeline}</span>
+                        <span>Ready {dealer.readyForDealer}</span>
+                      </div>
+                      <span style={{ ...pill, padding: "6px 10px", background: dealer.priority === "Action" ? "#1473ff" : "rgba(255,255,255,0.08)" }}>{dealer.priority}</span>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section style={sectionPanel}>
+              <div style={sectionHeaderCompact}>
+                <div>
+                  <div className="section-kicker">Work Summary</div>
+                  <h2 style={sectionTitleCompact}>Today</h2>
+                </div>
+              </div>
+              <div style={compactWorkGrid}>
+                {[
+                  ["Needs review", reviewRequired.length],
+                  ["Interviews", interviewQueue.length],
+                  ["Packets", packetPending.length],
+                  ["Archived", blocked.length],
+                ].map(([title, value]) => (
+                  <div key={String(title)} style={compactWorkCard}>
+                    <span>{title}</span>
+                    <strong>{value}</strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </aside>
         </div>
 
-        <div className="section-kicker" style={{ marginTop: 48 }}>Today’s Work</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
-          {[
-            ["Needs review", reviewRequired.length],
-            ["Interviews to complete", interviewQueue.length],
-            ["Packets pending", packetPending.length],
-            ["Passed / blocked", blocked.length],
-          ].map(([title, value]) => (
-            <div key={String(title)} style={workCard}>
-              <div style={{ color: "#fbbf24", fontWeight: 900, letterSpacing: ".12em", textTransform: "uppercase", fontSize: 12 }}>{title}</div>
-              <div style={{ fontSize: 42, fontWeight: 950, marginTop: 12 }}>{value}</div>
-            </div>
-          ))}
-        </div>
+        <details style={collapsibleOpsSection}>
+          <summary style={collapsibleSummary}>Communications center</summary>
+          <CommunicationsCenter
+            recruiter={communicationsRecruiter}
+            recruiterSlug={recruiterSlug}
+            applications={communicationsApplications}
+          />
+        </details>
 
-        <div className="section-kicker" style={{ marginTop: 48 }}>Interviews to Complete</div>
-        <div style={{ display: "grid", gap: 18 }}>
-          {interviewQueue.length === 0 ? (
-            <EmptyState>No scheduled virtual interviews require action right now.</EmptyState>
-          ) : (
-            interviewQueue.map((application) => renderApplicationCard(application, "interview"))
-          )}
-        </div>
-
-        <div className="section-kicker" style={{ marginTop: 48 }}>Candidate Queue</div>
-        <div style={{ display: "grid", gap: 18 }}>
-          {candidateQueue.length === 0 ? (
-            <EmptyState>No candidates require a recruiter decision right now. Approved candidates are hidden until they schedule, and passed candidates are archived into the candidate pool.</EmptyState>
-          ) : (
-            candidateQueue.map((application) => renderApplicationCard(application, "candidate"))
-          )}
-        </div>
-
-        <MusicLibraryPlayer tracks={musicTracks} />
-
-        <div className="section-kicker" style={{ marginTop: 48 }}>Communications</div>
-        <CommunicationsCenter
-          recruiter={communicationsRecruiter}
-          recruiterSlug={recruiterSlug}
-          applications={communicationsApplications}
-        />
-      </section>
+        <details style={collapsibleOpsSection}>
+          <summary style={collapsibleSummary}>Music workspace</summary>
+          <MusicLibraryPlayer tracks={musicTracks} />
+        </details>      </section>
     </main>
   );
 }
@@ -1803,3 +1819,156 @@ const warningPill: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 900,
 };
+
+
+const opsShell: React.CSSProperties = {
+  width: "min(1380px, calc(100% - 32px))",
+  margin: "0 auto",
+  padding: "24px 0 52px",
+};
+
+const compactTopBar: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 18,
+  alignItems: "center",
+  flexWrap: "wrap",
+  padding: "14px 0 12px",
+};
+
+const compactTitleStyle: React.CSSProperties = {
+  margin: "4px 0 0",
+  fontSize: "clamp(30px, 4vw, 48px)",
+  lineHeight: 0.98,
+  letterSpacing: "-0.055em",
+};
+
+const compactSublineStyle: React.CSSProperties = {
+  margin: "6px 0 0",
+  color: "#9fb4d6",
+  fontSize: 13,
+  maxWidth: 720,
+};
+
+const compactNavActions: React.CSSProperties = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
+};
+
+const compactActionButton: React.CSSProperties = {
+  minHeight: 38,
+  padding: "0 16px",
+  whiteSpace: "nowrap",
+};
+
+const denseMetricBar: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(8, minmax(92px, 1fr))",
+  gap: 8,
+  marginTop: 10,
+};
+
+const denseMetricCard: React.CSSProperties = {
+  minHeight: 54,
+  padding: "10px 12px",
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.045)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  color: "#9fb4d6",
+  fontSize: 12,
+  fontWeight: 850,
+};
+
+const opsGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1.45fr) minmax(320px, 0.65fr)",
+  gap: 14,
+  alignItems: "start",
+  marginTop: 14,
+};
+
+const primaryOpsColumn: React.CSSProperties = {
+  display: "grid",
+  gap: 14,
+};
+
+const secondaryOpsColumn: React.CSSProperties = {
+  display: "grid",
+  gap: 14,
+  position: "sticky",
+  top: 88,
+};
+
+const sectionPanel: React.CSSProperties = {
+  padding: 16,
+  borderRadius: 20,
+  border: "1px solid rgba(255,255,255,0.11)",
+  background: "rgba(255,255,255,0.05)",
+};
+
+const sectionHeaderCompact: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  marginBottom: 12,
+};
+
+const sectionTitleCompact: React.CSSProperties = {
+  margin: "4px 0 0",
+  fontSize: 22,
+  lineHeight: 1,
+  letterSpacing: "-0.035em",
+};
+
+const countPill: React.CSSProperties = {
+  minWidth: 38,
+  minHeight: 30,
+  padding: "5px 10px",
+  borderRadius: 999,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "rgba(20,115,255,0.16)",
+  border: "1px solid rgba(96,165,250,0.25)",
+  color: "#dbeafe",
+  fontWeight: 950,
+};
+
+const denseList: React.CSSProperties = { display: "grid", gap: 10 };
+
+const denseWaitingRow: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 0.9fr)",
+  gap: 12,
+  alignItems: "center",
+  padding: 13,
+  borderRadius: 16,
+  border: "1px solid rgba(251,191,36,0.18)",
+  background: "rgba(251,191,36,0.065)",
+};
+
+const denseCandidateMain: React.CSSProperties = { display: "grid", gap: 5, minWidth: 0 };
+const denseCandidateName: React.CSSProperties = { color: "#fff", fontSize: 17 };
+const denseMetaLine: React.CSSProperties = { color: "#9fb4d6", fontSize: 12, lineHeight: 1.35, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const denseActionStack: React.CSSProperties = { display: "grid", gap: 8 };
+const compactStatusNote: React.CSSProperties = { color: "#bfd6f5", fontSize: 12, lineHeight: 1.35 };
+const automationCompactPill: React.CSSProperties = { justifySelf: "start", padding: "6px 9px", borderRadius: 999, background: "rgba(20,115,255,0.12)", border: "1px solid rgba(96,165,250,0.2)", color: "#bfdbfe", fontSize: 12, fontWeight: 900 };
+const denseButtonRow: React.CSSProperties = { display: "grid", gap: 7 };
+const denseInlineForm: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 7, alignItems: "center" };
+const denseInput: React.CSSProperties = { minHeight: 36, borderRadius: 10, border: "1px solid rgba(255,255,255,0.13)", background: "rgba(3,7,18,0.82)", color: "#fff", padding: "0 10px", outline: "none" };
+const denseButton: React.CSSProperties = { minHeight: 36, padding: "0 12px" };
+const denseDetailsCard: React.CSSProperties = { borderRadius: 16, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(3,10,20,0.28)", padding: 12 };
+const denseSummary: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 12, cursor: "pointer", color: "#dbeafe", fontWeight: 900, listStyle: "none" };
+const compactDealerRow: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 10, alignItems: "center", padding: 12, borderRadius: 16, border: "1px solid rgba(255,255,255,0.09)", background: "rgba(3,10,20,0.30)" };
+const dealerMiniStats: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, auto)", gap: 8, color: "#9fb4d6", fontSize: 12 };
+const compactWorkGrid: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 };
+const compactWorkCard: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: 12, borderRadius: 14, border: "1px solid rgba(255,255,255,0.09)", background: "rgba(3,10,20,0.30)", color: "#9fb4d6", fontSize: 12, fontWeight: 850 };
+const collapsibleOpsSection: React.CSSProperties = { marginTop: 14, borderRadius: 20, border: "1px solid rgba(255,255,255,0.11)", background: "rgba(255,255,255,0.045)", padding: 14 };
+const collapsibleSummary: React.CSSProperties = { cursor: "pointer", color: "#facc15", fontWeight: 950, letterSpacing: "0.08em", textTransform: "uppercase", fontSize: 12 };
