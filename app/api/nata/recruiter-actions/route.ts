@@ -32,14 +32,20 @@ function clean(value: FormDataEntryValue | string | null | undefined) {
 }
 
 function normalize(value: unknown) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function label(value: unknown, fallback = "Candidate") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
-function redirectToDashboard(request: NextRequest, recruiterSlug: string, params?: Record<string, string>) {
+function redirectToDashboard(
+  request: NextRequest,
+  recruiterSlug: string,
+  params?: Record<string, string>,
+) {
   const slug = recruiterSlug || "don";
   const url = new URL(`/recruiter/${slug}/dashboard`, request.url);
 
@@ -56,7 +62,11 @@ function redirectToDashboard(request: NextRequest, recruiterSlug: string, params
 }
 
 function hasAnyTerminalState(application: AnyRow) {
-  return [application.status, application.screening_status, application.virtual_interview_status]
+  return [
+    application.status,
+    application.screening_status,
+    application.virtual_interview_status,
+  ]
     .map(normalize)
     .some((status) => TERMINAL_STATUSES.has(status));
 }
@@ -65,7 +75,11 @@ function isWaitingOnCandidate(application: AnyRow) {
   if (hasAnyTerminalState(application)) return false;
   if (application.virtual_interview_completed_at) return false;
 
-  return [application.status, application.screening_status, application.virtual_interview_status]
+  return [
+    application.status,
+    application.screening_status,
+    application.virtual_interview_status,
+  ]
     .map(normalize)
     .some((status) => WAITING_STATUSES.has(status));
 }
@@ -136,6 +150,47 @@ async function sendInviteSafely(input: {
     });
   } catch (notificationError) {
     console.error("Recruiter action notification failed:", notificationError);
+  }
+}
+
+async function sendReengagementSafely(input: {
+  application: AnyRow;
+  job: AnyRow | null;
+  recruiter: AnyRow;
+  bookingUrl: string;
+}) {
+  try {
+    await sendInterviewInvite({
+      applicationId: String(input.application.id),
+      candidateName: label(input.application.name || input.application.email, "Candidate"),
+      candidateEmail: input.application.email || null,
+      candidatePhone: input.application.phone || null,
+      roleTitle: label(input.job?.title || input.application.role, "Candidate"),
+      dealerName: label(input.job?.public_dealer_name || input.job?.dealer_slug, "Dealer"),
+      recruiterName: label(input.recruiter.name, "your recruiter"),
+      bookingUrl: input.bookingUrl,
+      mode: "reengage",
+      emailSubject: "Still interested in scheduling your NATA interview?",
+      emailBody: `Hi ${label(input.application.name || input.application.email, "there")} — just checking in.\n\nWe previously sent your virtual interview scheduling link, but it looks like a time has not been booked yet.\n\nIf you're still interested, please use the link below to choose a time that works for you:\n\n${input.bookingUrl}\n\nIf your availability changed, no problem — reply here and we'll help coordinate.\n\n– ${label(input.recruiter.name, "NATA Today")}`,
+      smsBody: `Hi ${label(input.application.name || "", "there")}, this is NATA Today. Just checking in — we sent your interview scheduling link, but no time has been booked yet. If you're still interested, please schedule here: ${input.bookingUrl}`,
+    } as any);
+  } catch (notificationError) {
+    console.error("Recruiter re-engagement notification failed:", notificationError);
+  }
+}
+
+async function clearApplicationAssignment(applicationId: string) {
+  const { error } = await supabaseAdmin
+    .schema("nata")
+    .from("applications")
+    .update({
+      recruiter_id: null,
+      assigned_recruiter: null,
+    })
+    .eq("id", applicationId);
+
+  if (error) {
+    console.error("Failed to clear application assignment:", error);
   }
 }
 
@@ -219,7 +274,7 @@ export async function POST(request: NextRequest) {
 
       if (error) throw new Error(error.message);
 
-      await sendInviteSafely({ application, job, recruiter, bookingUrl });
+      await sendReengagementSafely({ application, job, recruiter, bookingUrl });
 
       return redirectToDashboard(request, safeRecruiterSlug, {
         action: "reengaged",
@@ -236,6 +291,7 @@ export async function POST(request: NextRequest) {
       }
 
       const note = `[Scheduling queue removal ${now}] ${reason || "Candidate removed from scheduling queue after stale or inactive response state."}`;
+      const finalReason = previousReason ? `${previousReason}\n${note}` : note;
 
       const { error } = await supabaseAdmin
         .schema("nata")
@@ -244,7 +300,9 @@ export async function POST(request: NextRequest) {
           status: "withdrawn",
           screening_status: "withdrawn",
           virtual_interview_status: "withdrawn",
-          decision_reason: previousReason ? `${previousReason}\n${note}` : note,
+          recruiter_id: null,
+          assigned_recruiter: null,
+          decision_reason: finalReason,
         })
         .eq("id", applicationId)
         .eq("recruiter_id", recruiterId);
@@ -256,6 +314,8 @@ export async function POST(request: NextRequest) {
         source: "withdrawn",
         reason: reason || "Removed from stale scheduling queue.",
       });
+
+      await clearApplicationAssignment(applicationId);
 
       return redirectToDashboard(request, safeRecruiterSlug, {
         action: "removed",
