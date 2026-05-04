@@ -484,34 +484,121 @@ function getRoleProfile(roleKey: string) {
   return ROLE_PROFILES.find((profile) => profile.key === roleKey) || null;
 }
 
+function getExplicitCandidateRoleKeys(candidate: AnyRow) {
+  return uniqueList(
+    getTargetRoles(candidate)
+      .map((role) => getRoleKey(role))
+      .filter((roleKey) => roleKey && roleKey !== "general"),
+  );
+}
+
+function getCandidateRoleSignalScore(candidate: AnyRow, profile: RoleProfile) {
+  const text = getCandidateSearchText(candidate);
+  const targetRoles = getTargetRoles(candidate);
+  let score = 0;
+
+  if (
+    targetRoles.some((role) => {
+      const roleKey = getRoleKey(role);
+      const normalizedRole = normalize(role);
+      return (
+        roleKey === profile.key ||
+        normalizedRole.includes(profile.key) ||
+        profile.key.includes(normalizedRole) ||
+        profile.aliases.some((alias) => normalizedRole.includes(alias))
+      );
+    })
+  ) {
+    score += 30;
+  }
+
+  if (includesAny(text, profile.aliases)) score += 12;
+  if (includesAny(text, profile.coreSignals)) score += 8;
+  if (includesAny(text, profile.proofSignals)) score += 5;
+  if (includesAny(text, profile.advancedSignals)) score += 3;
+
+  return score;
+}
+
+function getDominantCandidateRoleKeys(candidate: AnyRow) {
+  const explicitRoleKeys = getExplicitCandidateRoleKeys(candidate);
+
+  if (explicitRoleKeys.length) {
+    return explicitRoleKeys;
+  }
+
+  const scored = ROLE_PROFILES
+    .map((profile) => ({
+      roleKey: profile.key,
+      score: getCandidateRoleSignalScore(candidate, profile),
+    }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const bestScore = scored[0]?.score || 0;
+
+  if (bestScore < 12) {
+    return [];
+  }
+
+  return scored
+    .filter((item) => item.score >= 12 && bestScore - item.score <= 8)
+    .slice(0, 3)
+    .map((item) => item.roleKey);
+}
+
+function areRolesCompatible(candidateRoleKey: string, jobRoleKey: string) {
+  if (candidateRoleKey === jobRoleKey) return true;
+
+  const compatibility: Record<string, string[]> = {
+    "sales consultant": ["senior sales consultant", "bdc representative"],
+    "senior sales consultant": ["sales consultant", "sales manager", "bdc representative"],
+    "bdc representative": ["sales consultant", "senior sales consultant"],
+    "sales manager": ["senior sales consultant", "used car manager", "general manager"],
+    "used car manager": ["sales manager", "general manager"],
+
+    "lube technician": ["service technician"],
+    "service technician": ["lube technician", "master technician", "shop foreman"],
+    "master technician": ["service technician", "shop foreman", "service manager", "fixed ops director"],
+    "shop foreman": ["service technician", "master technician", "service manager"],
+
+    "service advisor": ["service manager", "bdc representative"],
+    "service manager": ["service advisor", "shop foreman", "fixed ops director"],
+    "fixed ops director": ["service manager", "parts manager", "master technician"],
+
+    "parts advisor": ["parts manager"],
+    "parts manager": ["parts advisor", "fixed ops director"],
+    "warranty administrator": ["service advisor", "service manager"],
+
+    "title clerk": ["accounting"],
+    accounting: ["title clerk"],
+    receptionist: ["bdc representative"],
+    "hr training": ["sales manager", "service manager", "general manager"],
+  };
+
+  return compatibility[candidateRoleKey]?.includes(jobRoleKey) || false;
+}
+
+function isCandidateAlignedToJobRole(candidate: AnyRow, jobRoleKey: string) {
+  const dominantRoleKeys = getDominantCandidateRoleKeys(candidate);
+
+  if (!dominantRoleKeys.length) {
+    const profile = getRoleProfile(jobRoleKey);
+    const text = getCandidateSearchText(candidate);
+    return Boolean(profile && includesAny(text, profile.aliases));
+  }
+
+  return dominantRoleKeys.some((candidateRoleKey) =>
+    areRolesCompatible(candidateRoleKey, jobRoleKey),
+  );
+}
+
 function inferCandidatePrimaryRole(candidate: AnyRow, job: AnyRow) {
   const jobRoleKey = getJobRoleKey(job);
   if (jobRoleKey !== "general") return jobRoleKey;
 
-  const text = getCandidateSearchText(candidate);
-  const targetRoles = getTargetRoles(candidate);
-
-  for (const role of targetRoles) {
-    const key = getRoleKey(role);
-    if (key !== "general") return key;
-  }
-
-  let bestProfile: RoleProfile | null = null;
-  let bestScore = 0;
-
-  for (const profile of ROLE_PROFILES) {
-    let score = 0;
-    if (includesAny(text, profile.aliases)) score += 12;
-    if (includesAny(text, profile.coreSignals)) score += 8;
-    if (includesAny(text, profile.proofSignals)) score += 5;
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestProfile = profile;
-    }
-  }
-
-  return bestProfile?.key || "general";
+  const dominantRoleKeys = getDominantCandidateRoleKeys(candidate);
+  return dominantRoleKeys[0] || "general";
 }
 
 function hasAutoRecommendSignal(candidate: AnyRow, profile: RoleProfile | null) {
@@ -521,10 +608,11 @@ function hasAutoRecommendSignal(candidate: AnyRow, profile: RoleProfile | null) 
 }
 
 function scoreRoleFit(candidate: AnyRow, job: AnyRow) {
-  const roleKey = inferCandidatePrimaryRole(candidate, job);
+  const roleKey = getJobRoleKey(job);
   const profile = getRoleProfile(roleKey);
   const text = getCandidateSearchText(candidate);
   const targetRoles = getTargetRoles(candidate);
+  const dominantRoleKeys = getDominantCandidateRoleKeys(candidate);
   const reasons: string[] = [];
   const verificationItems: string[] = [];
 
@@ -539,13 +627,25 @@ function scoreRoleFit(candidate: AnyRow, job: AnyRow) {
       reasons,
       verificationItems,
       autoRecommend: false,
+      roleAligned: false,
     };
+  }
+
+  const roleAligned = isCandidateAlignedToJobRole(candidate, profile.key);
+
+  if (dominantRoleKeys.length) {
+    reasons.push(`Candidate primary role signals: ${dominantRoleKeys.join(", ")}.`);
+  } else {
+    reasons.push("Candidate has no dominant role identity yet.");
   }
 
   if (
     targetRoles.some((role) => {
       const normalizedRole = normalize(role);
+      const targetRoleKey = getRoleKey(role);
       return (
+        targetRoleKey === profile.key ||
+        areRolesCompatible(targetRoleKey, profile.key) ||
         normalizedRole.includes(profile.key) ||
         profile.key.includes(normalizedRole) ||
         profile.aliases.some((alias) => normalizedRole.includes(alias))
@@ -581,12 +681,19 @@ function scoreRoleFit(candidate: AnyRow, job: AnyRow) {
     reasons.push("Automatic recommend signal detected for this role profile.");
   }
 
+  if (!roleAligned && !autoRecommend) {
+    score = 0;
+    reasons.push(`Role identity mismatch: candidate is not primarily aligned to ${profile.key}; score capped.`);
+    verificationItems.push(`Only advance for ${profile.key} if recruiter confirms direct role interest and transferable experience.`);
+  }
+
   return {
     roleKey,
     score: Math.max(0, Math.min(score, 45)),
     reasons,
     verificationItems,
     autoRecommend,
+    roleAligned,
   };
 }
 
@@ -839,6 +946,7 @@ function determineMatchStatus(input: {
   proofScore: number;
   autoRecommend: boolean;
   roleKey: string;
+  roleAligned: boolean;
 }) {
   const thresholds = ROLE_THRESHOLDS[input.roleKey] || ROLE_THRESHOLDS.default;
 
@@ -852,6 +960,7 @@ function determineMatchStatus(input: {
     return "eligible";
   }
 
+  if (!input.roleAligned) return "below_threshold";
   if (input.roleScore < 12) return "below_threshold";
 
   if (
@@ -887,7 +996,11 @@ function computeMatch(candidate: AnyRow, job: AnyRow) {
     ? Math.max(86, Math.min(100, Math.round(rawScore)))
     : Math.max(0, Math.min(100, Math.round(rawScore)));
 
-  const riskFlags = uniqueList([...location.riskFlags, ...risk.riskFlags]);
+  const riskFlags = uniqueList([
+    ...location.riskFlags,
+    ...risk.riskFlags,
+    roleFit.roleAligned ? "" : "role_identity_mismatch",
+  ]);
   const verificationItems = uniqueList([
     ...roleFit.verificationItems,
     ...proof.verificationItems,
@@ -902,6 +1015,7 @@ function computeMatch(candidate: AnyRow, job: AnyRow) {
     proofScore: proof.score,
     autoRecommend: roleFit.autoRecommend,
     roleKey: roleFit.roleKey,
+    roleAligned: roleFit.roleAligned,
   });
 
   const reasons = uniqueList([
