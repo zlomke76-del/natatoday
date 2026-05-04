@@ -2,6 +2,17 @@ import { supabaseAdmin } from "./supabaseAdmin";
 
 type AnyRow = Record<string, any>;
 
+type RoleProfile = {
+  key: string;
+  aliases: string[];
+  coreSignals: string[];
+  proofSignals: string[];
+  advancedSignals: string[];
+  riskSignals: string[];
+  verificationItems: string[];
+  autoRecommendSignals?: string[];
+};
+
 const MIN_ELIGIBLE_SCORE = 78;
 const MIN_REVIEW_SCORE = 62;
 const MIN_MORE_STATE_SCORE = 45;
@@ -37,45 +48,305 @@ export type CandidatePoolReturnSource =
   | "withdrawn"
   | "system";
 
-function normalize(value: unknown) {
-  return String(value || "").toLowerCase().trim();
+const ROLE_PROFILES: RoleProfile[] = [
+  {
+    key: "sales consultant",
+    aliases: ["sales consultant", "sales associate", "automotive sales", "car sales", "salesperson", "floor sales"],
+    coreSignals: ["sales", "closing", "closer", "objection handling", "appointment", "follow up", "follow-up", "crm"],
+    proofSignals: ["units", "unit volume", "closing ratio", "close rate", "gross", "front gross", "back gross", "vinsolutions", "dealersocket", "elead"],
+    advancedSignals: ["top performer", "presidents club", "internet leads", "trade appraisal", "finance handoff"],
+    riskSignals: ["short tenure", "limited tenure", "unverified", "claimed", "no metrics"],
+    verificationItems: [
+      "Verify monthly unit volume, close rate, and store size.",
+      "Confirm CRM usage depth and follow-up discipline.",
+      "Ask for examples of objection handling and appointment conversion.",
+      "Confirm comfort with commission pressure and weekend schedule.",
+    ],
+  },
+  {
+    key: "senior sales consultant",
+    aliases: ["senior sales consultant", "sales lead", "floor lead", "fleet sales", "commercial sales"],
+    coreSignals: ["sales", "closing", "customer retention", "repeat business", "referrals"],
+    proofSignals: ["units", "gross", "fleet", "commercial accounts", "repeat customers", "referral rate"],
+    advancedSignals: ["mentor", "trained new salespeople", "top ranked", "volume leader"],
+    riskSignals: ["title inflation", "unclear leadership", "unverified"],
+    verificationItems: [
+      "Verify sustained production over multiple months.",
+      "Confirm whether leadership duties were formal or informal.",
+      "Ask for proof of repeat/referral business.",
+    ],
+  },
+  {
+    key: "bdc representative",
+    aliases: ["bdc", "bdc representative", "internet sales", "internet sales consultant", "appointment coordinator", "customer care representative"],
+    coreSignals: ["bdc", "calls", "appointment", "crm", "lead response", "internet leads", "phone"],
+    proofSignals: ["call volume", "appointment set", "show rate", "answer rate", "response time", "email follow", "sms", "text follow"],
+    advancedSignals: ["lead management", "campaign", "equity mining", "service bdc", "sales bdc"],
+    riskSignals: ["low show rate", "unverified metrics", "no crm"],
+    verificationItems: [
+      "Verify call volume, appointment-set rate, and show rate.",
+      "Confirm CRM note quality and lead-response standards.",
+      "Ask about phone, SMS, email, and long-term follow-up workflow.",
+    ],
+  },
+  {
+    key: "sales manager",
+    aliases: ["sales manager", "new car manager", "used car manager", "desk manager", "closer", "gsm", "general sales manager"],
+    coreSignals: ["sales manager", "desk", "desking", "closer", "manager", "team", "gross", "inventory"],
+    proofSignals: ["gross profit", "team volume", "closing deals", "desking", "vauto", "elead", "dealertrack", "routeone"],
+    advancedSignals: ["trained salespeople", "inventory turn", "forecasting", "trade appraisal", "pencil", "deal structure"],
+    riskSignals: ["title inflation", "short management tenure", "unclear authority"],
+    verificationItems: [
+      "Verify actual desking authority and team size.",
+      "Confirm gross, volume, inventory, and trade appraisal responsibility.",
+      "Ask how they coach salespeople and structure difficult deals.",
+    ],
+  },
+  {
+    key: "finance manager",
+    aliases: ["finance manager", "f&i", "f&i manager", "business manager", "finance director"],
+    coreSignals: ["finance", "f&i", "lender", "menu", "products", "warranty", "gap"],
+    proofSignals: ["penetration", "pvr", "csi", "compliance", "lender approvals", "dealertrack", "routeone"],
+    advancedSignals: ["chargebacks", "funding", "contracts in transit", "reinsurance", "vsc"],
+    riskSignals: ["compliance issue", "chargeback", "unverified pvr"],
+    verificationItems: [
+      "Verify PVR, product penetration, lender mix, and funding speed.",
+      "Confirm compliance habits and menu presentation process.",
+      "Ask about chargebacks, CIT cleanup, and lender relationships.",
+    ],
+  },
+  {
+    key: "service advisor",
+    aliases: ["service advisor", "service writer", "advisor", "service consultant"],
+    coreSignals: ["service advisor", "service writer", "repair order", "ro", "service lane", "customer pay"],
+    proofSignals: ["ro count", "hours per ro", "elr", "csi", "warranty", "upsell", "mpi"],
+    advancedSignals: ["dispatch", "technician communication", "declined services", "retention", "xtime"],
+    riskSignals: ["low csi", "no ro volume", "unclear service lane"],
+    verificationItems: [
+      "Verify RO count, hours per RO, CSI, and customer-pay performance.",
+      "Confirm service-lane pressure and technician communication ability.",
+      "Ask how they handle declined services and upset customers.",
+    ],
+  },
+  {
+    key: "service manager",
+    aliases: ["service manager", "service director", "fixed ops service manager", "assistant service manager"],
+    coreSignals: ["service manager", "service department", "shop", "advisors", "technicians", "fixed ops"],
+    proofSignals: ["gross profit", "elr", "hours per ro", "csi", "shop productivity", "comeback rate"],
+    advancedSignals: ["capacity planning", "dispatch", "warranty receivables", "technician retention", "scheduler"],
+    riskSignals: ["high turnover", "low csi", "unverified department metrics"],
+    verificationItems: [
+      "Verify department size, ELR, CSI, productivity, and gross performance.",
+      "Confirm advisor and technician management experience.",
+      "Ask about comebacks, retention, scheduling, and capacity planning.",
+    ],
+  },
+  {
+    key: "lube technician",
+    aliases: ["lube technician", "lube tech", "express tech", "quick lane", "maintenance technician"],
+    coreSignals: ["oil change", "tires", "rotation", "inspection", "maintenance", "lube"],
+    proofSignals: ["multipoint", "mpi", "torque", "shop safety", "tools"],
+    advancedSignals: ["apprentice", "entry level tech", "used car recon"],
+    riskSignals: ["no tools", "no shop experience", "safety concern"],
+    verificationItems: [
+      "Verify shop experience, safety habits, and basic tool ownership.",
+      "Confirm ability to follow inspection and torque procedures.",
+      "Ask whether they are seeking apprentice or flat-rate path.",
+    ],
+  },
+  {
+    key: "service technician",
+    aliases: ["service technician", "technician", "line tech", "auto tech", "automotive technician", "mechanic"],
+    coreSignals: ["technician", "diagnostic", "repair", "electrical", "engine", "transmission", "brakes"],
+    proofSignals: ["ase", "certified", "factory trained", "flat rate", "flag hours", "scan tool", "diagnostics"],
+    advancedSignals: ["ev", "hybrid", "adas", "diesel", "drivability", "electrical diagnosis"],
+    riskSignals: ["no tools", "comeback", "limited diagnostics", "no certifications"],
+    verificationItems: [
+      "Verify certifications, diagnostic ability, tool ownership, and flat-rate history.",
+      "Confirm repair categories handled independently.",
+      "Ask about comebacks, electrical diagnosis, and scan-tool comfort.",
+    ],
+  },
+  {
+    key: "master technician",
+    aliases: ["master technician", "master tech", "master certified", "ase master", "oem master", "factory master"],
+    coreSignals: ["master technician", "master tech", "master certified", "ase master", "diagnostic", "electrical"],
+    proofSignals: ["ase master", "oem master", "factory certified", "hybrid", "ev", "adas", "drivability", "diesel"],
+    advancedSignals: ["shop foreman", "team lead", "difficult diagnostics", "mentor", "comeback reduction"],
+    riskSignals: ["expired certification", "no recent shop experience", "relocation unclear"],
+    autoRecommendSignals: ["master technician", "master tech", "master certified", "ase master", "oem master", "factory master"],
+    verificationItems: [
+      "Confirm Master Certification type, OEM/ASE source, and current status.",
+      "Verify recent shop experience, diagnostic categories, and tool ownership.",
+      "Fast-track recruiter review unless location, resume, or certification status is missing.",
+    ],
+  },
+  {
+    key: "shop foreman",
+    aliases: ["shop foreman", "foreman", "team lead technician", "lead technician", "diagnostic lead"],
+    coreSignals: ["foreman", "lead technician", "diagnostic", "mentor", "dispatch", "comeback"],
+    proofSignals: ["master certified", "ase", "diagnostic", "shop productivity", "quality control"],
+    advancedSignals: ["dispatch", "technician mentoring", "comeback review", "training"],
+    riskSignals: ["unclear authority", "no leadership proof"],
+    verificationItems: [
+      "Verify diagnostic leadership, dispatch authority, and comeback review process.",
+      "Confirm ability to mentor technicians without slowing production.",
+    ],
+  },
+  {
+    key: "parts advisor",
+    aliases: ["parts advisor", "parts counter", "parts counterperson", "parts specialist"],
+    coreSignals: ["parts", "counter", "catalog", "inventory", "wholesale", "back counter"],
+    proofSignals: ["oem parts", "dealertrack", "cdk", "reynolds", "special order", "fill rate"],
+    advancedSignals: ["wholesale accounts", "inventory control", "cycle count", "service parts"],
+    riskSignals: ["no catalog", "inventory mismatch", "unverified oem"],
+    verificationItems: [
+      "Verify catalog lookup, OEM experience, inventory, and counter workflow.",
+      "Ask about wholesale, back counter, special orders, and fill-rate handling.",
+    ],
+  },
+  {
+    key: "parts manager",
+    aliases: ["parts manager", "parts director", "parts department manager"],
+    coreSignals: ["parts manager", "inventory", "gross", "wholesale", "counter", "department"],
+    proofSignals: ["inventory turn", "obsolescence", "gross profit", "fill rate", "wholesale growth"],
+    advancedSignals: ["cycle counts", "vendor management", "special orders", "service absorption"],
+    riskSignals: ["obsolete inventory", "unverified gross", "shrink"],
+    verificationItems: [
+      "Verify inventory turn, gross profit, obsolescence, and fill rate.",
+      "Confirm team size, wholesale exposure, and service department coordination.",
+    ],
+  },
+  {
+    key: "warranty administrator",
+    aliases: ["warranty admin", "warranty administrator", "warranty clerk", "claims administrator"],
+    coreSignals: ["warranty", "claims", "op codes", "labor operation", "policy", "manufacturer"],
+    proofSignals: ["claim submission", "chargeback", "audit", "warranty receivables", "oem portal"],
+    advancedSignals: ["policy adjustment", "goodwill", "warranty schedule", "compliance"],
+    riskSignals: ["chargeback", "audit issue", "unverified oem"],
+    verificationItems: [
+      "Verify OEM warranty system experience and claim accuracy.",
+      "Ask about chargebacks, audits, receivables, and policy adjustments.",
+    ],
+  },
+  {
+    key: "title clerk",
+    aliases: ["title clerk", "billing clerk", "dmv clerk", "contracts clerk", "tag and title"],
+    coreSignals: ["title", "dmv", "registration", "contracts", "billing", "funding"],
+    proofSignals: ["title work", "payoff", "lien", "registration", "dealertrack", "cdk", "reynolds"],
+    advancedSignals: ["out of state title", "auction title", "wholesale title", "compliance"],
+    riskSignals: ["title delay", "funding delay", "compliance issue"],
+    verificationItems: [
+      "Verify title, DMV, payoff, lien, and registration workflow experience.",
+      "Ask about out-of-state deals, funding delays, and title exception handling.",
+    ],
+  },
+  {
+    key: "accounting",
+    aliases: ["accounting", "accounting clerk", "office clerk", "dealership accounting", "accounts payable", "accounts receivable", "controller"],
+    coreSignals: ["accounting", "payables", "receivables", "schedule", "reconcile", "posting"],
+    proofSignals: ["schedule cleanup", "bank rec", "floorplan", "payables", "receivables", "journal entries"],
+    advancedSignals: ["month end", "controller", "financial statement", "factory statement"],
+    riskSignals: ["schedule aging", "unverified month end"],
+    verificationItems: [
+      "Verify dealership accounting system exposure and schedule responsibility.",
+      "Ask about month-end, bank recs, floorplan, AP/AR, and statement support.",
+    ],
+  },
+  {
+    key: "receptionist",
+    aliases: ["receptionist", "cashier", "front desk", "greeter", "operator"],
+    coreSignals: ["reception", "cashier", "phones", "front desk", "greeting", "customer service"],
+    proofSignals: ["cash handling", "multi-line phone", "customer service", "appointment routing"],
+    advancedSignals: ["service cashier", "loaner support", "administrative support"],
+    riskSignals: ["attendance issue", "cash handling concern"],
+    verificationItems: [
+      "Verify phone etiquette, schedule reliability, and customer handling.",
+      "Confirm cash handling or service cashier experience if required.",
+    ],
+  },
+  {
+    key: "hr training",
+    aliases: ["hr", "human resources", "training", "trainer", "recruiter", "talent", "onboarding"],
+    coreSignals: ["training", "onboarding", "recruiting", "hr", "coaching", "development"],
+    proofSignals: ["curriculum", "new hire", "compliance training", "employee relations", "retention"],
+    advancedSignals: ["sales training", "service training", "lms", "performance management"],
+    riskSignals: ["unclear dealership exposure", "unverified training outcomes"],
+    verificationItems: [
+      "Verify dealership training scope, curriculum ownership, and outcomes.",
+      "Ask about onboarding, compliance, retention, and manager coordination.",
+    ],
+  },
+  {
+    key: "fixed ops director",
+    aliases: ["fixed ops director", "fixed operations director", "fixed ops", "service and parts director"],
+    coreSignals: ["fixed ops", "service", "parts", "director", "absorption", "gross", "productivity"],
+    proofSignals: ["service absorption", "elr", "hours per ro", "parts gross", "csi", "retention"],
+    advancedSignals: ["multi-rooftop", "capacity planning", "technician retention", "warranty receivables"],
+    riskSignals: ["unverified department metrics", "high turnover", "low csi"],
+    verificationItems: [
+      "Verify service absorption, ELR, parts gross, CSI, and retention metrics.",
+      "Confirm number of rooftops, team size, and fixed-ops scope.",
+    ],
+  },
+  {
+    key: "used car manager",
+    aliases: ["used car manager", "pre-owned manager", "ucm", "inventory manager"],
+    coreSignals: ["used car", "pre-owned", "inventory", "appraisal", "auction", "recon"],
+    proofSignals: ["inventory turn", "vauto", "acv", "mmr", "auction", "gross", "recon time"],
+    advancedSignals: ["pricing", "wholesale", "trade appraisal", "aged inventory", "market days supply"],
+    riskSignals: ["aged inventory", "unverified gross", "recon delay"],
+    verificationItems: [
+      "Verify inventory turn, gross, appraisal tools, and recon cycle.",
+      "Ask about aged inventory, auction buying, pricing, and trade appraisal process.",
+    ],
+  },
+  {
+    key: "general manager",
+    aliases: ["general manager", "gm", "operator", "platform manager", "managing partner"],
+    coreSignals: ["general manager", "operator", "p&l", "department heads", "gross", "net profit"],
+    proofSignals: ["p&l", "net profit", "volume", "csi", "employee retention", "market share"],
+    advancedSignals: ["multi-rooftop", "turnaround", "manufacturer relations", "floorplan", "compliance"],
+    riskSignals: ["unverified p&l", "title inflation", "short tenure"],
+    verificationItems: [
+      "Verify full P&L authority, store size, net profit, CSI, and department performance.",
+      "Ask about manufacturer relations, compliance, retention, and turnaround experience.",
+    ],
+  },
+];
+
+function normalizeTextList(items: string[]) {
+  return items.map((item) => normalize(item)).filter(Boolean);
 }
 
-function label(value: unknown, fallback = "") {
-  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+function includesAny(text: string, terms: string[]) {
+  return normalizeTextList(terms).some((term) => text.includes(term));
 }
 
-function toNumber(value: unknown) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
+function uniqueList(items: string[]) {
+  return Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
 }
 
-function addDays(days: number) {
+function addDaysFromNow(days: number) {
   const date = new Date();
   date.setDate(date.getDate() + days);
   return date.toISOString();
 }
 
-function getCooldownDays(status: string) {
-  return normalize(status) === "no_show"
-    ? NO_SHOW_COOLDOWN_DAYS
-    : DEFAULT_COOLDOWN_DAYS;
-}
-
-function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const radius = 3958.8;
-  const toRad = (value: number) => (value * Math.PI) / 180;
-
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) ** 2;
-
-  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+function getCandidateSearchText(candidate: AnyRow) {
+  return [
+    candidate.name,
+    candidate.email,
+    candidate.phone,
+    candidate.location_text,
+    candidate.linkedin,
+    candidate.experience_summary,
+    candidate.search_text,
+    ...(Array.isArray(candidate.target_roles) ? candidate.target_roles : []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 }
 
 function getDistanceMiles(candidate: AnyRow, job: AnyRow) {
@@ -114,24 +385,32 @@ function splitList(value: unknown) {
 function getRoleKey(roleTitle: string) {
   const normalized = normalize(roleTitle);
 
-  if (normalized.includes("sales")) return "sales consultant";
-  if (normalized.includes("service") && normalized.includes("advisor")) {
-    return "service advisor";
-  }
-  if (normalized.includes("technician") || normalized.includes("tech")) {
-    return "service technician";
-  }
-  if (normalized.includes("bdc")) return "bdc representative";
-  if (normalized.includes("parts")) return "parts advisor";
-  if (normalized.includes("finance") || normalized.includes("f&i")) {
-    return "finance manager";
+  for (const profile of ROLE_PROFILES) {
+    if (
+      profile.key === normalized ||
+      profile.aliases.some((alias) => normalized.includes(alias))
+    ) {
+      return profile.key;
+    }
   }
 
-  return "";
+  if (normalized.includes("sales")) return "sales consultant";
+  if (normalized.includes("service") && normalized.includes("advisor")) return "service advisor";
+  if (normalized.includes("technician") || normalized.includes("tech")) return "service technician";
+  if (normalized.includes("bdc") || normalized.includes("internet")) return "bdc representative";
+  if (normalized.includes("parts")) return "parts advisor";
+  if (normalized.includes("finance") || normalized.includes("f&i")) return "finance manager";
+  if (normalized.includes("title")) return "title clerk";
+  if (normalized.includes("warranty")) return "warranty administrator";
+  if (normalized.includes("accounting") || normalized.includes("controller")) return "accounting";
+  if (normalized.includes("reception") || normalized.includes("cashier")) return "receptionist";
+  if (normalized.includes("manager")) return "sales manager";
+
+  return "general";
 }
 
 function getJobRoleKey(job: AnyRow) {
-  return getRoleKey(String(job.title || "")) || "general";
+  return getRoleKey(String(job.title || ""));
 }
 
 function getTargetRoles(candidate: AnyRow) {
@@ -142,27 +421,49 @@ function getTargetRoles(candidate: AnyRow) {
   return [];
 }
 
-function getCandidateSearchText(candidate: AnyRow) {
-  return [
-    candidate.name,
-    candidate.email,
-    candidate.location_text,
-    candidate.linkedin,
-    candidate.experience_summary,
-    candidate.search_text,
-    ...(Array.isArray(candidate.target_roles) ? candidate.target_roles : []),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+function getRoleProfile(roleKey: string) {
+  return ROLE_PROFILES.find((profile) => profile.key === roleKey) || null;
 }
 
-function includesAny(text: string, terms: string[]) {
-  return terms.some((term) => text.includes(term));
+function inferCandidatePrimaryRole(candidate: AnyRow, job: AnyRow) {
+  const jobRoleKey = getJobRoleKey(job);
+  if (jobRoleKey !== "general") return jobRoleKey;
+
+  const text = getCandidateSearchText(candidate);
+  const targetRoles = getTargetRoles(candidate);
+
+  for (const role of targetRoles) {
+    const key = getRoleKey(role);
+    if (key !== "general") return key;
+  }
+
+  let bestProfile: RoleProfile | null = null;
+  let bestScore = 0;
+
+  for (const profile of ROLE_PROFILES) {
+    let score = 0;
+    if (includesAny(text, profile.aliases)) score += 12;
+    if (includesAny(text, profile.coreSignals)) score += 8;
+    if (includesAny(text, profile.proofSignals)) score += 5;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestProfile = profile;
+    }
+  }
+
+  return bestProfile?.key || "general";
+}
+
+function hasAutoRecommendSignal(candidate: AnyRow, profile: RoleProfile | null) {
+  if (!profile?.autoRecommendSignals?.length) return false;
+  const text = getCandidateSearchText(candidate);
+  return includesAny(text, profile.autoRecommendSignals);
 }
 
 function scoreRoleFit(candidate: AnyRow, job: AnyRow) {
-  const roleKey = getJobRoleKey(job);
+  const roleKey = inferCandidatePrimaryRole(candidate, job);
+  const profile = getRoleProfile(roleKey);
   const text = getCandidateSearchText(candidate);
   const targetRoles = getTargetRoles(candidate);
   const reasons: string[] = [];
@@ -170,95 +471,60 @@ function scoreRoleFit(candidate: AnyRow, job: AnyRow) {
 
   let score = 0;
 
-  if (targetRoles.some((role) => role.includes(roleKey) || roleKey.includes(role))) {
-    score += 28;
-    reasons.push(`Target role aligns with ${roleKey}.`);
+  if (!profile) {
+    reasons.push("No specific role profile matched this job or candidate.");
+    verificationItems.push("Confirm intended role before advancing.");
+    return {
+      roleKey,
+      score: 0,
+      reasons,
+      verificationItems,
+      autoRecommend: false,
+    };
   }
 
-  if (roleKey === "sales consultant") {
-    if (includesAny(text, ["sales consultant", "sales associate", "automotive sales"])) {
-      score += 16;
-      reasons.push("Automotive sales signal is present.");
-    } else if (text.includes("sales")) {
-      score += 10;
-      reasons.push("General sales signal is present.");
-    }
-
-    if (includesAny(text, ["closing", "closer", "objection handling"])) score += 8;
-    if (includesAny(text, ["crm", "vinsolutions", "dealersocket", "elead"])) score += 7;
-    if (includesAny(text, ["appointment", "follow-up", "follow up"])) score += 6;
-    if (includesAny(text, ["units", "unit volume", "close rate", "closing ratio"])) score += 6;
-
-    verificationItems.push(
-      "Verify unit volume, close rate, and whether metrics are documented.",
-      "Confirm CRM usage depth and follow-up discipline.",
-      "Ask for examples of objection handling and appointment conversion.",
-    );
+  if (
+    targetRoles.some((role) => {
+      const normalizedRole = normalize(role);
+      return (
+        normalizedRole.includes(profile.key) ||
+        profile.key.includes(normalizedRole) ||
+        profile.aliases.some((alias) => normalizedRole.includes(alias))
+      );
+    })
+  ) {
+    score += 18;
+    reasons.push(`Target role aligns with ${profile.key}.`);
   }
 
-  if (roleKey === "service advisor") {
-    if (text.includes("service advisor")) score += 20;
-    if (includesAny(text, ["repair order", "ro ", "ros"])) score += 9;
-    if (text.includes("warranty")) score += 7;
-    if (text.includes("service lane")) score += 7;
-    if (text.includes("customer escalation")) score += 6;
-
-    verificationItems.push(
-      "Verify repair-order volume and service-lane pressure.",
-      "Confirm warranty, estimate, and customer escalation experience.",
-    );
+  if (includesAny(text, profile.aliases)) {
+    score += 12;
+    reasons.push(`Candidate has direct ${profile.key} title or alias signal.`);
   }
 
-  if (roleKey === "service technician") {
-    if (includesAny(text, ["technician", "tech"])) score += 18;
-    if (text.includes("ase")) score += 12;
-    if (text.includes("diagnostic")) score += 10;
-    if (text.includes("electrical")) score += 8;
-    if (text.includes("tools")) score += 6;
+  const coreMatches = profile.coreSignals.filter((signal) => text.includes(normalize(signal)));
+  const proofMatches = profile.proofSignals.filter((signal) => text.includes(normalize(signal)));
+  const advancedMatches = profile.advancedSignals.filter((signal) => text.includes(normalize(signal)));
 
-    verificationItems.push(
-      "Verify certifications, diagnostic categories, and tool ownership.",
-      "Confirm shop experience and repair types handled.",
-    );
+  score += Math.min(coreMatches.length * 4, 16);
+  score += Math.min(proofMatches.length * 3, 12);
+  score += Math.min(advancedMatches.length * 2, 7);
+
+  if (coreMatches.length) {
+    reasons.push(`Role signals found: ${coreMatches.slice(0, 5).join(", ")}.`);
   }
 
-  if (roleKey === "bdc representative") {
-    if (text.includes("bdc")) score += 22;
-    if (includesAny(text, ["calls", "call volume"])) score += 8;
-    if (text.includes("appointment")) score += 8;
-    if (text.includes("crm")) score += 8;
-    if (includesAny(text, ["sms", "email follow", "text follow"])) score += 6;
-
-    verificationItems.push(
-      "Verify call volume, appointment-set rate, and CRM note quality.",
-      "Confirm phone, SMS, and email follow-up discipline.",
-    );
+  if (proofMatches.length) {
+    reasons.push(`Proof signals found: ${proofMatches.slice(0, 5).join(", ")}.`);
   }
 
-  if (roleKey === "parts advisor") {
-    if (text.includes("parts")) score += 22;
-    if (text.includes("inventory")) score += 8;
-    if (text.includes("catalog")) score += 8;
-    if (text.includes("counter")) score += 6;
+  verificationItems.push(...profile.verificationItems);
 
-    verificationItems.push(
-      "Verify catalog lookup, inventory, counter, and OEM parts experience.",
-    );
-  }
+  const autoRecommend = hasAutoRecommendSignal(candidate, profile);
 
-  if (roleKey === "finance manager") {
-    if (includesAny(text, ["finance", "f&i"])) score += 22;
-    if (text.includes("lender")) score += 8;
-    if (text.includes("compliance")) score += 8;
-    if (text.includes("menu")) score += 6;
-
-    verificationItems.push(
-      "Verify lender, compliance, menu presentation, and product penetration experience.",
-    );
-  }
-
-  if (score === 0) {
-    reasons.push(`No clear role-specific signal for ${roleKey}.`);
+  if (autoRecommend) {
+    score = Math.max(score, 43);
+    reasons.push("Automatic recommend signal detected for this role profile.");
   }
 
   return {
@@ -266,10 +532,11 @@ function scoreRoleFit(candidate: AnyRow, job: AnyRow) {
     score: Math.max(0, Math.min(score, 45)),
     reasons,
     verificationItems,
+    autoRecommend,
   };
 }
 
-function scoreProofQuality(candidate: AnyRow) {
+function scoreProofQuality(candidate: AnyRow, profile: RoleProfile | null) {
   const text = getCandidateSearchText(candidate);
   const reasons: string[] = [];
   const verificationItems: string[] = [];
@@ -284,38 +551,87 @@ function scoreProofQuality(candidate: AnyRow) {
     verificationItems.push("Request resume before advancing.");
   }
 
-  if (candidate.profile_photo_url) {
-    score += 2;
-  }
+  if (candidate.profile_photo_url) score += 2;
 
   if (candidate.linkedin) {
     score += 4;
     reasons.push("LinkedIn profile is available.");
   }
 
-  if (includesAny(text, ["units", "unit volume", "close rate", "closing ratio", "gross", "revenue"])) {
+  if (profile && includesAny(text, profile.proofSignals)) {
     score += 6;
-    reasons.push("Measurable performance claim is present.");
-    verificationItems.push("Verify measurable performance claims with context.");
+    reasons.push(`Role-specific proof exists for ${profile.key}.`);
   }
 
-  if (includesAny(text, ["ase", "certified", "certification", "manufacturer certified"])) {
-    score += 6;
-    reasons.push("Certification signal is present.");
-    verificationItems.push("Confirm certification status and expiration where applicable.");
+  if (profile && includesAny(text, profile.advancedSignals)) {
+    score += 4;
+    reasons.push(`Advanced role signal exists for ${profile.key}.`);
   }
 
-  if (includesAny(text, ["vinsolutions", "dealersocket", "elead", "tekion", "reynolds", "cdk"])) {
+  if (
+    includesAny(text, [
+      "units",
+      "unit volume",
+      "close rate",
+      "closing ratio",
+      "gross",
+      "pvr",
+      "penetration",
+      "elr",
+      "hours per ro",
+      "csi",
+      "ase",
+      "certified",
+      "master certified",
+      "oem certified",
+      "factory certified",
+      "inventory turn",
+      "service absorption",
+      "net profit",
+      "p&l",
+    ])
+  ) {
     score += 5;
+    reasons.push("Measurable or credentialed proof signal is present.");
+    verificationItems.push("Verify the measurable or credentialed claim before dealer exposure.");
+  }
+
+  if (
+    includesAny(text, [
+      "vinsolutions",
+      "dealersocket",
+      "elead",
+      "tekion",
+      "dealertrack",
+      "routeone",
+      "cdk",
+      "reynolds",
+      "xtime",
+      "vauto",
+      "acv",
+    ])
+  ) {
+    score += 4;
     reasons.push("Specific dealership system experience is present.");
   } else if (text.includes("crm")) {
-    score += 3;
+    score += 2;
     reasons.push("Generic CRM experience is present.");
     verificationItems.push("Confirm which CRM and actual usage depth.");
   }
 
-  if (includesAny(text, ["top performer", "top ranked", "ranked", "award", "president's club"])) {
-    score += 3;
+  if (
+    includesAny(text, [
+      "top performer",
+      "top ranked",
+      "ranked",
+      "award",
+      "president",
+      "leader",
+      "number one",
+      "#1",
+    ])
+  ) {
+    score += 2;
     reasons.push("Recognition claim is present.");
     verificationItems.push("Clarify store size and ranking context for performance claims.");
   }
@@ -351,18 +667,14 @@ function scoreLocationFit(candidate: AnyRow, job: AnyRow) {
       reasons.push(`Candidate is within ${Math.round(distance)} miles.`);
     } else {
       score -= 18;
-      reasons.push(
-        `Candidate is ${Math.round(distance)} miles away, outside preferred radius.`,
-      );
+      reasons.push(`Candidate is ${Math.round(distance)} miles away, outside preferred radius.`);
       riskFlags.push("outside_preferred_radius");
       verificationItems.push("Confirm relocation or commute plan before advancing.");
     }
   } else if (candidate.location_text) {
     const locationText = normalize(candidate.location_text);
 
-    if (
-      includesAny(locationText, ["open to relocation", "relocate", "relocation", "willing to move"])
-    ) {
+    if (includesAny(locationText, ["open to relocation", "relocate", "relocation", "willing to move"])) {
       score += 4;
       reasons.push("Candidate states relocation openness.");
       riskFlags.push("relocation_not_verified");
@@ -392,7 +704,7 @@ function scoreLocationFit(candidate: AnyRow, job: AnyRow) {
   };
 }
 
-function scoreRisk(candidate: AnyRow, roleKey: string) {
+function scoreRisk(candidate: AnyRow, profile: RoleProfile | null, autoRecommend: boolean) {
   const text = getCandidateSearchText(candidate);
   const reasons: string[] = [];
   const riskFlags: string[] = [];
@@ -406,31 +718,38 @@ function scoreRisk(candidate: AnyRow, roleKey: string) {
     riskFlags.push("cooldown_active");
   }
 
-  if (includesAny(text, ["short tenure", "limited tenure", "8 months", "less than a year"])) {
-    deduction += 8;
+  if (profile && includesAny(text, profile.riskSignals)) {
+    deduction += autoRecommend ? 3 : 7;
+    reasons.push(`Role-specific risk signal detected for ${profile.key}.`);
+    riskFlags.push("role_specific_risk");
+    verificationItems.push("Resolve role-specific risk signals during recruiter review.");
+  }
+
+  if (includesAny(text, ["short tenure", "limited tenure", "8 months", "less than a year", "job hopping"])) {
+    deduction += autoRecommend ? 3 : 8;
     reasons.push("Short-tenure signal requires recruiter review.");
     riskFlags.push("limited_tenure");
     verificationItems.push("Clarify reason for short tenure and prior role transitions.");
   }
 
   if (
-    roleKey === "sales consultant" &&
-    includesAny(text, ["18", "20", "22", "24", "units", "30%", "30 percent", "top performer"])
+    includesAny(text, [
+      "claimed",
+      "unverified",
+      "unclear",
+      "unknown",
+      "inconsistent",
+      "no metrics",
+      "not verified",
+    ])
   ) {
-    deduction += 5;
-    reasons.push("High sales-performance claim requires verification.");
-    riskFlags.push("performance_claim_requires_verification");
-    verificationItems.push("Verify claimed unit volume, close rate, and store context.");
-  }
-
-  if (includesAny(text, ["claimed", "unverified", "unclear", "unknown", "inconsistent"])) {
-    deduction += 7;
+    deduction += autoRecommend ? 3 : 7;
     reasons.push("Candidate record contains unverified or ambiguous claims.");
     riskFlags.push("unverified_claims");
     verificationItems.push("Resolve ambiguous claims before dealer exposure.");
   }
 
-  if (includesAny(text, ["career pivot", "transitioned from", "fitness", "retail", "restaurant"])) {
+  if (includesAny(text, ["career pivot", "transitioned from", "fitness", "restaurant", "retail"])) {
     deduction += 4;
     reasons.push("Career pivot may be valid but needs context.");
     riskFlags.push("career_pivot");
@@ -448,6 +767,15 @@ function scoreRisk(candidate: AnyRow, roleKey: string) {
     verificationItems.push("Collect candidate phone number.");
   }
 
+  if (
+    autoRecommend &&
+    includesAny(text, ["expired certification", "no recent shop experience", "no tools"])
+  ) {
+    deduction += 12;
+    riskFlags.push("auto_recommend_blocked_by_material_risk");
+    verificationItems.push("Master-level signal requires confirmation because a blocking risk is present.");
+  }
+
   return {
     score: Math.max(0, Math.min(deduction, 35)),
     reasons,
@@ -461,24 +789,29 @@ function determineMatchStatus(input: {
   riskFlags: string[];
   roleScore: number;
   proofScore: number;
-  cooldownActive: boolean;
+  autoRecommend: boolean;
 }) {
-  if (input.cooldownActive) return "cooldown";
+  if (input.riskFlags.includes("cooldown_active")) return "cooldown";
 
-  if (input.roleScore < 12) return "below_threshold";
-
-  if (
-    input.riskFlags.includes("resume_missing") ||
-    input.riskFlags.includes("location_missing")
-  ) {
+  if (input.riskFlags.includes("resume_missing") || input.riskFlags.includes("location_missing")) {
     return "more_state_required";
   }
+
+  if (
+    input.autoRecommend &&
+    !input.riskFlags.includes("auto_recommend_blocked_by_material_risk")
+  ) {
+    return "eligible";
+  }
+
+  if (input.roleScore < 12) return "below_threshold";
 
   if (
     input.riskFlags.includes("performance_claim_requires_verification") ||
     input.riskFlags.includes("relocation_not_verified") ||
     input.riskFlags.includes("limited_tenure") ||
-    input.riskFlags.includes("unverified_claims")
+    input.riskFlags.includes("unverified_claims") ||
+    input.riskFlags.includes("role_specific_risk")
   ) {
     return input.fitScore >= MIN_REVIEW_SCORE ? "recruiter_review" : "more_state_required";
   }
@@ -487,28 +820,18 @@ function determineMatchStatus(input: {
     return "eligible";
   }
 
-  if (input.fitScore >= MIN_REVIEW_SCORE) {
-    return "recruiter_review";
-  }
-
-  if (input.fitScore >= MIN_MORE_STATE_SCORE) {
-    return "more_state_required";
-  }
+  if (input.fitScore >= MIN_REVIEW_SCORE) return "recruiter_review";
+  if (input.fitScore >= MIN_MORE_STATE_SCORE) return "more_state_required";
 
   return "below_threshold";
 }
 
-function uniqueList(items: string[]) {
-  return Array.from(
-    new Set(items.map((item) => item.trim()).filter(Boolean)),
-  );
-}
-
 function computeMatch(candidate: AnyRow, job: AnyRow) {
   const roleFit = scoreRoleFit(candidate, job);
-  const proof = scoreProofQuality(candidate);
+  const profile = getRoleProfile(roleFit.roleKey);
+  const proof = scoreProofQuality(candidate, profile);
   const location = scoreLocationFit(candidate, job);
-  const risk = scoreRisk(candidate, roleFit.roleKey);
+  const risk = scoreRisk(candidate, profile, roleFit.autoRecommend);
 
   const baseScore = 25;
   const jobStatusScore =
@@ -522,8 +845,12 @@ function computeMatch(candidate: AnyRow, job: AnyRow) {
     jobStatusScore -
     risk.score;
 
-  const fitScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+  const fitScore = roleFit.autoRecommend
+    ? Math.max(86, Math.min(100, Math.round(rawScore)))
+    : Math.max(0, Math.min(100, Math.round(rawScore)));
+
   const riskFlags = uniqueList([...location.riskFlags, ...risk.riskFlags]);
+
   const verificationItems = uniqueList([
     ...roleFit.verificationItems,
     ...proof.verificationItems,
@@ -536,7 +863,7 @@ function computeMatch(candidate: AnyRow, job: AnyRow) {
     riskFlags,
     roleScore: roleFit.score,
     proofScore: proof.score,
-    cooldownActive: riskFlags.includes("cooldown_active"),
+    autoRecommend: roleFit.autoRecommend,
   });
 
   const reasons = uniqueList([
@@ -544,6 +871,7 @@ function computeMatch(candidate: AnyRow, job: AnyRow) {
     ...proof.reasons,
     ...location.reasons,
     ...risk.reasons,
+    roleFit.autoRecommend ? "Automatic recommendation rule applied for master-level technician credential." : "",
     `Role score: ${roleFit.score}/45.`,
     `Proof score: ${proof.score}/25.`,
     `Location score: ${location.score}/15.`,
@@ -573,7 +901,7 @@ function inferTargetRolesFromApplication(application: AnyRow, job: AnyRow | null
   const roleTitle = label(application.role || application.job_title || job?.title, "");
   const roleKey = roleTitle ? getRoleKey(roleTitle) : "";
 
-  return roleKey ? [roleKey] : [];
+  return roleKey && roleKey !== "general" ? [roleKey] : [];
 }
 
 function buildExperienceSummary(application: AnyRow, job: AnyRow | null, reason: string) {
@@ -583,10 +911,7 @@ function buildExperienceSummary(application: AnyRow, job: AnyRow | null, reason:
       application.cover_note ||
       reason ||
       application.decision_reason,
-    `Candidate previously applied for ${label(
-      job?.title || application.role,
-      "a dealership role",
-    )}.`,
+    `Candidate previously applied for ${label(job?.title || application.role, "a dealership role")}.`,
   );
 }
 
@@ -806,7 +1131,7 @@ export async function returnApplicationToCandidatePool(input: {
     status: "active",
     availability_status: status === "no_show" ? "cooldown" : "available",
     last_rejected_at: now,
-    cooldown_until: addDays(getCooldownDays(status)),
+    cooldown_until: addDaysFromNow(getCooldownDays(status)),
     rejection_count: Number(existingCandidate?.rejection_count || 0) + 1,
     search_text: [
       application.name,
