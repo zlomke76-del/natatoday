@@ -62,8 +62,31 @@ const LOAD_VARIANCE_THRESHOLD = 6;
 const DON_OVERLOAD_THRESHOLD = 15;
 const MAX_AUTO_ASSIGNMENTS_PER_RUN = 12;
 
+const TERMINAL_APPLICATION_STATUSES = new Set([
+  "archived",
+  "closed",
+  "completed_placement",
+  "dealer_hired",
+  "dealer_rejected",
+  "hired",
+  "not_fit",
+  "not_hired",
+  "not_selected",
+  "no_show",
+  "pass",
+  "passed",
+  "placed",
+  "placement_complete",
+  "rejected",
+  "withdrawn",
+]);
+
 function clean(value: FormDataEntryValue | string | null | undefined) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalize(value: unknown) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
 async function readRequest(request: NextRequest) {
@@ -103,15 +126,21 @@ function respond(
   wantsJson: boolean,
   payload: Record<string, unknown>,
   params?: Record<string, string | number | null | undefined>,
-  status = 200
+  status = 200,
 ) {
   if (wantsJson) return NextResponse.json(payload, { status });
   if (status >= 400) return redirectToAdmin(request, { assign: "error", ...params });
   return redirectToAdmin(request, params || { assign: "updated" });
 }
 
-function normalize(value: unknown) {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
+function isTerminalApplication(application: Pick<ApplicationRow, "status" | "screening_status" | "virtual_interview_status">) {
+  const statuses = [
+    application.status,
+    application.screening_status,
+    application.virtual_interview_status,
+  ].map(normalize);
+
+  return statuses.some((status) => TERMINAL_APPLICATION_STATUSES.has(status));
 }
 
 function isActiveRecruiter(recruiter: RecruiterRow) {
@@ -120,7 +149,7 @@ function isActiveRecruiter(recruiter: RecruiterRow) {
   const permissions = recruiter.permissions || {};
 
   if (recruiter.is_active === false) return false;
-  if (status === "suspended" || status === "inactive" || status === "invited") return false;
+  if (["suspended", "inactive", "invited"].includes(status)) return false;
   if (role === "agent" && permissions.can_interview !== true) return false;
 
   return role === "admin" || role === "recruiter" || permissions.can_interview === true;
@@ -131,7 +160,7 @@ function isInterviewBacklog(application: ApplicationRow) {
   const screening = normalize(application.screening_status);
   const virtualStatus = normalize(application.virtual_interview_status);
 
-  if (status === "not_fit" || screening === "not_fit" || screening === "rejected") return false;
+  if (isTerminalApplication(application)) return false;
   if (virtualStatus === "completed" || status === "virtual_completed") return false;
 
   return (
@@ -145,15 +174,13 @@ function isInterviewBacklog(application: ApplicationRow) {
 }
 
 function isOpenAssignedWork(application: ApplicationRow) {
+  if (!application.recruiter_id) return false;
+  if (isTerminalApplication(application)) return false;
+
   const status = normalize(application.status);
-  const screening = normalize(application.screening_status);
   const virtualStatus = normalize(application.virtual_interview_status);
 
-  if (!application.recruiter_id) return false;
-  if (status === "not_fit" || status === "placed" || status === "rejected") return false;
-  if (screening === "not_fit" || screening === "rejected") return false;
   if (virtualStatus === "completed" || status === "virtual_completed") return false;
-
   return true;
 }
 
@@ -163,6 +190,8 @@ function isActiveBooking(booking: BookingRow) {
 }
 
 function isCompletedRecently(application: ApplicationRow) {
+  if (isTerminalApplication(application)) return false;
+
   const status = normalize(application.status);
   const virtualStatus = normalize(application.virtual_interview_status);
   const createdAt = application.created_at ? new Date(application.created_at).getTime() : 0;
@@ -227,6 +256,8 @@ function chooseRecruiter(input: {
   allowDealerDefault: boolean;
   forceOverflow: boolean;
 }) {
+  if (isTerminalApplication(input.application)) return null;
+
   const preferredId = dealerPreferredRecruiterId(input.application);
   const preferred = preferredId ? input.snapshots.find((item) => item.recruiter.id === preferredId) : undefined;
 
@@ -261,7 +292,7 @@ async function loadAssignmentContext() {
       .schema("nata")
       .from("applications")
       .select(
-        "id,name,status,screening_status,recruiter_id,assigned_recruiter,fit_score,created_at,virtual_interview_status,job_id,jobs(id,dealer_id,title,public_dealer_name,dealer_slug)"
+        "id,name,status,screening_status,recruiter_id,assigned_recruiter,fit_score,created_at,virtual_interview_status,job_id,jobs(id,dealer_id,title,public_dealer_name,dealer_slug)",
       )
       .order("created_at", { ascending: true })
       .limit(500),
@@ -293,9 +324,11 @@ async function loadAssignmentContext() {
       dealer_assigned_recruiter_id: dealer?.assigned_recruiter_id || null,
     };
   });
+
+  const activeApplications = applications.filter((application) => !isTerminalApplication(application));
   const bookings = (bookingsResult.data || []) as BookingRow[];
-  const snapshots = buildLoadSnapshots({ recruiters, applications, bookings });
-  const backlog = applications.filter(isInterviewBacklog);
+  const snapshots = buildLoadSnapshots({ recruiters, applications: activeApplications, bookings });
+  const backlog = activeApplications.filter(isInterviewBacklog);
   const unassignedBacklog = backlog.filter((application) => !application.recruiter_id);
   const don = findDon(recruiters);
   const donSnapshot = don ? snapshots.find((snapshot) => snapshot.recruiter.id === don.id) : undefined;
@@ -310,7 +343,7 @@ async function loadAssignmentContext() {
 
   return {
     recruiters,
-    applications,
+    applications: activeApplications,
     bookings,
     snapshots,
     backlog,
@@ -322,7 +355,27 @@ async function loadAssignmentContext() {
   };
 }
 
+async function loadApplicationForAssignment(applicationId: string) {
+  const { data: application, error } = await supabaseAdmin
+    .schema("nata")
+    .from("applications")
+    .select("id,status,screening_status,virtual_interview_status")
+    .eq("id", applicationId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!application) throw new Error("Application not found");
+  return application as Pick<ApplicationRow, "status" | "screening_status" | "virtual_interview_status">;
+}
+
 async function updateApplicationAssignment(applicationId: string, recruiter: RecruiterRow | null) {
+  if (recruiter) {
+    const application = await loadApplicationForAssignment(applicationId);
+    if (isTerminalApplication(application)) {
+      throw new Error("Terminal candidates cannot be assigned or reactivated.");
+    }
+  }
+
   const { error } = await supabaseAdmin
     .schema("nata")
     .from("applications")
@@ -369,7 +422,7 @@ export async function POST(request: NextRequest) {
         request,
         input.wantsJson,
         { success: true, mode: "manual", assignedTo: recruiter?.name || null },
-        { assign: recruiter ? "manual" : "cleared" }
+        { assign: recruiter ? "manual" : "cleared" },
       );
     }
 
@@ -377,7 +430,7 @@ export async function POST(request: NextRequest) {
 
     if (mode === "suggest") {
       const targetApplication = input.applicationId
-        ? context.applications.find((application) => application.id === input.applicationId)
+        ? context.applications.find((application) => application.id === input.applicationId && isInterviewBacklog(application))
         : context.unassignedBacklog[0];
 
       if (!targetApplication) {
@@ -385,7 +438,7 @@ export async function POST(request: NextRequest) {
           request,
           input.wantsJson,
           { success: true, mode: "suggest", message: "No eligible backlog candidates" },
-          { assign: "no_eligible" }
+          { assign: "no_eligible" },
         );
       }
 
@@ -416,11 +469,11 @@ export async function POST(request: NextRequest) {
         {
           assign: selected?.snapshot.recruiter.name ? "suggested" : "no_suggestion",
           suggested: selected?.snapshot.recruiter.name || null,
-        }
+        },
       );
     }
 
-    if (!context.pressureActive && (mode === "auto" || mode === "auto_one" || mode === "auto_all" || mode === "rebalance_one")) {
+    if (!context.pressureActive && ["auto", "auto_one", "auto_all", "rebalance_one"].includes(mode)) {
       return respond(
         request,
         input.wantsJson,
@@ -432,7 +485,7 @@ export async function POST(request: NextRequest) {
           loadVariance: context.loadVariance,
           donLoad: context.donSnapshot?.loadScore || 0,
         },
-        { assign: "held", backlog: context.backlog.length }
+        { assign: "held", backlog: context.backlog.length },
       );
     }
 
@@ -461,7 +514,7 @@ export async function POST(request: NextRequest) {
           from: overloaded.recruiter.name,
           assignedTo: underloaded.recruiter.name,
         },
-        { assign: "rebalanced", to: underloaded.recruiter.name }
+        { assign: "rebalanced", to: underloaded.recruiter.name },
       );
     }
 
@@ -479,6 +532,7 @@ export async function POST(request: NextRequest) {
 
     for (const application of eligibleApplications.slice(0, maxAssignments)) {
       if (application.recruiter_id && !input.applicationId) continue;
+      if (isTerminalApplication(application)) continue;
 
       const selected = chooseRecruiter({
         application,
@@ -502,7 +556,7 @@ export async function POST(request: NextRequest) {
         .map((snapshot) =>
           snapshot.recruiter.id === selected.snapshot.recruiter.id
             ? { ...snapshot, assignedCount: snapshot.assignedCount + 1, loadScore: snapshot.loadScore + 1 }
-            : snapshot
+            : snapshot,
         )
         .sort((a, b) => a.loadScore - b.loadScore);
     }
@@ -519,7 +573,7 @@ export async function POST(request: NextRequest) {
         loadVariance: context.loadVariance,
         donLoad: context.donSnapshot?.loadScore || 0,
       },
-      { assign: assigned.length ? "auto" : "no_eligible", count: assigned.length }
+      { assign: assigned.length ? "auto" : "no_eligible", count: assigned.length },
     );
   } catch (error) {
     console.error("POST /api/nata/recruiters/assign failed:", error);
@@ -529,7 +583,7 @@ export async function POST(request: NextRequest) {
       input.wantsJson,
       { error: error instanceof Error ? error.message : "Recruiter assignment failed" },
       { assign: "error" },
-      500
+      500,
     );
   }
 }
