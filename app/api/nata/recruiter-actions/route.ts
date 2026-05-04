@@ -2,10 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildCandidateScheduleUrl, sendInterviewInvite } from "@/lib/nataNotifications";
 import { returnApplicationToCandidatePool } from "@/lib/nataCandidatePool";
+import { sendEmail } from "@/lib/email";
 
 type AnyRow = Record<string, any>;
 
-const WAITING_STATUSES = new Set(["virtual_invited", "invited"]);
+type SchedulingMessageMode =
+  | "reengage_1"
+  | "reengage_2"
+  | "final_notice"
+  | "manual_reengage";
+
+const WAITING_STATUSES = new Set([
+  "virtual_invited",
+  "invited",
+  "reengage_1_sent",
+  "reengage_2_sent",
+  "final_notice_sent",
+  "removal_review_required",
+]);
+
+const REMOVAL_REVIEW_STATUSES = new Set(["removal_review_required"]);
+
 const TERMINAL_STATUSES = new Set([
   "placed",
   "hired",
@@ -69,6 +86,16 @@ function hasAnyTerminalState(application: AnyRow) {
     .some((status) => TERMINAL_STATUSES.has(status));
 }
 
+function hasRemovalReviewState(application: AnyRow) {
+  return [
+    application.status,
+    application.screening_status,
+    application.virtual_interview_status,
+  ]
+    .map(normalize)
+    .some((status) => REMOVAL_REVIEW_STATUSES.has(status));
+}
+
 function isWaitingOnCandidate(application: AnyRow) {
   if (hasAnyTerminalState(application)) return false;
   if (application.virtual_interview_completed_at) return false;
@@ -101,7 +128,7 @@ async function loadRecruiter(recruiterId: string) {
   const { data: recruiter, error } = await supabaseAdmin
     .schema("nata")
     .from("recruiters")
-    .select("id,name,slug")
+    .select("id,name,slug,email,phone,title,role,email_alias,recruiter_email_alias")
     .eq("id", recruiterId)
     .maybeSingle();
 
@@ -129,6 +156,235 @@ async function loadJob(jobId: string | null | undefined) {
   return (job || null) as AnyRow | null;
 }
 
+function getRecruiterAlias(recruiter: AnyRow) {
+  return label(
+    recruiter.email_alias || recruiter.recruiter_email_alias,
+    `${label(recruiter.slug, "recruiter")}@natatoday.ai`,
+  ).toLowerCase();
+}
+
+function getRecruiterFromLine(recruiter: AnyRow) {
+  const name = label(recruiter.name, "NATA Recruiting Team");
+  const alias = getRecruiterAlias(recruiter);
+  return `${name} @ NATA <${alias}>`;
+}
+
+function plainToHtml(value: string) {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => `<p>${line.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`)
+    .join("");
+}
+
+function normalizePhone(value: string) {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (trimmed.startsWith("+")) return trimmed;
+
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return "";
+}
+
+function buildSchedulingMessage(input: {
+  mode: SchedulingMessageMode;
+  candidateName: string;
+  roleTitle: string;
+  dealerName: string;
+  recruiterName: string;
+  bookingUrl: string;
+}) {
+  const firstName = input.candidateName.split(/\s+/).filter(Boolean)[0] || input.candidateName;
+
+  if (input.mode === "reengage_2") {
+    return {
+      subject: "Quick follow-up on your NATA interview scheduling",
+      emailText: `Hi ${firstName} — checking in again.\n\nWe still have not seen a virtual interview time booked for the ${input.roleTitle} opportunity with ${input.dealerName}.\n\nIf you are still interested, please choose a time here:\n${input.bookingUrl}\n\nIf your availability changed, reply to this message and we can help coordinate.\n\n— ${input.recruiterName}`,
+      smsText: `Hi ${firstName}, this is NATA Today. We still have not seen an interview time booked. If you're still interested, please schedule here: ${input.bookingUrl}`,
+    };
+  }
+
+  if (input.mode === "final_notice") {
+    return {
+      subject: "Final follow-up: NATA interview scheduling",
+      emailText: `Hi ${firstName} — this is our final scheduling follow-up for the ${input.roleTitle} opportunity with ${input.dealerName}.\n\nIf you are still interested, please book your virtual interview here:\n${input.bookingUrl}\n\nIf we do not see a time scheduled, we may pause this application for now. You can always reply if your availability changed.\n\n— ${input.recruiterName}`,
+      smsText: `Hi ${firstName}, final NATA Today follow-up: please schedule your virtual interview here if you're still interested: ${input.bookingUrl}`,
+    };
+  }
+
+  return {
+    subject: "Still interested in scheduling your NATA interview?",
+    emailText: `Hi ${firstName} — just checking in.\n\nWe previously sent your virtual interview scheduling link for the ${input.roleTitle} opportunity with ${input.dealerName}, but it looks like a time has not been booked yet.\n\nIf you are still interested, please choose a time here:\n${input.bookingUrl}\n\nIf your availability changed, no problem — reply here and we will help coordinate.\n\n— ${input.recruiterName}`,
+    smsText: `Hi ${firstName}, this is NATA Today. Just checking in — we sent your interview scheduling link, but no time has been booked yet. If you're still interested, schedule here: ${input.bookingUrl}`,
+  };
+}
+
+async function logSms(input: {
+  recruiterId: string;
+  applicationId: string;
+  dealerSlug: string | null;
+  fromPhone: string | null;
+  toPhone: string | null;
+  body: string;
+  status: "sent" | "failed" | "skipped";
+  providerPayload?: unknown;
+  providerMessageId?: string | null;
+}) {
+  const { error } = await supabaseAdmin.schema("nata").from("messages").insert({
+    recruiter_id: input.recruiterId,
+    application_id: input.applicationId,
+    dealer_slug: input.dealerSlug,
+    direction: "outbound",
+    channel: "sms",
+    status: input.status,
+    body: input.body,
+    body_text: input.body,
+    from_phone: input.fromPhone,
+    to_phone: input.toPhone,
+    provider: "twilio",
+    provider_message_id: input.providerMessageId || null,
+    provider_payload: JSON.parse(JSON.stringify(input.providerPayload || {})),
+    sent_at: input.status === "sent" ? new Date().toISOString() : null,
+  });
+
+  if (error) {
+    console.error("Failed to log scheduling SMS:", error);
+  }
+}
+
+async function sendSchedulingSms(input: {
+  recruiterId: string;
+  applicationId: string;
+  dealerSlug: string | null;
+  to: string | null;
+  body: string;
+}) {
+  const normalizedTo = normalizePhone(input.to || "");
+  const from = process.env.TWILIO_PHONE_NUMBER || "";
+
+  if (!normalizedTo) {
+    await logSms({
+      recruiterId: input.recruiterId,
+      applicationId: input.applicationId,
+      dealerSlug: input.dealerSlug,
+      fromPhone: from || null,
+      toPhone: null,
+      body: input.body,
+      status: "skipped",
+      providerPayload: { reason: "missing_or_invalid_phone", originalTo: input.to },
+    });
+    return;
+  }
+
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+
+  if (!accountSid || !authToken || !from) {
+    await logSms({
+      recruiterId: input.recruiterId,
+      applicationId: input.applicationId,
+      dealerSlug: input.dealerSlug,
+      fromPhone: from || null,
+      toPhone: normalizedTo,
+      body: input.body,
+      status: "skipped",
+      providerPayload: { reason: "missing_twilio_config" },
+    });
+    return;
+  }
+
+  const response = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+    {
+      method: "POST",
+      headers: {
+        Authorization:
+          "Basic " + Buffer.from(`${accountSid}:${authToken}`).toString("base64"),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        To: normalizedTo,
+        From: from,
+        Body: input.body,
+      }),
+    },
+  );
+
+  const rawPayload = await response.text().catch(() => "");
+  let providerPayload: Record<string, any> = {};
+
+  try {
+    providerPayload = rawPayload ? JSON.parse(rawPayload) : {};
+  } catch {
+    providerPayload = { raw: rawPayload };
+  }
+
+  await logSms({
+    recruiterId: input.recruiterId,
+    applicationId: input.applicationId,
+    dealerSlug: input.dealerSlug,
+    fromPhone: from,
+    toPhone: normalizedTo,
+    body: input.body,
+    status: response.ok ? "sent" : "failed",
+    providerPayload,
+    providerMessageId:
+      typeof providerPayload.sid === "string" ? providerPayload.sid : null,
+  });
+
+  if (!response.ok) {
+    console.error("Scheduling SMS failed:", response.status, providerPayload);
+  }
+}
+
+async function sendSchedulingFollowup(input: {
+  mode: SchedulingMessageMode;
+  application: AnyRow;
+  job: AnyRow | null;
+  recruiter: AnyRow;
+  recruiterId: string;
+  bookingUrl: string;
+}) {
+  const alias = getRecruiterAlias(input.recruiter);
+  const candidateName = label(input.application.name || input.application.email, "Candidate");
+  const message = buildSchedulingMessage({
+    mode: input.mode,
+    candidateName,
+    roleTitle: label(input.job?.title || input.application.role, "Candidate"),
+    dealerName: label(input.job?.public_dealer_name || input.job?.dealer_slug, "Dealer"),
+    recruiterName: label(input.recruiter.name, "your recruiter"),
+    bookingUrl: input.bookingUrl,
+  });
+
+  if (input.application.email) {
+    await sendEmail({
+      to: String(input.application.email),
+      subject: message.subject,
+      text: message.emailText,
+      html: plainToHtml(message.emailText),
+      from: getRecruiterFromLine(input.recruiter),
+      replyTo: alias,
+      recruiterId: input.recruiterId,
+      applicationId: String(input.application.id),
+      signatureName: label(input.recruiter.name, "NATA Recruiting Team"),
+      signatureTitle: label(input.recruiter.title || input.recruiter.role, "Recruiting Operations"),
+      signatureEmail: alias,
+      signaturePhone: label(input.recruiter.phone, ""),
+    } as any);
+  }
+
+  await sendSchedulingSms({
+    recruiterId: input.recruiterId,
+    applicationId: String(input.application.id),
+    dealerSlug: input.job?.dealer_slug || null,
+    to: input.application.phone || null,
+    body: message.smsText,
+  });
+}
+
 async function sendInitialInviteSafely(input: {
   application: AnyRow;
   job: AnyRow | null;
@@ -145,49 +401,9 @@ async function sendInitialInviteSafely(input: {
       dealerName: label(input.job?.public_dealer_name || input.job?.dealer_slug, "Dealer"),
       recruiterName: label(input.recruiter.name, "your recruiter"),
       bookingUrl: input.bookingUrl,
-    } as any);
+    });
   } catch (notificationError) {
-    console.error("Recruiter action notification failed:", notificationError);
-  }
-}
-
-async function sendReengagementSafely(input: {
-  application: AnyRow;
-  job: AnyRow | null;
-  recruiter: AnyRow;
-  bookingUrl: string;
-}) {
-  try {
-    await sendInterviewInvite({
-      applicationId: String(input.application.id),
-      candidateName: label(input.application.name || input.application.email, "Candidate"),
-      candidateEmail: input.application.email || null,
-      candidatePhone: input.application.phone || null,
-      roleTitle: label(input.job?.title || input.application.role, "Candidate"),
-      dealerName: label(input.job?.public_dealer_name || input.job?.dealer_slug, "Dealer"),
-      recruiterName: label(input.recruiter.name, "your recruiter"),
-      bookingUrl: input.bookingUrl,
-      mode: "reengage",
-      subject: "Still interested in scheduling your NATA interview?",
-      message: `Hi ${label(input.application.name || input.application.email, "there")} — just checking in. We previously sent your virtual interview scheduling link, but it looks like a time has not been booked yet. If you're still interested, please use this link to choose a time that works for you: ${input.bookingUrl}`,
-    } as any);
-  } catch (notificationError) {
-    console.error("Recruiter re-engagement notification failed:", notificationError);
-  }
-}
-
-async function clearApplicationAssignment(applicationId: string) {
-  const { error } = await supabaseAdmin
-    .schema("nata")
-    .from("applications")
-    .update({
-      recruiter_id: null,
-      assigned_recruiter: null,
-    })
-    .eq("id", applicationId);
-
-  if (error) {
-    console.error("Failed to clear application assignment:", error);
+    console.error("Recruiter action initial invite notification failed:", notificationError);
   }
 }
 
@@ -210,7 +426,10 @@ export async function POST(request: NextRequest) {
       loadRecruiter(recruiterId),
     ]);
 
-    if (hasAnyTerminalState(application) && action !== "reengage_waiting") {
+    if (
+      hasAnyTerminalState(application) &&
+      !["reengage_waiting", "approve_scheduling_removal"].includes(action)
+    ) {
       return redirectToDashboard(request, recruiterSlug || String(recruiter.slug || "don"), {
         action: "terminal_blocked",
       });
@@ -254,7 +473,7 @@ export async function POST(request: NextRequest) {
       }
 
       const bookingUrl = buildCandidateScheduleUrl(applicationId);
-      const note = `[Candidate re-engaged ${now}] ${reason || "Recruiter re-engaged candidate after stale scheduling state."}`;
+      const note = `[Manual candidate re-engagement ${now}] ${reason || "Recruiter manually re-engaged candidate after schedule invite went stale."}`;
 
       const { error } = await supabaseAdmin
         .schema("nata")
@@ -262,7 +481,7 @@ export async function POST(request: NextRequest) {
         .update({
           status: "virtual_invited",
           screening_status: "virtual_invited",
-          virtual_interview_status: "invited",
+          virtual_interview_status: "reengage_1_sent",
           virtual_interview_url: bookingUrl,
           decision_reason: previousReason ? `${previousReason}\n${note}` : note,
         })
@@ -271,7 +490,14 @@ export async function POST(request: NextRequest) {
 
       if (error) throw new Error(error.message);
 
-      await sendReengagementSafely({ application, job, recruiter, bookingUrl });
+      await sendSchedulingFollowup({
+        mode: "manual_reengage",
+        application,
+        job,
+        recruiter,
+        recruiterId,
+        bookingUrl,
+      });
 
       return redirectToDashboard(request, safeRecruiterSlug, {
         action: "reengaged",
@@ -279,7 +505,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (action === "remove_waiting") {
+    if (action === "keep_waiting") {
       if (!isWaitingOnCandidate(application)) {
         return redirectToDashboard(request, safeRecruiterSlug, {
           action: "not_waiting",
@@ -287,8 +513,44 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const removeReason = reason || "Removed from stale scheduling queue.";
-      const note = `[Scheduling queue removal ${now}] ${removeReason}`;
+      const note = `[Recruiter kept candidate active ${now}] ${reason || "Recruiter kept candidate active after removal review."}`;
+
+      const { error } = await supabaseAdmin
+        .schema("nata")
+        .from("applications")
+        .update({
+          status: "virtual_invited",
+          screening_status: "virtual_invited",
+          virtual_interview_status: "invited",
+          decision_reason: previousReason ? `${previousReason}\n${note}` : note,
+        })
+        .eq("id", applicationId)
+        .eq("recruiter_id", recruiterId);
+
+      if (error) throw new Error(error.message);
+
+      return redirectToDashboard(request, safeRecruiterSlug, {
+        action: "kept_waiting",
+        anchor: "candidate-scheduling-pending",
+      });
+    }
+
+    if (action === "approve_scheduling_removal" || action === "remove_waiting") {
+      if (!isWaitingOnCandidate(application)) {
+        return redirectToDashboard(request, safeRecruiterSlug, {
+          action: "not_waiting",
+          anchor: "candidate-scheduling-pending",
+        });
+      }
+
+      if (action === "approve_scheduling_removal" && !hasRemovalReviewState(application)) {
+        return redirectToDashboard(request, safeRecruiterSlug, {
+          action: "removal_not_ready",
+          anchor: "candidate-scheduling-pending",
+        });
+      }
+
+      const note = `[Scheduling removal approved ${now}] ${reason || "Recruiter approved removal after automated scheduling follow-ups."}`;
 
       const { error } = await supabaseAdmin
         .schema("nata")
@@ -306,19 +568,17 @@ export async function POST(request: NextRequest) {
 
       if (error) throw new Error(error.message);
 
-      try {
-        await returnApplicationToCandidatePool({
-          applicationId,
-          source: "withdrawn",
-          reason: removeReason,
-        });
-      } catch (poolError) {
-        console.error("Candidate was removed from dashboard but pool return failed:", poolError);
-      }
+      await returnApplicationToCandidatePool({
+        applicationId,
+        source: "withdrawn",
+        reason: reason || "Removed after automated scheduling follow-up sequence.",
+      });
 
-      // Belt-and-suspenders: if a trigger/helper touched the row after the first update,
-      // force the assignment closed again so the recruiter dashboard query cannot see it.
-      await clearApplicationAssignment(applicationId);
+      await supabaseAdmin
+        .schema("nata")
+        .from("applications")
+        .update({ recruiter_id: null, assigned_recruiter: null })
+        .eq("id", applicationId);
 
       return redirectToDashboard(request, safeRecruiterSlug, {
         action: "removed",
@@ -333,7 +593,8 @@ export async function POST(request: NextRequest) {
         .update({
           status: "needs_review",
           screening_status: "needs_review",
-          decision_reason: reason || "Recruiter hold: more candidate proof required before interview.",
+          decision_reason:
+            reason || "Recruiter hold: more candidate proof required before interview.",
         })
         .eq("id", applicationId)
         .eq("recruiter_id", recruiterId);
