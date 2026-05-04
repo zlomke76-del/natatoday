@@ -524,16 +524,16 @@ export default async function RecruiterAdminPage({ searchParams }: RecruiterAdmi
         <section style={heroGridStyle}>
           <div>
             <div style={eyebrowStyle}>NATA Today Admin</div>
-            <h1 style={titleStyle}>Execution control layer.</h1>
+            <h1 style={titleStyle}>Command center.</h1>
             <p style={ledeStyle}>
-              Monitor live hiring pressure, protect interview capacity, assign ownership, and keep every candidate moving through controlled state.
+              Live control for operators, assignments, backlog, pressure, and candidate ownership.
             </p>
           </div>
 
           <div style={principleCardStyle}>
-            <div style={principleTitleStyle}>Control rule</div>
+            <div style={principleTitleStyle}>Rule</div>
             <p style={principleTextStyle}>
-              Assignment controls visibility. State controls execution. Automation only activates when workload pressure threatens flow.
+              State controls execution. Assignment controls visibility.
             </p>
           </div>
         </section>
@@ -553,7 +553,7 @@ export default async function RecruiterAdminPage({ searchParams }: RecruiterAdmi
           <div style={panelHeaderStyle}>
             <div>
               <div style={eyebrowStyle}>Live system state</div>
-              <h2 style={panelTitleStyle}>Operational nerve center</h2>
+              <h2 style={panelTitleStyle}>System state</h2>
             </div>
             <span style={pressureActive ? pressurePillStyle : stablePillStyle}>
               {pressureActive ? "Pressure active" : "Flow stable"}
@@ -653,8 +653,8 @@ export default async function RecruiterAdminPage({ searchParams }: RecruiterAdmi
         <section style={matrixPanelStyle}>
           <div style={panelHeaderStyle}>
             <div>
-              <div style={eyebrowStyle}>Recruiter load matrix</div>
-              <h2 style={panelTitleStyle}>Capacity by operator</h2>
+              <div style={eyebrowStyle}>Load matrix</div>
+              <h2 style={panelTitleStyle}>Operator capacity</h2>
             </div>
             <span style={subtleNoteStyle}>Load = active assigned candidates + active interviews × 3 - recent completions × 2</span>
           </div>
@@ -680,7 +680,7 @@ export default async function RecruiterAdminPage({ searchParams }: RecruiterAdmi
         <section style={mainGridStyle}>
           <section style={panelStyle}>
             <div style={eyebrowStyle}>Add operator</div>
-            <h2 style={panelTitleStyle}>Invite recruiter / agent</h2>
+            <h2 style={panelTitleStyle}>Invite operator</h2>
 
             <form method="POST" action="/api/nata/recruiters/invite" style={formStyle}>
               <div style={formGridStyle}>
@@ -735,7 +735,7 @@ export default async function RecruiterAdminPage({ searchParams }: RecruiterAdmi
             <div style={panelHeaderStyle}>
               <div>
                 <div style={eyebrowStyle}>Team state</div>
-                <h2 style={panelTitleStyle}>Recruiter / agent roster</h2>
+                <h2 style={panelTitleStyle}>Roster</h2>
               </div>
             </div>
 
@@ -918,61 +918,61 @@ function RosterGroup({ title, recruiters, loadSnapshots }: { title: string; recr
   );
 }
 
-const pageStyle: CSSProperties = { minHeight: "100vh", background: "radial-gradient(circle at 20% 0%, rgba(20,115,255,0.2), transparent 34%), #07111f", color: "#fff", padding: "38px 0 80px" };
-const wrapStyle: CSSProperties = { width: "min(1380px, calc(100% - 40px))", margin: "0 auto" };
-const topBarStyle: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" };
+const pageStyle: CSSProperties = { minHeight: "100vh", background: "radial-gradient(circle at 20% 0%, rgba(20,115,255,0.16), transparent 30%), #07111f", color: "#fff", padding: "18px 0 48px" };
+const wrapStyle: CSSProperties = { width: "min(1500px, calc(100% - 28px))", margin: "0 auto" };
+const topBarStyle: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 };
 const backLinkStyle: CSSProperties = { color: "#93c5fd", textDecoration: "none", fontWeight: 900 };
-const heroGridStyle: CSSProperties = { marginTop: 28, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 390px)", gap: 24, alignItems: "end" };
+const heroGridStyle: CSSProperties = { marginTop: 10, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(220px, 320px)", gap: 14, alignItems: "stretch", padding: 16, borderRadius: 22, background: "rgba(255,255,255,0.045)", border: "1px solid rgba(255,255,255,0.1)" };
 const eyebrowStyle: CSSProperties = { color: "#facc15", fontWeight: 950, letterSpacing: "0.16em", textTransform: "uppercase", fontSize: 12 };
-const titleStyle: CSSProperties = { margin: "10px 0 0", fontSize: "clamp(54px, 8vw, 108px)", lineHeight: 0.88, letterSpacing: "-0.06em" };
-const ledeStyle: CSSProperties = { color: "#bfd6f5", maxWidth: 830, fontSize: 18, lineHeight: 1.6 };
-const principleCardStyle: CSSProperties = { borderRadius: 24, padding: 20, background: "rgba(20,115,255,0.12)", border: "1px solid rgba(96,165,250,0.22)" };
-const principleTitleStyle: CSSProperties = { fontWeight: 950, color: "#dbeafe", fontSize: 18 };
-const principleTextStyle: CSSProperties = { margin: "8px 0 0", color: "#bfd6f5", lineHeight: 1.5 };
-const statsGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 14, marginTop: 28 };
-const metricCardStyle: CSSProperties = { borderRadius: 22, padding: 20, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" };
+const titleStyle: CSSProperties = { margin: "6px 0 0", fontSize: "clamp(30px, 4vw, 48px)", lineHeight: 0.94, letterSpacing: "-0.05em" };
+const ledeStyle: CSSProperties = { color: "#bfd6f5", maxWidth: 860, fontSize: 14, lineHeight: 1.35, margin: "8px 0 0" };
+const principleCardStyle: CSSProperties = { borderRadius: 18, padding: 14, background: "rgba(20,115,255,0.12)", border: "1px solid rgba(96,165,250,0.22)", alignSelf: "center" };
+const principleTitleStyle: CSSProperties = { fontWeight: 950, color: "#dbeafe", fontSize: 14 };
+const principleTextStyle: CSSProperties = { margin: "6px 0 0", color: "#bfd6f5", lineHeight: 1.35, fontSize: 13 };
+const statsGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(8, minmax(0, 1fr))", gap: 8, marginTop: 12 };
+const metricCardStyle: CSSProperties = { borderRadius: 16, padding: "10px 12px", background: "rgba(255,255,255,0.055)", border: "1px solid rgba(255,255,255,0.09)", minHeight: 72 };
 const metricCardWarnStyle: CSSProperties = { ...metricCardStyle, background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.22)" };
-const metricValueStyle: CSSProperties = { fontSize: 34, fontWeight: 950 };
-const metricLabelStyle: CSSProperties = { color: "#9fb4d6", marginTop: 4, fontWeight: 850 };
-const controlPanelStyle: CSSProperties = { marginTop: 30, borderRadius: 30, padding: 24, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.13)", boxShadow: "0 24px 80px rgba(0,0,0,0.22)" };
-const panelStyle: CSSProperties = { borderRadius: 28, padding: 22, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" };
-const panelStyleWithMargin: CSSProperties = { ...panelStyle, marginTop: 24 };
+const metricValueStyle: CSSProperties = { fontSize: 24, fontWeight: 950, lineHeight: 1 };
+const metricLabelStyle: CSSProperties = { color: "#9fb4d6", marginTop: 4, fontWeight: 850, fontSize: 11, lineHeight: 1.15 };
+const controlPanelStyle: CSSProperties = { marginTop: 12, borderRadius: 22, padding: 16, background: "rgba(255,255,255,0.065)", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 16px 50px rgba(0,0,0,0.18)" };
+const panelStyle: CSSProperties = { borderRadius: 20, padding: 16, background: "rgba(255,255,255,0.055)", border: "1px solid rgba(255,255,255,0.1)" };
+const panelStyleWithMargin: CSSProperties = { ...panelStyle, marginTop: 12 };
 const panelHeaderStyle: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 18, alignItems: "end", flexWrap: "wrap" };
-const panelTitleStyle: CSSProperties = { margin: "8px 0 18px", fontSize: 28, letterSpacing: "-0.035em" };
-const systemGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginTop: 16 };
-const statusCardStableStyle: CSSProperties = { borderRadius: 22, padding: 18, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.2)" };
-const statusCardWatchStyle: CSSProperties = { borderRadius: 22, padding: 18, background: "rgba(251,191,36,0.11)", border: "1px solid rgba(251,191,36,0.24)" };
-const statusCardCriticalStyle: CSSProperties = { borderRadius: 22, padding: 18, background: "rgba(239,68,68,0.12)", border: "1px solid rgba(248,113,113,0.25)" };
+const panelTitleStyle: CSSProperties = { margin: "4px 0 10px", fontSize: 22, letterSpacing: "-0.035em" };
+const systemGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginTop: 10 };
+const statusCardStableStyle: CSSProperties = { borderRadius: 16, padding: 12, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.2)" };
+const statusCardWatchStyle: CSSProperties = { borderRadius: 16, padding: 12, background: "rgba(251,191,36,0.11)", border: "1px solid rgba(251,191,36,0.24)" };
+const statusCardCriticalStyle: CSSProperties = { borderRadius: 16, padding: 12, background: "rgba(239,68,68,0.12)", border: "1px solid rgba(248,113,113,0.25)" };
 const statusCardTitleStyle: CSSProperties = { color: "#dbeafe", fontWeight: 950, fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em" };
-const statusCardValueStyle: CSSProperties = { marginTop: 10, fontSize: 26, fontWeight: 950, letterSpacing: "-0.03em" };
-const statusCardCopyStyle: CSSProperties = { margin: "8px 0 0", color: "#bfd6f5", lineHeight: 1.45, fontSize: 14 };
-const reasonBoxStyle: CSSProperties = { marginTop: 16, borderRadius: 22, padding: 18, background: "rgba(2,6,23,0.42)", border: "1px solid rgba(255,255,255,0.09)" };
+const statusCardValueStyle: CSSProperties = { marginTop: 6, fontSize: 20, fontWeight: 950, letterSpacing: "-0.03em" };
+const statusCardCopyStyle: CSSProperties = { margin: "6px 0 0", color: "#bfd6f5", lineHeight: 1.3, fontSize: 12 };
+const reasonBoxStyle: CSSProperties = { marginTop: 10, borderRadius: 16, padding: 12, background: "rgba(2,6,23,0.42)", border: "1px solid rgba(255,255,255,0.09)" };
 const reasonTitleStyle: CSSProperties = { fontWeight: 950, color: "#dbeafe" };
 const reasonListStyle: CSSProperties = { margin: "10px 0 0", color: "#bfd6f5", lineHeight: 1.6 };
 const reasonTextStyle: CSSProperties = { margin: "10px 0 0", color: "#bfd6f5", lineHeight: 1.55 };
-const suggestionCardStyle: CSSProperties = { marginTop: 16, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 18, alignItems: "center", borderRadius: 24, padding: 18, background: "rgba(20,115,255,0.12)", border: "1px solid rgba(96,165,250,0.22)" };
-const suggestionTitleStyle: CSSProperties = { margin: "8px 0 0", fontSize: 24, letterSpacing: "-0.035em" };
-const suggestionCopyStyle: CSSProperties = { color: "#bfd6f5", lineHeight: 1.55, margin: "10px 0 0" };
-const matrixPanelStyle: CSSProperties = { ...panelStyle, marginTop: 24 };
+const suggestionCardStyle: CSSProperties = { marginTop: 10, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "center", borderRadius: 16, padding: 12, background: "rgba(20,115,255,0.12)", border: "1px solid rgba(96,165,250,0.22)" };
+const suggestionTitleStyle: CSSProperties = { margin: "4px 0 0", fontSize: 18, letterSpacing: "-0.035em" };
+const suggestionCopyStyle: CSSProperties = { color: "#bfd6f5", lineHeight: 1.35, margin: "6px 0 0", fontSize: 13 };
+const matrixPanelStyle: CSSProperties = { ...panelStyle, marginTop: 12 };
 const matrixTableStyle: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(180px, 1.7fr) repeat(6, minmax(92px, 1fr))", gap: 0, overflowX: "auto" };
 const matrixHeaderStyle: CSSProperties = { padding: "12px 10px", color: "#facc15", fontSize: 12, fontWeight: 950, textTransform: "uppercase", letterSpacing: "0.1em", borderBottom: "1px solid rgba(255,255,255,0.12)" };
 const matrixCellStyle: CSSProperties = { padding: "13px 10px", color: "#bfd6f5", borderBottom: "1px solid rgba(255,255,255,0.08)", fontSize: 14 };
 const matrixCellStrongStyle: CSSProperties = { ...matrixCellStyle, color: "#fff", fontWeight: 950 };
-const mainGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(390px, 0.8fr) minmax(0, 1.2fr)", gap: 18, marginTop: 24, alignItems: "start" };
+const mainGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(360px, 0.7fr) minmax(0, 1.3fr)", gap: 12, marginTop: 12, alignItems: "start" };
 const formStyle: CSSProperties = { display: "grid", gap: 14 };
 const formGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 };
 const labelStyle: CSSProperties = { display: "grid", gap: 7, color: "#dbeafe", fontSize: 13, fontWeight: 900 };
-const inputStyle: CSSProperties = { minHeight: 44, padding: "0 12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(3,7,18,0.82)", color: "#fff", outline: "none" };
+const inputStyle: CSSProperties = { minHeight: 38, padding: "0 10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(3,7,18,0.82)", color: "#fff", outline: "none" };
 const textAreaStyle: CSSProperties = { ...inputStyle, minHeight: 90, padding: 12, resize: "vertical" };
 const permissionFieldsetStyle: CSSProperties = { border: "1px solid rgba(255,255,255,0.12)", borderRadius: 18, padding: 14, display: "grid", gap: 10 };
 const permissionLegendStyle: CSSProperties = { color: "#facc15", fontWeight: 950, padding: "0 8px", letterSpacing: "0.08em", textTransform: "uppercase", fontSize: 11 };
 const checkStyle: CSSProperties = { display: "flex", gap: 9, alignItems: "center", color: "#dbeafe", fontSize: 13, fontWeight: 800 };
 const noticeStyle: CSSProperties = { marginTop: 12, padding: 12, borderRadius: 14, background: "rgba(37,99,235,0.12)", border: "1px solid rgba(96,165,250,0.24)", color: "#dbeafe", fontSize: 13, lineHeight: 1.45 };
-const primaryButtonStyle: CSSProperties = { minHeight: 48, borderRadius: 999, border: "none", background: "linear-gradient(135deg, #1473ff, #0757c9)", color: "#fff", fontWeight: 950, cursor: "pointer", fontSize: 15 };
+const primaryButtonStyle: CSSProperties = { minHeight: 42, borderRadius: 999, border: "none", background: "linear-gradient(135deg, #1473ff, #0757c9)", color: "#fff", fontWeight: 950, cursor: "pointer", fontSize: 14 };
 const rosterGroupStyle: CSSProperties = { display: "grid", gap: 10, marginTop: 18 };
 const rosterGroupTitleStyle: CSSProperties = { margin: 0, color: "#facc15", fontSize: 13, textTransform: "uppercase", letterSpacing: "0.12em" };
-const rosterCardStyle: CSSProperties = { display: "grid", gridTemplateColumns: "54px minmax(0, 1fr) auto", gap: 14, alignItems: "center", padding: 14, borderRadius: 20, background: "rgba(2,6,23,0.36)", border: "1px solid rgba(255,255,255,0.08)" };
-const avatarStyle: CSSProperties = { width: 54, height: 54, minWidth: 54, borderRadius: 16, display: "grid", placeItems: "center", background: "rgba(20,115,255,0.22)", border: "1px solid rgba(147,197,253,0.22)", color: "#dbeafe", fontWeight: 950, overflow: "hidden", boxShadow: "0 10px 24px rgba(0,0,0,0.22)" };
+const rosterCardStyle: CSSProperties = { display: "grid", gridTemplateColumns: "44px minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: 10, borderRadius: 14, background: "rgba(2,6,23,0.36)", border: "1px solid rgba(255,255,255,0.08)" };
+const avatarStyle: CSSProperties = { width: 44, height: 44, minWidth: 44, borderRadius: 14, display: "grid", placeItems: "center", background: "rgba(20,115,255,0.22)", border: "1px solid rgba(147,197,253,0.22)", color: "#dbeafe", fontWeight: 950, overflow: "hidden", boxShadow: "0 8px 18px rgba(0,0,0,0.18)" };
 function avatarPhotoStyle(url: string): CSSProperties {
   return { ...avatarStyle, backgroundColor: "rgba(15,23,42,0.82)", backgroundImage: `url("${url}")`, backgroundSize: "cover", backgroundPosition: "center center", backgroundRepeat: "no-repeat", border: "1px solid rgba(147,197,253,0.30)" };
 }
@@ -990,7 +990,7 @@ const emptyRosterStyle: CSSProperties = { padding: 14, borderRadius: 16, backgro
 const emptyStateStyle: CSSProperties = { padding: 18, borderRadius: 18, background: "rgba(2,6,23,0.36)", color: "#9fb4d6" };
 const subtleNoteStyle: CSSProperties = { color: "#9fb4d6", fontSize: 13, fontWeight: 850 };
 const assignmentListStyle: CSSProperties = { display: "grid", gap: 10, marginTop: 16 };
-const assignmentCardStyle: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 14, alignItems: "center", padding: 14, borderRadius: 18, background: "rgba(2,6,23,0.36)", border: "1px solid rgba(255,255,255,0.08)" };
+const assignmentCardStyle: CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: 10, borderRadius: 14, background: "rgba(2,6,23,0.36)", border: "1px solid rgba(255,255,255,0.08)" };
 const candidateNameStyle: CSSProperties = { margin: 0, fontSize: 18 };
 const candidateMetaStyle: CSSProperties = { margin: "5px 0 0", color: "#9fb4d6", fontSize: 13 };
 const pillRowStyle: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 7, marginTop: 9 };
