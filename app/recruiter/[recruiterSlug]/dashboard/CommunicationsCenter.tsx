@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { sendEmail } from "../../../../lib/email";
@@ -156,7 +157,7 @@ async function loadMessages(recruiterId: string) {
     .select("*")
     .eq("recruiter_id", recruiterId)
     .order("created_at", { ascending: false })
-    .limit(30);
+    .limit(50);
 
   if (error) {
     console.error("Failed to load recruiter messages:", error);
@@ -496,6 +497,116 @@ async function findContactEmailForSms(input: {
   return label(contact?.email, "");
 }
 
+type ThreadSummary = {
+  key: string;
+  title: string;
+  subtitle: string;
+  channelLabel: string;
+  lastAt: string;
+  lastPreview: string;
+  lastMessageId: string;
+  lastDirection: string;
+  inboundCount: number;
+  outboundCount: number;
+  totalCount: number;
+  status: string;
+  needsReply: boolean;
+};
+
+function getMessageTimeValue(message: AnyRow) {
+  const raw = message.created_at || message.sent_at || message.received_at || "";
+  const time = raw ? new Date(String(raw)).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function getThreadKey(message: AnyRow) {
+  return label(
+    message.thread_id ||
+      (message.application_id ? `application:${message.application_id}` : "") ||
+      message.to_email ||
+      message.from_email ||
+      message.to_phone ||
+      message.from_phone ||
+      message.id,
+    String(message.id || "message"),
+  );
+}
+
+function getThreadTitle(message: AnyRow) {
+  return label(
+    message.contact_name ||
+      message.candidate_name ||
+      message.display_name ||
+      message.subject ||
+      getMessageAddress(message),
+    message.channel === "sms" ? "SMS conversation" : "Email conversation",
+  );
+}
+
+function getThreadSubtitle(message: AnyRow) {
+  const organization = label(
+    message.dealer_name || message.public_dealer_name || message.dealer_slug,
+    "",
+  );
+  const address = getMessageAddress(message);
+  return [organization, address].filter(Boolean).join(" · ") || "Conversation";
+}
+
+function isResolvedMessage(message: AnyRow) {
+  const status = String(message.status || message.message_status || "")
+    .trim()
+    .toLowerCase();
+
+  return ["resolved", "closed", "replied", "ignored", "archived"].includes(status);
+}
+
+function buildThreadSummaries(messages: AnyRow[]): ThreadSummary[] {
+  const groups = new Map<string, AnyRow[]>();
+
+  for (const message of messages) {
+    const key = getThreadKey(message);
+    const current = groups.get(key) || [];
+    current.push(message);
+    groups.set(key, current);
+  }
+
+  return Array.from(groups.entries())
+    .map(([key, threadMessages]) => {
+      const sorted = [...threadMessages].sort(
+        (a, b) => getMessageTimeValue(b) - getMessageTimeValue(a),
+      );
+      const latest = sorted[0] || {};
+      const inboundCount = sorted.filter((message) => message.direction === "inbound").length;
+      const outboundCount = sorted.filter((message) => message.direction === "outbound").length;
+      const latestDirection = label(latest.direction, "unknown").toLowerCase();
+      const status = label(latest.message_status || latest.status, "open").toLowerCase();
+      const needsReply = latestDirection === "inbound" && !isResolvedMessage(latest);
+
+      return {
+        key,
+        title: getThreadTitle(latest),
+        subtitle: getThreadSubtitle(latest),
+        channelLabel: label(latest.channel, "email").toUpperCase(),
+        lastAt: formatMessageDate(latest.created_at || latest.sent_at || latest.received_at),
+        lastPreview: getMessagePreview(latest).slice(0, 180),
+        lastMessageId: String(latest.id || ""),
+        lastDirection: latestDirection,
+        inboundCount,
+        outboundCount,
+        totalCount: sorted.length,
+        status,
+        needsReply,
+      };
+    })
+    .sort((a, b) => {
+      if (a.needsReply && !b.needsReply) return -1;
+      if (!a.needsReply && b.needsReply) return 1;
+      const latestA = messages.find((message) => String(message.id) === a.lastMessageId);
+      const latestB = messages.find((message) => String(message.id) === b.lastMessageId);
+      return getMessageTimeValue(latestB || {}) - getMessageTimeValue(latestA || {});
+    });
+}
+
 export default async function CommunicationsCenter({
   recruiter,
   recruiterSlug,
@@ -517,8 +628,12 @@ export default async function CommunicationsCenter({
     loadTemplates(),
   ]);
 
-  const inbox = messages.filter((message) => message.direction === "inbound");
-  const sent = messages.filter((message) => message.direction === "outbound");
+  const threads = buildThreadSummaries(messages);
+  const needsReply = threads.filter((thread) => thread.needsReply).slice(0, 6);
+  const activeThreads = threads.filter((thread) => !thread.needsReply).slice(0, 5);
+  const recentSent = messages
+    .filter((message) => message.direction === "outbound")
+    .slice(0, 3);
 
   async function sendRecruiterMessage(formData: FormData) {
     "use server";
@@ -616,13 +731,10 @@ export default async function CommunicationsCenter({
           <div className="section-kicker" style={{ marginBottom: 10 }}>
             Communications Center
           </div>
-          <h2 style={communicationsTitle}>
-            Inbox + sent for {recruiterName}
-          </h2>
+          <h2 style={communicationsTitle}>Action inbox for {recruiterName}</h2>
           <p style={communicationsCopy}>
-            Send professional email or SMS from the recruiter identity, use the
-            address book for candidates, dealers, prospects, and custom contacts,
-            and use Solace Rewrite Assist before sending.
+            The default view now stays focused on replies and active conversations.
+            Outbound history is capped so the workspace does not become a growing log wall.
           </p>
         </div>
 
@@ -643,49 +755,133 @@ export default async function CommunicationsCenter({
         />
 
         <div style={messageColumn}>
-          <MessageList title="Inbox" empty="No inbound replies yet." messages={inbox} />
-          <MessageList title="Sent" empty="No sent messages logged yet." messages={sent} />
+          <ThreadPanel
+            title="Needs reply"
+            count={needsReply.length}
+            empty="No inbound replies need action."
+            threads={needsReply}
+            recruiterId={recruiterId}
+            recruiterSlug={recruiterSlug}
+            tone="action"
+          />
+
+          <ThreadPanel
+            title="Active conversations"
+            count={activeThreads.length}
+            empty="No active conversations to summarize yet."
+            threads={activeThreads}
+            recruiterId={recruiterId}
+            recruiterSlug={recruiterSlug}
+            tone="normal"
+          />
+
+          <RecentSentPanel messages={recentSent} totalSent={messages.filter((message) => message.direction === "outbound").length} />
         </div>
       </div>
     </section>
   );
 }
 
-function MessageList({
+function ThreadPanel({
   title,
+  count,
   empty,
-  messages,
+  threads,
+  recruiterId,
+  recruiterSlug,
+  tone,
 }: {
   title: string;
+  count: number;
   empty: string;
-  messages: AnyRow[];
+  threads: ThreadSummary[];
+  recruiterId: string;
+  recruiterSlug: string;
+  tone: "action" | "normal";
 }) {
   return (
-    <div style={messagePanel}>
+    <div style={tone === "action" ? actionMessagePanel : messagePanel}>
       <div style={messagePanelHeader}>
         <strong>{title}</strong>
-        <span>{messages.length}</span>
+        <span>{count}</span>
+      </div>
+
+      <div style={{ display: "grid", gap: 10 }}>
+        {threads.length === 0 ? (
+          <div style={emptyState}>{empty}</div>
+        ) : (
+          threads.map((thread) => (
+            <article key={thread.key} style={threadRow}>
+              <div style={messageMetaRow}>
+                <strong>{thread.title}</strong>
+                <span>{thread.lastAt}</span>
+              </div>
+
+              <p style={threadSubtitle}>{thread.subtitle}</p>
+              <p style={messagePreview}>{thread.lastPreview}</p>
+
+              <div style={threadFooter}>
+                <span style={threadBadge}>{thread.channelLabel}</span>
+                <span>{thread.totalCount} message{thread.totalCount === 1 ? "" : "s"}</span>
+                <span>{thread.inboundCount} in / {thread.outboundCount} out</span>
+                <span>{thread.status}</span>
+              </div>
+
+              {thread.needsReply && thread.lastMessageId ? (
+                <div style={threadActions}>
+                  <form method="POST" action="/api/nata/communications/resolve">
+                    <input type="hidden" name="message_id" value={thread.lastMessageId} />
+                    <input type="hidden" name="recruiter_id" value={recruiterId} />
+                    <input type="hidden" name="recruiter_slug" value={recruiterSlug} />
+                    <input type="hidden" name="status" value="resolved" />
+                    <button type="submit" style={resolveButton}>Mark resolved</button>
+                  </form>
+
+                  <form method="POST" action="/api/nata/communications/resolve">
+                    <input type="hidden" name="message_id" value={thread.lastMessageId} />
+                    <input type="hidden" name="recruiter_id" value={recruiterId} />
+                    <input type="hidden" name="recruiter_slug" value={recruiterSlug} />
+                    <input type="hidden" name="status" value="ignored" />
+                    <button type="submit" style={secondarySmallButton}>Ignore</button>
+                  </form>
+                </div>
+              ) : null}
+            </article>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RecentSentPanel({
+  messages,
+  totalSent,
+}: {
+  messages: AnyRow[];
+  totalSent: number;
+}) {
+  return (
+    <div style={compactHistoryPanel}>
+      <div style={messagePanelHeader}>
+        <strong>Recent outbound</strong>
+        <span>{messages.length} of {totalSent}</span>
       </div>
 
       <div style={{ display: "grid", gap: 10 }}>
         {messages.length === 0 ? (
-          <div style={emptyState}>{empty}</div>
+          <div style={emptyState}>No sent messages logged yet.</div>
         ) : (
-          messages.slice(0, 8).map((message) => (
-            <article key={String(message.id)} style={messageRow}>
+          messages.map((message) => (
+            <article key={String(message.id)} style={compactMessageRow}>
               <div style={messageMetaRow}>
                 <strong>{label(message.subject, message.channel === "sms" ? "SMS" : "No subject")}</strong>
                 <span>{formatMessageDate(message.created_at || message.sent_at || message.received_at)}</span>
               </div>
-              <p style={messagePreview}>{getMessagePreview(message).slice(0, 220)}</p>
+              <p style={messagePreview}>{getMessagePreview(message).slice(0, 140)}</p>
               <div style={messageFooter}>
-                <span>
-                  {message.direction === "inbound" ? "From" : "To"}{" "}
-                  {getMessageAddress(message)}
-                </span>
-                <span>
-                  {label(message.channel, "email")} · {label(message.status, "logged")}
-                </span>
+                <span>To {getMessageAddress(message)}</span>
+                <span>{label(message.channel, "email")} · {label(message.status, "logged")}</span>
               </div>
             </article>
           ))
@@ -695,7 +891,7 @@ function MessageList({
   );
 }
 
-const communicationsShell: React.CSSProperties = {
+const communicationsShell: CSSProperties = {
   marginTop: 42,
   padding: 24,
   borderRadius: 28,
@@ -705,7 +901,7 @@ const communicationsShell: React.CSSProperties = {
   boxShadow: "0 24px 70px rgba(0,0,0,0.22)",
 };
 
-const communicationsHeader: React.CSSProperties = {
+const communicationsHeader: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   gap: 18,
@@ -713,7 +909,7 @@ const communicationsHeader: React.CSSProperties = {
   flexWrap: "wrap",
 };
 
-const communicationsTitle: React.CSSProperties = {
+const communicationsTitle: CSSProperties = {
   margin: 0,
   color: "#ffffff",
   fontSize: 30,
@@ -721,14 +917,14 @@ const communicationsTitle: React.CSSProperties = {
   letterSpacing: "-0.04em",
 };
 
-const communicationsCopy: React.CSSProperties = {
+const communicationsCopy: CSSProperties = {
   maxWidth: 860,
   margin: "12px 0 0",
   color: "#bfd6f5",
   lineHeight: 1.55,
 };
 
-const identityCard: React.CSSProperties = {
+const identityCard: CSSProperties = {
   minWidth: 230,
   display: "grid",
   gap: 6,
@@ -739,26 +935,38 @@ const identityCard: React.CSSProperties = {
   color: "#dbeafe",
 };
 
-const communicationsGrid: React.CSSProperties = {
+const communicationsGrid: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "minmax(360px, 0.94fr) minmax(0, 1.06fr)",
   gap: 18,
   marginTop: 22,
 };
 
-const messageColumn: React.CSSProperties = {
+const messageColumn: CSSProperties = {
   display: "grid",
   gap: 14,
+  alignContent: "start",
 };
 
-const messagePanel: React.CSSProperties = {
+const messagePanel: CSSProperties = {
   padding: 16,
   borderRadius: 22,
   border: "1px solid rgba(255,255,255,0.1)",
   background: "rgba(3,10,20,0.28)",
 };
 
-const messagePanelHeader: React.CSSProperties = {
+const actionMessagePanel: CSSProperties = {
+  ...messagePanel,
+  border: "1px solid rgba(251,191,36,0.22)",
+  background: "linear-gradient(145deg, rgba(251,191,36,0.09), rgba(3,10,20,0.28))",
+};
+
+const compactHistoryPanel: CSSProperties = {
+  ...messagePanel,
+  opacity: 0.92,
+};
+
+const messagePanelHeader: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
@@ -766,28 +974,89 @@ const messagePanelHeader: React.CSSProperties = {
   color: "#ffffff",
 };
 
-const messageRow: React.CSSProperties = {
+const threadRow: CSSProperties = {
   padding: 14,
   borderRadius: 16,
   border: "1px solid rgba(255,255,255,0.08)",
   background: "rgba(255,255,255,0.045)",
 };
 
-const messageMetaRow: React.CSSProperties = {
+const compactMessageRow: CSSProperties = {
+  padding: 12,
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,0.07)",
+  background: "rgba(255,255,255,0.035)",
+};
+
+const messageMetaRow: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   gap: 10,
   color: "#ffffff",
 };
 
-const messagePreview: React.CSSProperties = {
+const threadSubtitle: CSSProperties = {
+  margin: "6px 0 0",
+  color: "#8fa6ca",
+  fontSize: 12,
+};
+
+const messagePreview: CSSProperties = {
   margin: "8px 0 0",
   color: "#bfd6f5",
   lineHeight: 1.45,
   fontSize: 13,
 };
 
-const messageFooter: React.CSSProperties = {
+const threadFooter: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+  marginTop: 10,
+  color: "#8fa6ca",
+  fontSize: 12,
+};
+
+const threadBadge: CSSProperties = {
+  padding: "3px 7px",
+  borderRadius: 999,
+  background: "rgba(96,165,250,0.16)",
+  border: "1px solid rgba(96,165,250,0.2)",
+  color: "#bfdbfe",
+  fontWeight: 900,
+};
+
+const threadActions: CSSProperties = {
+  display: "flex",
+  gap: 8,
+  marginTop: 12,
+  justifyContent: "flex-end",
+  flexWrap: "wrap",
+};
+
+const resolveButton: CSSProperties = {
+  minHeight: 34,
+  padding: "0 12px",
+  borderRadius: 999,
+  border: "none",
+  background: "linear-gradient(135deg, #1473ff, #0757c9)",
+  color: "#fff",
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
+const secondarySmallButton: CSSProperties = {
+  minHeight: 34,
+  padding: "0 12px",
+  borderRadius: 999,
+  border: "1px solid rgba(147,197,253,0.22)",
+  background: "rgba(147,197,253,0.1)",
+  color: "#dbeafe",
+  fontWeight: 950,
+  cursor: "pointer",
+};
+
+const messageFooter: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   gap: 10,
@@ -796,7 +1065,7 @@ const messageFooter: React.CSSProperties = {
   fontSize: 12,
 };
 
-const emptyState: React.CSSProperties = {
+const emptyState: CSSProperties = {
   padding: 16,
   borderRadius: 16,
   border: "1px dashed rgba(148,163,184,0.25)",
