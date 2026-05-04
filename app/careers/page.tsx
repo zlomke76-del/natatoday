@@ -200,9 +200,8 @@ export default async function CareersPage({
               <h2 style={poolTitleStyle}>Stop applying. Start getting matched.</h2>
 
               <p style={poolCopyStyle}>
-                Join the candidate pool once and let our team work for you. Your
-                profile is continuously matched to active dealership opportunities,
-                and we only reach out when there’s a strong fit.
+                Search active dealership roles—or skip the process and let us match you automatically.
+                We continuously match your profile to real opportunities and only reach out when there’s a strong fit.
               </p>
 
               <div style={poolRulesStyle}>
