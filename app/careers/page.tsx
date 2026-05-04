@@ -187,8 +187,8 @@ export default async function CareersPage({
         <h1>Find your next dealership role.</h1>
 
         <p className="lede">
-          Search active dealership openings or join the NATA candidate pool.
-          Solace can review your profile for dealership opportunities within
+          Search active dealership roles—or skip the process and let us match you automatically.
+          Our team reviews your profile for dealership opportunities within
           your area as new roles are published.
         </p>
 
