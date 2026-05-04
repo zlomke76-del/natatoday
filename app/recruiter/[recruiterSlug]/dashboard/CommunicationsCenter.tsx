@@ -1,9 +1,7 @@
-import type { CSSProperties } from "react";
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { sendEmail } from "../../../../lib/email";
 import { incrementCandidateContactByEmail } from "../../../../lib/nataCandidatePool";
-import CommunicationsComposerClient from "./CommunicationsComposerClient";
 
 type AnyRow = Record<string, any>;
 
@@ -33,15 +31,18 @@ type TemplateOption = {
   body: string;
 };
 
-type UploadedAttachment = {
-  fileName: string;
-  fileType: string;
-  fileSize: number;
-  storageBucket: string;
-  storagePath: string;
-  applicationId: string | null;
-  threadId: string | null;
-  messageDraftId: string | null;
+type ThreadSummary = {
+  key: string;
+  title: string;
+  address: string;
+  channel: string;
+  lastAt: string;
+  preview: string;
+  inboundCount: number;
+  outboundCount: number;
+  total: number;
+  needsReply: boolean;
+  messages: AnyRow[];
 };
 
 function label(value: unknown, fallback = "—") {
@@ -50,30 +51,6 @@ function label(value: unknown, fallback = "—") {
 
 function clean(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function parseAttachments(value: string): UploadedAttachment[] {
-  if (!value) return [];
-
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map((item) => ({
-        fileName: label(item?.fileName, ""),
-        fileType: label(item?.fileType, ""),
-        fileSize: Number(item?.fileSize || 0),
-        storageBucket: label(item?.storageBucket, ""),
-        storagePath: label(item?.storagePath, ""),
-        applicationId: item?.applicationId || null,
-        threadId: item?.threadId || null,
-        messageDraftId: item?.messageDraftId || null,
-      }))
-      .filter((item) => item.fileName && item.storageBucket && item.storagePath);
-  } catch {
-    return [];
-  }
 }
 
 function formatMessageDate(value: unknown) {
@@ -150,6 +127,61 @@ function getMessageAddress(message: AnyRow) {
     : label(message.to_email, "Unknown recipient");
 }
 
+function getMessageTimestamp(message: AnyRow) {
+  return label(message.created_at || message.sent_at || message.received_at, "");
+}
+
+function getThreadKey(message: AnyRow) {
+  if (message.thread_id) return `thread:${String(message.thread_id)}`;
+
+  const channel = label(message.channel, "email").toLowerCase();
+  const address = getMessageAddress(message).toLowerCase();
+  const applicationId = label(message.application_id, "");
+  const subject = label(message.subject, channel === "sms" ? "sms" : "no-subject").toLowerCase();
+
+  return `${channel}:${applicationId}:${address}:${subject}`;
+}
+
+function buildThreads(messages: AnyRow[]) {
+  const threadMap = new Map<string, AnyRow[]>();
+
+  for (const message of messages) {
+    const key = getThreadKey(message);
+    const existing = threadMap.get(key) || [];
+    existing.push(message);
+    threadMap.set(key, existing);
+  }
+
+  return Array.from(threadMap.entries())
+    .map(([key, items]) => {
+      const sorted = [...items].sort((a, b) => {
+        const aTime = new Date(getMessageTimestamp(a)).getTime() || 0;
+        const bTime = new Date(getMessageTimestamp(b)).getTime() || 0;
+        return bTime - aTime;
+      });
+      const latest = sorted[0] || {};
+      const inboundCount = sorted.filter((message) => message.direction === "inbound").length;
+      const outboundCount = sorted.filter((message) => message.direction === "outbound").length;
+      const latestDirection = label(latest.direction, "outbound");
+      const needsReply = latestDirection === "inbound" && label(latest.status, "logged") !== "resolved";
+
+      return {
+        key,
+        title: label(latest.subject, latest.channel === "sms" ? getMessageAddress(latest) : "No subject"),
+        address: getMessageAddress(latest),
+        channel: label(latest.channel, "email").toUpperCase(),
+        lastAt: getMessageTimestamp(latest),
+        preview: getMessagePreview(latest),
+        inboundCount,
+        outboundCount,
+        total: sorted.length,
+        needsReply,
+        messages: sorted,
+      } as ThreadSummary;
+    })
+    .sort((a, b) => (new Date(b.lastAt).getTime() || 0) - (new Date(a.lastAt).getTime() || 0));
+}
+
 async function loadMessages(recruiterId: string) {
   const { data, error } = await supabaseAdmin
     .schema("nata")
@@ -196,7 +228,7 @@ async function loadAddressBook(recruiterId: string, applications: AnyRow[]) {
     .or(`recruiter_id.eq.${recruiterId},recruiter_id.is.null`)
     .eq("is_active", true)
     .order("display_name", { ascending: true })
-    .limit(120);
+    .limit(80);
 
   if (error) {
     console.error("Failed to load address book contacts:", error);
@@ -356,271 +388,14 @@ async function sendLoggedSms(input: {
   }
 }
 
-async function buildEmailAttachments(attachments: UploadedAttachment[]) {
-  const emailAttachments: Array<{ filename: string; content: string }> = [];
-
-  for (const attachment of attachments) {
-    const { data, error } = await supabaseAdmin.storage
-      .from(attachment.storageBucket)
-      .download(attachment.storagePath);
-
-    if (error || !data) {
-      console.error("Failed to load outbound attachment for email:", {
-        storageBucket: attachment.storageBucket,
-        storagePath: attachment.storagePath,
-        error,
-      });
-      continue;
-    }
-
-    const arrayBuffer = await data.arrayBuffer();
-    const content = Buffer.from(arrayBuffer).toString("base64");
-
-    emailAttachments.push({
-      filename: attachment.fileName,
-      content,
-    });
-  }
-
-  return emailAttachments;
-}
-
-async function findLatestOutboundEmail(input: {
-  recruiterId: string;
-  applicationId: string | null;
-  toEmail: string;
-  subject: string;
-}) {
-  let query = supabaseAdmin
-    .schema("nata")
-    .from("messages")
-    .select("id, thread_id")
-    .eq("recruiter_id", input.recruiterId)
-    .eq("direction", "outbound")
-    .eq("channel", "email")
-    .eq("to_email", input.toEmail)
-    .eq("subject", input.subject)
-    .order("created_at", { ascending: false })
-    .limit(1);
-
-  if (input.applicationId) {
-    query = query.eq("application_id", input.applicationId);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error("Failed to resolve outbound message for attachments:", error);
-    return null;
-  }
-
-  return data?.[0] || null;
-}
-
-async function linkOutboundAttachments(input: {
-  attachments: UploadedAttachment[];
-  messageId: string;
-  threadId: string | null;
-  recruiterId: string;
-  applicationId: string | null;
-}) {
-  if (!input.attachments.length) return;
-
-  const rows = input.attachments.map((attachment) => ({
-    message_id: input.messageId,
-    thread_id: input.threadId || attachment.threadId || null,
-    recruiter_id: input.recruiterId,
-    application_id: input.applicationId || attachment.applicationId || null,
-    file_name: attachment.fileName,
-    file_type: attachment.fileType || null,
-    file_size: attachment.fileSize || null,
-    storage_bucket: attachment.storageBucket,
-    storage_path: attachment.storagePath,
-    direction: "outbound",
-    provider: "recruiter-upload",
-    provider_attachment_id: null,
-    provider_payload: {
-      messageDraftId: attachment.messageDraftId || null,
-      source: "communications-composer",
-    },
-  }));
-
-  const { error } = await supabaseAdmin
-    .schema("nata")
-    .from("message_attachments")
-    .insert(rows);
-
-  if (error) {
-    console.error("Failed to link outbound attachments:", error);
-  }
-}
-
-async function findContactEmailForSms(input: {
-  applicationId: string | null;
-  recruiterId: string;
-}) {
-  if (!input.applicationId) return "";
-
-  const { data: application, error: applicationError } = await supabaseAdmin
-    .schema("nata")
-    .from("applications")
-    .select("email,candidate_email")
-    .eq("id", input.applicationId)
-    .maybeSingle();
-
-  if (applicationError) {
-    console.error("Failed to load SMS contact email from application:", applicationError);
-  }
-
-  const applicationEmail = label(
-    application?.email || application?.candidate_email,
-    "",
-  );
-
-  if (applicationEmail) return applicationEmail;
-
-  const { data: contact, error: contactError } = await supabaseAdmin
-    .schema("nata")
-    .from("contacts")
-    .select("email")
-    .eq("application_id", input.applicationId)
-    .or(`recruiter_id.eq.${input.recruiterId},recruiter_id.is.null`)
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (contactError) {
-    console.error("Failed to load SMS contact email from address book:", contactError);
-  }
-
-  return label(contact?.email, "");
-}
-
-type ThreadSummary = {
-  key: string;
-  title: string;
-  subtitle: string;
-  channelLabel: string;
-  lastAt: string;
-  lastPreview: string;
-  lastMessageId: string;
-  lastDirection: string;
-  inboundCount: number;
-  outboundCount: number;
-  totalCount: number;
-  status: string;
-  needsReply: boolean;
-};
-
-function getMessageTimeValue(message: AnyRow) {
-  const raw = message.created_at || message.sent_at || message.received_at || "";
-  const time = raw ? new Date(String(raw)).getTime() : 0;
-  return Number.isFinite(time) ? time : 0;
-}
-
-function getThreadKey(message: AnyRow) {
-  return label(
-    message.thread_id ||
-      (message.application_id ? `application:${message.application_id}` : "") ||
-      message.to_email ||
-      message.from_email ||
-      message.to_phone ||
-      message.from_phone ||
-      message.id,
-    String(message.id || "message"),
-  );
-}
-
-function getThreadTitle(message: AnyRow) {
-  return label(
-    message.contact_name ||
-      message.candidate_name ||
-      message.display_name ||
-      message.subject ||
-      getMessageAddress(message),
-    message.channel === "sms" ? "SMS conversation" : "Email conversation",
-  );
-}
-
-function getThreadSubtitle(message: AnyRow) {
-  const organization = label(
-    message.dealer_name || message.public_dealer_name || message.dealer_slug,
-    "",
-  );
-  const address = getMessageAddress(message);
-  return [organization, address].filter(Boolean).join(" · ") || "Conversation";
-}
-
-function isResolvedMessage(message: AnyRow) {
-  const status = String(message.status || message.message_status || "")
-    .trim()
-    .toLowerCase();
-
-  return ["resolved", "closed", "replied", "ignored", "archived"].includes(status);
-}
-
-function buildThreadSummaries(messages: AnyRow[]): ThreadSummary[] {
-  const groups = new Map<string, AnyRow[]>();
-
-  for (const message of messages) {
-    const key = getThreadKey(message);
-    const current = groups.get(key) || [];
-    current.push(message);
-    groups.set(key, current);
-  }
-
-  return Array.from(groups.entries())
-    .map(([key, threadMessages]) => {
-      const sorted = [...threadMessages].sort(
-        (a, b) => getMessageTimeValue(b) - getMessageTimeValue(a),
-      );
-      const latest = sorted[0] || {};
-      const inboundCount = sorted.filter((message) => message.direction === "inbound").length;
-      const outboundCount = sorted.filter((message) => message.direction === "outbound").length;
-      const latestDirection = label(latest.direction, "unknown").toLowerCase();
-      const status = label(latest.message_status || latest.status, "open").toLowerCase();
-      const needsReply = latestDirection === "inbound" && !isResolvedMessage(latest);
-
-      return {
-        key,
-        title: getThreadTitle(latest),
-        subtitle: getThreadSubtitle(latest),
-        channelLabel: label(latest.channel, "email").toUpperCase(),
-        lastAt: formatMessageDate(latest.created_at || latest.sent_at || latest.received_at),
-        lastPreview: getMessagePreview(latest).slice(0, 180),
-        lastMessageId: String(latest.id || ""),
-        lastDirection: latestDirection,
-        inboundCount,
-        outboundCount,
-        totalCount: sorted.length,
-        status,
-        needsReply,
-      };
-    })
-    .sort((a, b) => {
-      if (a.needsReply && !b.needsReply) return -1;
-      if (!a.needsReply && b.needsReply) return 1;
-      const latestA = messages.find((message) => String(message.id) === a.lastMessageId);
-      const latestB = messages.find((message) => String(message.id) === b.lastMessageId);
-      return getMessageTimeValue(latestB || {}) - getMessageTimeValue(latestA || {});
-    });
-}
-
 export default async function CommunicationsCenter({
   recruiter,
   recruiterSlug,
   applications,
 }: CommunicationsCenterProps) {
   const recruiterId = String(recruiter.id);
-  const recruiterName = label(recruiter.name, "NATA Recruiter");
-  const recruiterTitle = label(
-    recruiter.title || recruiter.role,
-    "Recruiting Operations",
-  );
-  const recruiterPhone = label(recruiter.phone, "");
   const alias = getRecruiterAlias(recruiter, recruiterSlug);
-  const fromLine = `${recruiterName} @ NATA <${alias}>`;
+  const fromLine = getRecruiterFromLine(recruiter, recruiterSlug);
 
   const [messages, contacts, templates] = await Promise.all([
     loadMessages(recruiterId),
@@ -628,12 +403,10 @@ export default async function CommunicationsCenter({
     loadTemplates(),
   ]);
 
-  const threads = buildThreadSummaries(messages);
+  const threads = buildThreads(messages);
   const needsReply = threads.filter((thread) => thread.needsReply).slice(0, 4);
-  const activeThreads = threads.filter((thread) => !thread.needsReply).slice(0, 3);
-  const recentSent = messages
-    .filter((message) => message.direction === "outbound")
-    .slice(0, 2);
+  const activeThreads = threads.slice(0, 8);
+  const recentOutbound = messages.filter((message) => message.direction === "outbound").slice(0, 6);
 
   async function sendRecruiterMessage(formData: FormData) {
     "use server";
@@ -645,7 +418,6 @@ export default async function CommunicationsCenter({
     const toPhone = clean(formData.get("to_phone"));
     const subject = clean(formData.get("subject"));
     const body = clean(formData.get("body"));
-    const attachments = parseAttachments(clean(formData.get("attachments")));
 
     if (!body) {
       throw new Error("Message body is required.");
@@ -656,10 +428,6 @@ export default async function CommunicationsCenter({
         throw new Error("Email recipient and subject are required.");
       }
 
-      const emailAttachments = attachments.length
-        ? await buildEmailAttachments(attachments)
-        : [];
-
       await sendEmail({
         to: toEmail,
         subject,
@@ -669,35 +437,13 @@ export default async function CommunicationsCenter({
         replyTo: alias,
         recruiterId,
         applicationId: applicationId || null,
-        signatureName: recruiterName,
-        signatureTitle: recruiterTitle,
+        signatureName: label(recruiter.name, "NATA Recruiting Team"),
+        signatureTitle: label(recruiter.title || recruiter.role, "Recruiting Operations"),
         signatureEmail: alias,
-        signaturePhone: recruiterPhone,
-        attachments: emailAttachments,
+        signaturePhone: label(recruiter.phone, ""),
       } as any);
 
       await incrementCandidateContactByEmail(toEmail);
-
-      if (attachments.length) {
-        const loggedMessage = await findLatestOutboundEmail({
-          recruiterId,
-          applicationId: applicationId || null,
-          toEmail,
-          subject,
-        });
-
-        if (loggedMessage?.id) {
-          await linkOutboundAttachments({
-            attachments,
-            messageId: String(loggedMessage.id),
-            threadId: loggedMessage.thread_id ? String(loggedMessage.thread_id) : null,
-            recruiterId,
-            applicationId: applicationId || null,
-          });
-        } else {
-          console.error("Outbound attachments uploaded but no outbound message record was found.");
-        }
-      }
     } else {
       if (!toPhone) {
         throw new Error("SMS recipient phone is required.");
@@ -710,31 +456,20 @@ export default async function CommunicationsCenter({
         applicationId: applicationId || null,
         dealerSlug: dealerSlug || null,
       });
-
-      const contactEmailForSms = await findContactEmailForSms({
-        applicationId: applicationId || null,
-        recruiterId,
-      });
-
-      if (contactEmailForSms) {
-        await incrementCandidateContactByEmail(contactEmailForSms);
-      }
     }
 
-    redirect(`/recruiter/${recruiterSlug}/dashboard`);
+    redirect(`/recruiter/${recruiterSlug}/dashboard#communications`);
   }
 
   return (
-    <section style={communicationsShell}>
+    <section id="communications" style={communicationsShell}>
       <div style={communicationsHeader}>
         <div>
-          <div className="section-kicker" style={{ marginBottom: 10 }}>
+          <div className="section-kicker" style={{ marginBottom: 6 }}>
             Communications Center
           </div>
-          <h2 style={communicationsTitle}>Action inbox for {recruiterName}</h2>
-          <p style={communicationsCopy}>
-            Focused on replies, active conversations, and the latest outbound signal.
-          </p>
+          <h2 style={communicationsTitle}>Action inbox for {label(recruiter.name, "recruiter")}</h2>
+          <p style={communicationsCopy}>Focused on replies, active conversations, and latest outbound signal.</p>
         </div>
 
         <div style={identityCard}>
@@ -744,173 +479,193 @@ export default async function CommunicationsCenter({
       </div>
 
       <div style={communicationsGrid}>
-        <div style={composerPane}>
-          <CommunicationsComposerClient
-            action={sendRecruiterMessage}
-            alias={alias}
-            recruiterId={recruiterId}
-            recruiterName={recruiterName}
-            contacts={contacts}
-            templates={templates}
-          />
-        </div>
+        <form action={sendRecruiterMessage} style={composerPanel}>
+          <div style={panelKicker}>Send message</div>
 
-        <div style={messageColumn}>
-          <ThreadPanel
-            title="Needs reply"
-            count={needsReply.length}
-            empty="No inbound replies need action."
-            threads={needsReply}
-            recruiterId={recruiterId}
-            recruiterSlug={recruiterSlug}
-            tone="action"
-          />
+          <div style={channelGrid}>
+            <label style={channelPill}>
+              <input type="radio" name="channel" value="email" defaultChecked />
+              Email
+            </label>
+            <label style={channelPill}>
+              <input type="radio" name="channel" value="sms" />
+              SMS
+            </label>
+          </div>
 
-          <ThreadPanel
-            title="Active conversations"
-            count={activeThreads.length}
-            empty="No active conversations to summarize yet."
-            threads={activeThreads}
-            recruiterId={recruiterId}
-            recruiterSlug={recruiterSlug}
-            tone="normal"
-          />
+          <label style={fieldLabel}>
+            Address book
+            <select name="contact" style={inputStyle} defaultValue="">
+              <option value="">Custom recipient</option>
+              {contacts.slice(0, 40).map((contact) => (
+                <option key={contact.id} value={contact.id}>
+                  {contact.name}{contact.organization ? ` · ${contact.organization}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          <RecentSentPanel messages={recentSent} totalSent={messages.filter((message) => message.direction === "outbound").length} />
+          <label style={fieldLabel}>
+            Template
+            <select name="template" style={inputStyle} defaultValue="">
+              <option value="">No template</option>
+              {templates.slice(0, 40).map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name} · {template.channel.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <input type="hidden" name="application_id" value="" />
+          <input type="hidden" name="dealer_slug" value="" />
+
+          <div style={recipientGrid}>
+            <label style={fieldLabel}>
+              To email
+              <input name="to_email" type="email" placeholder="candidate@email.com" style={inputStyle} />
+            </label>
+            <label style={fieldLabel}>
+              To phone
+              <input name="to_phone" placeholder="7135552011" style={inputStyle} />
+            </label>
+          </div>
+
+          <label style={fieldLabel}>
+            Subject
+            <input name="subject" placeholder="Interview follow-up" style={inputStyle} />
+          </label>
+
+          <label style={fieldLabel}>
+            Message
+            <textarea name="body" placeholder="Write the message..." rows={5} style={textAreaStyle} />
+          </label>
+
+          <button className="btn btn-primary" type="submit" style={sendButtonStyle}>
+            Send message
+          </button>
+        </form>
+
+        <div style={rightPanel}>
+          <div style={filterBar}>
+            <a href="#comms-needs-reply" style={filterPill}>Inbox</a>
+            <a href="#comms-threads" style={filterPill}>Threads</a>
+            <a href="#comms-outbound" style={filterPill}>Outbox</a>
+          </div>
+
+          <div style={singleScrollPane}>
+            <MessageSection
+              id="comms-needs-reply"
+              title="Needs reply"
+              count={needsReply.length}
+              empty="No inbound replies need action."
+            >
+              {needsReply.map((thread) => <ThreadCard key={thread.key} thread={thread} />)}
+            </MessageSection>
+
+            <MessageSection
+              id="comms-threads"
+              title="Active conversations"
+              count={activeThreads.length}
+              empty="No conversations found."
+            >
+              {activeThreads.map((thread) => <ThreadCard key={thread.key} thread={thread} />)}
+            </MessageSection>
+
+            <MessageSection
+              id="comms-outbound"
+              title="Recent outbound"
+              count={recentOutbound.length}
+              empty="No recent outbound messages."
+            >
+              {recentOutbound.map((message) => <OutboundCard key={String(message.id)} message={message} />)}
+            </MessageSection>
+          </div>
         </div>
       </div>
     </section>
   );
 }
 
-function ThreadPanel({
+function MessageSection({
+  id,
   title,
   count,
   empty,
-  threads,
-  recruiterId,
-  recruiterSlug,
-  tone,
+  children,
 }: {
+  id: string;
   title: string;
   count: number;
   empty: string;
-  threads: ThreadSummary[];
-  recruiterId: string;
-  recruiterSlug: string;
-  tone: "action" | "normal";
+  children: React.ReactNode;
 }) {
   return (
-    <div style={tone === "action" ? actionMessagePanel : messagePanel}>
-      <div style={messagePanelHeader}>
+    <section id={id} style={messageSection}>
+      <div style={sectionHeader}>
         <strong>{title}</strong>
         <span>{count}</span>
       </div>
-
-      <div style={{ display: "grid", gap: 10 }}>
-        {threads.length === 0 ? (
-          <div style={emptyState}>{empty}</div>
-        ) : (
-          threads.map((thread) => (
-            <article key={thread.key} style={threadRow}>
-              <div style={messageMetaRow}>
-                <strong>{thread.title}</strong>
-                <span>{thread.lastAt}</span>
-              </div>
-
-              <p style={threadSubtitle}>{thread.subtitle}</p>
-              <p style={messagePreview}>{thread.lastPreview}</p>
-
-              <div style={threadFooter}>
-                <span style={threadBadge}>{thread.channelLabel}</span>
-                <span>{thread.totalCount} message{thread.totalCount === 1 ? "" : "s"}</span>
-                <span>{thread.inboundCount} in / {thread.outboundCount} out</span>
-                <span>{thread.status}</span>
-              </div>
-
-              {thread.needsReply && thread.lastMessageId ? (
-                <div style={threadActions}>
-                  <form method="POST" action="/api/nata/communications/resolve">
-                    <input type="hidden" name="message_id" value={thread.lastMessageId} />
-                    <input type="hidden" name="recruiter_id" value={recruiterId} />
-                    <input type="hidden" name="recruiter_slug" value={recruiterSlug} />
-                    <input type="hidden" name="status" value="resolved" />
-                    <button type="submit" style={resolveButton}>Mark resolved</button>
-                  </form>
-
-                  <form method="POST" action="/api/nata/communications/resolve">
-                    <input type="hidden" name="message_id" value={thread.lastMessageId} />
-                    <input type="hidden" name="recruiter_id" value={recruiterId} />
-                    <input type="hidden" name="recruiter_slug" value={recruiterSlug} />
-                    <input type="hidden" name="status" value="ignored" />
-                    <button type="submit" style={secondarySmallButton}>Ignore</button>
-                  </form>
-                </div>
-              ) : null}
-            </article>
-          ))
-        )}
+      <div style={{ display: "grid", gap: 8 }}>
+        {count === 0 ? <div style={emptyState}>{empty}</div> : children}
       </div>
-    </div>
+    </section>
   );
 }
 
-function RecentSentPanel({
-  messages,
-  totalSent,
-}: {
-  messages: AnyRow[];
-  totalSent: number;
-}) {
+function ThreadCard({ thread }: { thread: ThreadSummary }) {
   return (
-    <div style={compactHistoryPanel}>
-      <div style={messagePanelHeader}>
-        <strong>Recent outbound</strong>
-        <span>{messages.length} of {totalSent}</span>
+    <article style={messageRow}>
+      <div style={messageMetaRow}>
+        <strong>{thread.title}</strong>
+        <span>{formatMessageDate(thread.lastAt)}</span>
       </div>
-
-      <div style={{ display: "grid", gap: 10 }}>
-        {messages.length === 0 ? (
-          <div style={emptyState}>No sent messages logged yet.</div>
-        ) : (
-          messages.map((message) => (
-            <article key={String(message.id)} style={compactMessageRow}>
-              <div style={messageMetaRow}>
-                <strong>{label(message.subject, message.channel === "sms" ? "SMS" : "No subject")}</strong>
-                <span>{formatMessageDate(message.created_at || message.sent_at || message.received_at)}</span>
-              </div>
-              <p style={messagePreview}>{getMessagePreview(message).slice(0, 140)}</p>
-              <div style={messageFooter}>
-                <span>To {getMessageAddress(message)}</span>
-                <span>{label(message.channel, "email")} · {label(message.status, "logged")}</span>
-              </div>
-            </article>
-          ))
-        )}
+      <p style={messageAddress}>{thread.address}</p>
+      <p style={messagePreview}>{thread.preview.slice(0, 170)}</p>
+      <div style={messageFooter}>
+        <span style={channelBadge}>{thread.channel}</span>
+        <span>{thread.total} message{thread.total === 1 ? "" : "s"}</span>
+        <span>{thread.inboundCount} in / {thread.outboundCount} out</span>
+        {thread.needsReply ? <span style={needsReplyBadge}>needs reply</span> : <span>sent</span>}
       </div>
-    </div>
+    </article>
   );
 }
 
-const communicationsShell: CSSProperties = {
-  marginTop: 42,
+function OutboundCard({ message }: { message: AnyRow }) {
+  return (
+    <article style={messageRowCompact}>
+      <div style={messageMetaRow}>
+        <strong>{label(message.subject, message.channel === "sms" ? "SMS" : "No subject")}</strong>
+        <span>{formatMessageDate(message.created_at || message.sent_at)}</span>
+      </div>
+      <p style={messagePreview}>{getMessagePreview(message).slice(0, 140)}</p>
+      <div style={messageFooter}>
+        <span>To {getMessageAddress(message)}</span>
+        <span>{label(message.channel, "email")} · {label(message.status, "logged")}</span>
+      </div>
+    </article>
+  );
+}
+
+const communicationsShell: React.CSSProperties = {
+  marginTop: 34,
   padding: 18,
   borderRadius: 24,
   border: "1px solid rgba(255,255,255,0.12)",
-  background:
-    "linear-gradient(145deg, rgba(20,115,255,0.12), rgba(255,255,255,0.045)), rgba(7,16,31,0.74)",
-  boxShadow: "0 24px 70px rgba(0,0,0,0.22)",
+  background: "linear-gradient(145deg, rgba(20,115,255,0.12), rgba(255,255,255,0.045)), rgba(7,16,31,0.74)",
+  boxShadow: "0 18px 50px rgba(0,0,0,0.22)",
 };
 
-const communicationsHeader: CSSProperties = {
+const communicationsHeader: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
-  gap: 18,
+  gap: 14,
   alignItems: "flex-start",
-  flexWrap: "wrap",
+  marginBottom: 14,
 };
 
-const communicationsTitle: CSSProperties = {
+const communicationsTitle: React.CSSProperties = {
   margin: 0,
   color: "#ffffff",
   fontSize: 24,
@@ -918,176 +673,214 @@ const communicationsTitle: CSSProperties = {
   letterSpacing: "-0.04em",
 };
 
-const communicationsCopy: CSSProperties = {
-  maxWidth: 720,
-  margin: "8px 0 0",
+const communicationsCopy: React.CSSProperties = {
+  margin: "7px 0 0",
   color: "#bfd6f5",
-  lineHeight: 1.45,
+  lineHeight: 1.35,
   fontSize: 13,
 };
 
-const identityCard: CSSProperties = {
+const identityCard: React.CSSProperties = {
   minWidth: 210,
   display: "grid",
-  gap: 5,
+  gap: 4,
   padding: 12,
   borderRadius: 16,
   border: "1px solid rgba(96,165,250,0.22)",
   background: "rgba(20,115,255,0.12)",
   color: "#dbeafe",
+  fontSize: 13,
 };
 
-const communicationsGrid: CSSProperties = {
+const communicationsGrid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(300px, 380px) minmax(0, 1fr)",
+  gridTemplateColumns: "minmax(320px, 0.78fr) minmax(0, 1.22fr)",
   gap: 14,
-  marginTop: 16,
   alignItems: "start",
 };
 
-const composerPane: CSSProperties = {
-  maxHeight: 620,
-  overflowY: "auto",
-  overflowX: "hidden",
-  paddingRight: 4,
-  borderRadius: 20,
-};
-
-const messageColumn: CSSProperties = {
+const composerPanel: React.CSSProperties = {
   display: "grid",
   gap: 10,
-  alignContent: "start",
-  maxHeight: 620,
-  overflowY: "auto",
-  overflowX: "hidden",
-  paddingRight: 4,
+  padding: 14,
+  borderRadius: 20,
+  border: "1px solid rgba(255,255,255,0.1)",
+  background: "rgba(3,10,20,0.34)",
 };
 
-const messagePanel: CSSProperties = {
+const panelKicker: React.CSSProperties = {
+  color: "#facc15",
+  fontWeight: 950,
+  letterSpacing: "0.16em",
+  textTransform: "uppercase",
+  fontSize: 11,
+};
+
+const channelGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 8,
+};
+
+const channelPill: React.CSSProperties = {
+  minHeight: 42,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+  borderRadius: 999,
+  border: "1px solid rgba(147,197,253,0.22)",
+  background: "rgba(20,115,255,0.13)",
+  color: "#dbeafe",
+  fontWeight: 950,
+};
+
+const fieldLabel: React.CSSProperties = {
+  display: "grid",
+  gap: 5,
+  color: "#dbeafe",
+  fontSize: 12,
+  fontWeight: 900,
+};
+
+const recipientGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 8,
+};
+
+const inputStyle: React.CSSProperties = {
+  minHeight: 38,
+  padding: "0 10px",
+  borderRadius: 11,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "rgba(3,7,18,0.82)",
+  color: "#fff",
+  outline: "none",
+  fontSize: 13,
+};
+
+const textAreaStyle: React.CSSProperties = {
+  ...inputStyle,
+  minHeight: 98,
+  padding: 10,
+  resize: "vertical",
+};
+
+const sendButtonStyle: React.CSSProperties = {
+  minHeight: 44,
+};
+
+const rightPanel: React.CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gap: 10,
+};
+
+const filterBar: React.CSSProperties = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const filterPill: React.CSSProperties = {
+  padding: "8px 12px",
+  borderRadius: 999,
+  background: "rgba(147,197,253,0.12)",
+  border: "1px solid rgba(147,197,253,0.18)",
+  color: "#dbeafe",
+  textDecoration: "none",
+  fontSize: 12,
+  fontWeight: 950,
+};
+
+const singleScrollPane: React.CSSProperties = {
+  maxHeight: 506,
+  overflowY: "auto",
+  paddingRight: 4,
+  display: "grid",
+  gap: 10,
+};
+
+const messageSection: React.CSSProperties = {
+  scrollMarginTop: 100,
   padding: 12,
   borderRadius: 18,
   border: "1px solid rgba(255,255,255,0.1)",
   background: "rgba(3,10,20,0.28)",
 };
 
-const actionMessagePanel: CSSProperties = {
-  ...messagePanel,
-  border: "1px solid rgba(251,191,36,0.22)",
-  background: "linear-gradient(145deg, rgba(251,191,36,0.09), rgba(3,10,20,0.28))",
-};
-
-const compactHistoryPanel: CSSProperties = {
-  ...messagePanel,
-  opacity: 0.92,
-};
-
-const messagePanelHeader: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginBottom: 8,
-  color: "#ffffff",
-};
-
-const threadRow: CSSProperties = {
-  padding: 10,
-  borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.08)",
-  background: "rgba(255,255,255,0.045)",
-};
-
-const compactMessageRow: CSSProperties = {
-  padding: 10,
-  borderRadius: 13,
-  border: "1px solid rgba(255,255,255,0.07)",
-  background: "rgba(255,255,255,0.035)",
-};
-
-const messageMetaRow: CSSProperties = {
+const sectionHeader: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   gap: 10,
   color: "#ffffff",
+  marginBottom: 10,
 };
 
-const threadSubtitle: CSSProperties = {
-  margin: "6px 0 0",
-  color: "#8fa6ca",
-  fontSize: 12,
+const messageRow: React.CSSProperties = {
+  padding: 12,
+  borderRadius: 15,
+  border: "1px solid rgba(255,255,255,0.08)",
+  background: "rgba(255,255,255,0.045)",
 };
 
-const messagePreview: CSSProperties = {
-  margin: "6px 0 0",
-  color: "#bfd6f5",
-  lineHeight: 1.35,
-  fontSize: 12,
-  display: "-webkit-box",
-  WebkitLineClamp: 2,
-  WebkitBoxOrient: "vertical",
-  overflow: "hidden",
+const messageRowCompact: React.CSSProperties = {
+  ...messageRow,
+  padding: 11,
 };
 
-const threadFooter: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 6,
-  marginTop: 8,
-  color: "#8fa6ca",
-  fontSize: 11,
-};
-
-const threadBadge: CSSProperties = {
-  padding: "3px 7px",
-  borderRadius: 999,
-  background: "rgba(96,165,250,0.16)",
-  border: "1px solid rgba(96,165,250,0.2)",
-  color: "#bfdbfe",
-  fontWeight: 900,
-};
-
-const threadActions: CSSProperties = {
-  display: "flex",
-  gap: 8,
-  marginTop: 12,
-  justifyContent: "flex-end",
-  flexWrap: "wrap",
-};
-
-const resolveButton: CSSProperties = {
-  minHeight: 34,
-  padding: "0 12px",
-  borderRadius: 999,
-  border: "none",
-  background: "linear-gradient(135deg, #1473ff, #0757c9)",
-  color: "#fff",
-  fontWeight: 950,
-  cursor: "pointer",
-};
-
-const secondarySmallButton: CSSProperties = {
-  minHeight: 34,
-  padding: "0 12px",
-  borderRadius: 999,
-  border: "1px solid rgba(147,197,253,0.22)",
-  background: "rgba(147,197,253,0.1)",
-  color: "#dbeafe",
-  fontWeight: 950,
-  cursor: "pointer",
-};
-
-const messageFooter: CSSProperties = {
+const messageMetaRow: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
+  gap: 10,
+  color: "#ffffff",
+  fontSize: 14,
+};
+
+const messageAddress: React.CSSProperties = {
+  margin: "5px 0 0",
+  color: "#8fa6ca",
+  fontSize: 12,
+};
+
+const messagePreview: React.CSSProperties = {
+  margin: "7px 0 0",
+  color: "#bfd6f5",
+  lineHeight: 1.38,
+  fontSize: 12,
+};
+
+const messageFooter: React.CSSProperties = {
+  display: "flex",
   gap: 8,
+  flexWrap: "wrap",
   marginTop: 8,
   color: "#8fa6ca",
   fontSize: 11,
 };
 
-const emptyState: CSSProperties = {
-  padding: 16,
-  borderRadius: 16,
+const channelBadge: React.CSSProperties = {
+  padding: "3px 8px",
+  borderRadius: 999,
+  color: "#dbeafe",
+  background: "rgba(96,165,250,0.22)",
+  fontWeight: 950,
+};
+
+const needsReplyBadge: React.CSSProperties = {
+  padding: "3px 8px",
+  borderRadius: 999,
+  color: "#fde68a",
+  background: "rgba(251,191,36,0.16)",
+  fontWeight: 950,
+};
+
+const emptyState: React.CSSProperties = {
+  padding: 14,
+  borderRadius: 14,
   border: "1px dashed rgba(148,163,184,0.25)",
   background: "rgba(148,163,184,0.06)",
   color: "#9fb4d6",
+  fontSize: 13,
 };
