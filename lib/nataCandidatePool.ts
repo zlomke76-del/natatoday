@@ -48,6 +48,40 @@ export type CandidatePoolReturnSource =
   | "withdrawn"
   | "system";
 
+function normalize(value: unknown) {
+  return String(value || "").toLowerCase().trim();
+}
+
+function label(value: unknown, fallback = "") {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function toNumber(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function addDays(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString();
+}
+
+function getCooldownDays(status: string) {
+  return normalize(status) === "no_show" ? NO_SHOW_COOLDOWN_DAYS : DEFAULT_COOLDOWN_DAYS;
+}
+
+function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const radius = 3958.8;
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 const ROLE_PROFILES: RoleProfile[] = [
   {
     key: "sales consultant",
@@ -91,7 +125,7 @@ const ROLE_PROFILES: RoleProfile[] = [
   },
   {
     key: "sales manager",
-    aliases: ["sales manager", "new car manager", "used car manager", "desk manager", "closer", "gsm", "general sales manager"],
+    aliases: ["sales manager", "new car manager", "desk manager", "closer", "gsm", "general sales manager"],
     coreSignals: ["sales manager", "desk", "desking", "closer", "manager", "team", "gross", "inventory"],
     proofSignals: ["gross profit", "team volume", "closing deals", "desking", "vauto", "elead", "dealertrack", "routeone"],
     advancedSignals: ["trained salespeople", "inventory turn", "forecasting", "trade appraisal", "pencil", "deal structure"],
@@ -327,10 +361,19 @@ function uniqueList(items: string[]) {
   return Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
 }
 
-function addDaysFromNow(days: number) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return date.toISOString();
+function splitList(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map(String).map((item) => item.trim()).filter(Boolean);
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    return value
+      .split(/\n|;|\|/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [];
 }
 
 function getCandidateSearchText(candidate: AnyRow) {
@@ -365,21 +408,6 @@ function getDistanceMiles(candidate: AnyRow, job: AnyRow) {
   }
 
   return haversineMiles(candidateLat, candidateLon, jobLat, jobLon);
-}
-
-function splitList(value: unknown) {
-  if (Array.isArray(value)) {
-    return value.map(String).map((item) => item.trim()).filter(Boolean);
-  }
-
-  if (typeof value === "string" && value.trim()) {
-    return value
-      .split(/\n|;|\|/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-
-  return [];
 }
 
 function getRoleKey(roleTitle: string) {
@@ -510,13 +538,8 @@ function scoreRoleFit(candidate: AnyRow, job: AnyRow) {
   score += Math.min(proofMatches.length * 3, 12);
   score += Math.min(advancedMatches.length * 2, 7);
 
-  if (coreMatches.length) {
-    reasons.push(`Role signals found: ${coreMatches.slice(0, 5).join(", ")}.`);
-  }
-
-  if (proofMatches.length) {
-    reasons.push(`Proof signals found: ${proofMatches.slice(0, 5).join(", ")}.`);
-  }
+  if (coreMatches.length) reasons.push(`Role signals found: ${coreMatches.slice(0, 5).join(", ")}.`);
+  if (proofMatches.length) reasons.push(`Proof signals found: ${proofMatches.slice(0, 5).join(", ")}.`);
 
   verificationItems.push(...profile.verificationItems);
 
@@ -540,7 +563,6 @@ function scoreProofQuality(candidate: AnyRow, profile: RoleProfile | null) {
   const text = getCandidateSearchText(candidate);
   const reasons: string[] = [];
   const verificationItems: string[] = [];
-
   let score = 0;
 
   if (candidate.resume_url) {
@@ -655,7 +677,6 @@ function scoreLocationFit(candidate: AnyRow, job: AnyRow) {
   const reasons: string[] = [];
   const verificationItems: string[] = [];
   const riskFlags: string[] = [];
-
   let score = 0;
 
   if (distance !== null) {
@@ -709,7 +730,6 @@ function scoreRisk(candidate: AnyRow, profile: RoleProfile | null, autoRecommend
   const reasons: string[] = [];
   const riskFlags: string[] = [];
   const verificationItems: string[] = [];
-
   let deduction = 0;
 
   if (candidate.cooldown_until && new Date(candidate.cooldown_until).getTime() > Date.now()) {
@@ -767,10 +787,7 @@ function scoreRisk(candidate: AnyRow, profile: RoleProfile | null, autoRecommend
     verificationItems.push("Collect candidate phone number.");
   }
 
-  if (
-    autoRecommend &&
-    includesAny(text, ["expired certification", "no recent shop experience", "no tools"])
-  ) {
+  if (autoRecommend && includesAny(text, ["expired certification", "no recent shop experience", "no tools"])) {
     deduction += 12;
     riskFlags.push("auto_recommend_blocked_by_material_risk");
     verificationItems.push("Master-level signal requires confirmation because a blocking risk is present.");
@@ -797,17 +814,13 @@ function determineMatchStatus(input: {
     return "more_state_required";
   }
 
-  if (
-    input.autoRecommend &&
-    !input.riskFlags.includes("auto_recommend_blocked_by_material_risk")
-  ) {
+  if (input.autoRecommend && !input.riskFlags.includes("auto_recommend_blocked_by_material_risk")) {
     return "eligible";
   }
 
   if (input.roleScore < 12) return "below_threshold";
 
   if (
-    input.riskFlags.includes("performance_claim_requires_verification") ||
     input.riskFlags.includes("relocation_not_verified") ||
     input.riskFlags.includes("limited_tenure") ||
     input.riskFlags.includes("unverified_claims") ||
@@ -816,10 +829,7 @@ function determineMatchStatus(input: {
     return input.fitScore >= MIN_REVIEW_SCORE ? "recruiter_review" : "more_state_required";
   }
 
-  if (input.fitScore >= MIN_ELIGIBLE_SCORE && input.proofScore >= 12) {
-    return "eligible";
-  }
-
+  if (input.fitScore >= MIN_ELIGIBLE_SCORE && input.proofScore >= 12) return "eligible";
   if (input.fitScore >= MIN_REVIEW_SCORE) return "recruiter_review";
   if (input.fitScore >= MIN_MORE_STATE_SCORE) return "more_state_required";
 
@@ -837,20 +847,13 @@ function computeMatch(candidate: AnyRow, job: AnyRow) {
   const jobStatusScore =
     job.publish_status === "published" && job.is_active !== false && !job.filled_at ? 5 : 0;
 
-  const rawScore =
-    baseScore +
-    roleFit.score +
-    proof.score +
-    location.score +
-    jobStatusScore -
-    risk.score;
+  const rawScore = baseScore + roleFit.score + proof.score + location.score + jobStatusScore - risk.score;
 
   const fitScore = roleFit.autoRecommend
     ? Math.max(86, Math.min(100, Math.round(rawScore)))
     : Math.max(0, Math.min(100, Math.round(rawScore)));
 
   const riskFlags = uniqueList([...location.riskFlags, ...risk.riskFlags]);
-
   const verificationItems = uniqueList([
     ...roleFit.verificationItems,
     ...proof.verificationItems,
@@ -880,8 +883,7 @@ function computeMatch(candidate: AnyRow, job: AnyRow) {
   ]);
 
   return {
-    distance_miles:
-      location.distance === null ? null : Math.round(location.distance * 10) / 10,
+    distance_miles: location.distance === null ? null : Math.round(location.distance * 10) / 10,
     fit_score: fitScore,
     role_score: roleFit.score,
     proof_score: proof.score,
@@ -940,11 +942,7 @@ async function upsertCandidateMatch(row: AnyRow) {
     return;
   }
 
-  const { error } = await supabaseAdmin
-    .schema("nata")
-    .from("candidate_matches")
-    .insert(row);
-
+  const { error } = await supabaseAdmin.schema("nata").from("candidate_matches").insert(row);
   if (error) console.error("Failed to insert candidate match:", error);
 }
 
@@ -1041,14 +1039,8 @@ export async function markCandidatePlacedFromApplication(applicationId: string) 
     return;
   }
 
-  const { error: insertError } = await supabaseAdmin
-    .schema("nata")
-    .from("candidates")
-    .insert(payload);
-
-  if (insertError) {
-    console.error("Failed to insert placed candidate protection record:", insertError);
-  }
+  const { error: insertError } = await supabaseAdmin.schema("nata").from("candidates").insert(payload);
+  if (insertError) console.error("Failed to insert placed candidate protection record:", insertError);
 }
 
 export async function returnApplicationToCandidatePool(input: {
@@ -1131,7 +1123,7 @@ export async function returnApplicationToCandidatePool(input: {
     status: "active",
     availability_status: status === "no_show" ? "cooldown" : "available",
     last_rejected_at: now,
-    cooldown_until: addDaysFromNow(getCooldownDays(status)),
+    cooldown_until: addDays(getCooldownDays(status)),
     rejection_count: Number(existingCandidate?.rejection_count || 0) + 1,
     search_text: [
       application.name,
