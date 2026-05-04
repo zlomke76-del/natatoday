@@ -913,7 +913,9 @@ export default async function RecruiterDashboard({
       cleanFormValue(formData.get("reason")) ||
       "Recruiter re-engaged candidate after schedule invite went stale.";
 
-    if (!applicationId) throw new Error("Application id is required.");
+    if (!applicationId) {
+      redirect(`/recruiter/${recruiterSlug}/dashboard?pending=missing_application#candidate-scheduling-pending`);
+    }
 
     const { data: application, error: applicationLoadError } = await supabaseAdmin
       .schema("nata")
@@ -923,10 +925,17 @@ export default async function RecruiterDashboard({
       .eq("recruiter_id", recruiter.id)
       .maybeSingle();
 
-    if (applicationLoadError) throw new Error(applicationLoadError.message);
-    if (!application) throw new Error("Application not found for this recruiter.");
+    if (applicationLoadError) {
+      console.error("Failed to load waiting candidate for re-engagement:", applicationLoadError);
+      redirect(`/recruiter/${recruiterSlug}/dashboard?pending=load_failed#candidate-scheduling-pending`);
+    }
+
+    if (!application) {
+      redirect(`/recruiter/${recruiterSlug}/dashboard?pending=not_found#candidate-scheduling-pending`);
+    }
+
     if (!isWaitingOnCandidate(application)) {
-      throw new Error("Only candidates waiting on scheduling can be re-engaged from this queue.");
+      redirect(`/recruiter/${recruiterSlug}/dashboard?pending=not_waiting#candidate-scheduling-pending`);
     }
 
     const { data: job } = await supabaseAdmin
@@ -938,7 +947,6 @@ export default async function RecruiterDashboard({
 
     const bookingUrl = buildCandidateScheduleUrl(applicationId);
     const now = new Date().toISOString();
-    const previousReason = label(application.decision_reason, "");
     const reengageNote = `[Candidate re-engaged ${now}] ${reason}`;
 
     const { error } = await supabaseAdmin
@@ -949,13 +957,15 @@ export default async function RecruiterDashboard({
         screening_status: "virtual_invited",
         virtual_interview_status: "invited",
         virtual_interview_url: bookingUrl,
-        decision_reason: previousReason ? `${previousReason}\n${reengageNote}` : reengageNote,
-        updated_at: now,
+        decision_reason: reengageNote,
       })
       .eq("id", applicationId)
       .eq("recruiter_id", recruiter.id);
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      console.error("Failed to re-engage waiting candidate:", error);
+      redirect(`/recruiter/${recruiterSlug}/dashboard?pending=update_failed#candidate-scheduling-pending`);
+    }
 
     try {
       await sendInterviewInvite({
@@ -972,7 +982,7 @@ export default async function RecruiterDashboard({
       console.error("Candidate re-engagement notification failed:", notificationError);
     }
 
-    redirect(`/recruiter/${recruiterSlug}/dashboard#candidate-scheduling-pending`);
+    redirect(`/recruiter/${recruiterSlug}/dashboard?pending=reengaged#candidate-scheduling-pending`);
   }
 
   async function removeWaitingCandidate(formData: FormData) {
@@ -983,7 +993,9 @@ export default async function RecruiterDashboard({
       cleanFormValue(formData.get("reason")) ||
       "Candidate removed from scheduling queue after stale or inactive response state.";
 
-    if (!applicationId) throw new Error("Application id is required.");
+    if (!applicationId) {
+      redirect(`/recruiter/${recruiterSlug}/dashboard?pending=missing_application#candidate-scheduling-pending`);
+    }
 
     const { data: application, error: applicationLoadError } = await supabaseAdmin
       .schema("nata")
@@ -993,38 +1005,45 @@ export default async function RecruiterDashboard({
       .eq("recruiter_id", recruiter.id)
       .maybeSingle();
 
-    if (applicationLoadError) throw new Error(applicationLoadError.message);
-    if (!application) throw new Error("Application not found for this recruiter.");
+    if (applicationLoadError) {
+      console.error("Failed to load waiting candidate for removal:", applicationLoadError);
+      redirect(`/recruiter/${recruiterSlug}/dashboard?pending=load_failed#candidate-scheduling-pending`);
+    }
+
+    if (!application) {
+      redirect(`/recruiter/${recruiterSlug}/dashboard?pending=not_found#candidate-scheduling-pending`);
+    }
+
     if (!isWaitingOnCandidate(application)) {
-      throw new Error("Only candidates waiting on scheduling can be removed from this queue.");
+      redirect(`/recruiter/${recruiterSlug}/dashboard?pending=not_waiting#candidate-scheduling-pending`);
     }
 
     const now = new Date().toISOString();
-    const previousReason = label(application.decision_reason, "");
     const removalNote = `[Scheduling queue removal ${now}] ${reason}`;
 
     const { error } = await supabaseAdmin
       .schema("nata")
       .from("applications")
       .update({
-        status: "withdrawn",
-        screening_status: "withdrawn",
-        virtual_interview_status: "expired",
-        decision_reason: previousReason ? `${previousReason}\n${removalNote}` : removalNote,
-        updated_at: now,
+        status: "not_fit",
+        screening_status: "not_fit",
+        decision_reason: removalNote,
       })
       .eq("id", applicationId)
       .eq("recruiter_id", recruiter.id);
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      console.error("Failed to remove waiting candidate:", error);
+      redirect(`/recruiter/${recruiterSlug}/dashboard?pending=update_failed#candidate-scheduling-pending`);
+    }
 
     await returnApplicationToCandidatePool({
       applicationId,
-      source: "withdrawn",
+      source: "recruiter_rejected",
       reason,
     });
 
-    redirect(`/recruiter/${recruiterSlug}/dashboard#candidate-scheduling-pending`);
+    redirect(`/recruiter/${recruiterSlug}/dashboard?pending=removed#candidate-scheduling-pending`);
   }
 
   async function holdCandidate(formData: FormData) {
