@@ -263,10 +263,15 @@ function resolveRowCoordinates(row: AnyRow, locationFields: string[]) {
   const latitude = toNumber(row.latitude);
   const longitude = toNumber(row.longitude);
 
-  if (latitude !== null && longitude !== null) {
-    return { latitude, longitude };
-  }
-
+  if (
+  latitude !== null &&
+  longitude !== null &&
+  Math.abs(latitude) <= 90 &&
+  Math.abs(longitude) <= 180 &&
+  !(latitude === 0 && longitude === 0)
+) {
+  return { latitude, longitude };
+}
   for (const field of locationFields) {
     const coordinates = resolveCoordinatesFromText(row[field]);
     if (coordinates) return coordinates;
