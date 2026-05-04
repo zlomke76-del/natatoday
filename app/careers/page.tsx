@@ -192,194 +192,182 @@ export default async function CareersPage({
           your area as new roles are published.
         </p>
 
-<div style={candidatePoolCardStyle}>
-  <div style={candidatePoolGridStyle}>
-    <div>
-      <div style={poolBadgeStyle}>Candidate Pool</div>
+        <div style={candidatePoolCardStyle}>
+          <div style={candidatePoolGridStyle}>
+            <div>
+              <div style={poolBadgeStyle}>Candidate Pool</div>
 
-      <h2 style={poolTitleStyle}>
-        Stop applying. Start getting matched.
-      </h2>
+              <h2 style={poolTitleStyle}>Stop applying. Start getting matched.</h2>
 
-      <p style={poolCopyStyle}>
-        Join the candidate pool once and let our team work for you. Your profile
-        is continuously matched to active dealership opportunities, and we only
-        reach out when there’s a strong fit.
-      </p>
+              <p style={poolCopyStyle}>
+                Join the candidate pool once and let our team work for you. Your
+                profile is continuously matched to active dealership opportunities,
+                and we only reach out when there’s a strong fit.
+              </p>
 
-      <div style={poolRulesStyle}>
-        <span>✓ Resume-based review</span>
-        <span>✓ Continuous matching across active roles</span>
-        <span>✓ No dealer handoff without a strong fit</span>
-        <span>✓ SMS/email updates only when action is needed</span>
-      </div>
-    </div>
+              <div style={poolRulesStyle}>
+                <span>✓ Resume-based review</span>
+                <span>✓ Continuous matching across active roles</span>
+                <span>✓ No dealer handoff without a strong fit</span>
+                <span>✓ SMS/email updates only when action is needed</span>
+              </div>
+            </div>
 
-    <div style={poolCtaCardStyle}>
-      <div style={poolCtaHeaderStyle}>
-        <div style={poolCtaEyebrowStyle}>Candidate Pool</div>
+            <div style={poolCtaCardStyle}>
+              <div style={poolCtaHeaderStyle}>
+                <div style={poolCtaEyebrowStyle}>Candidate Pool</div>
 
-        <h2 style={poolCtaTitleStyle}>
-          Let opportunities come to you
-        </h2>
+                <h2 style={poolCtaTitleStyle}>Let opportunities come to you</h2>
 
-        <p style={poolCtaCopyStyle}>
-          Skip the back-and-forth. Join once, stay eligible, and we’ll reach out
-          when something is worth your time.
-        </p>
-      </div>
+                <p style={poolCtaCopyStyle}>
+                  Skip the back-and-forth. Join once, stay eligible, and we’ll
+                  reach out when something is worth your time.
+                </p>
+              </div>
 
-      <div style={poolCtaRulesStyle}>
-        <span>Reviewed once</span>
-        <span>Continuously matched</span>
-        <span>Only contacted when relevant</span>
-      </div>
-    </div>
-  </div>
-</div>
+              <div style={poolCtaRulesStyle}>
+                <span>Reviewed once</span>
+                <span>Continuously matched</span>
+                <span>Only contacted when relevant</span>
+              </div>
 
               <a href={candidatePoolHref} style={poolOpenButtonStyle}>
                 Join candidate pool →
               </a>
+            </div>
+          </div>
+        </div>
 
-              <div
-                id="candidate-pool-form"
-                className="candidate-pool-modal"
-                style={poolPopoverShellStyle}
-              >
-                <a
-                  href={currentCareersUrl}
-                  aria-label="Close candidate pool form"
-                  style={poolPopoverShadeStyle}
+        <div
+          id="candidate-pool-form"
+          className="candidate-pool-modal"
+          style={poolPopoverShellStyle}
+        >
+          <a
+            href={currentCareersUrl}
+            aria-label="Close candidate pool form"
+            style={poolPopoverShadeStyle}
+          />
+
+          <div
+            className="candidate-pool-modal-panel"
+            style={poolPopoverPanelStyle}
+          >
+            <div style={poolPopoverTopStyle}>
+              <div>
+                <div style={poolCtaEyebrowStyle}>Candidate Pool</div>
+                <h2 style={poolPopoverTitleStyle}>Join the NATA candidate pool.</h2>
+                <p style={poolPopoverCopyStyle}>
+                  Submit your resume and contact details. Solace reviews the file
+                  and keeps you eligible for future dealership roles.
+                </p>
+              </div>
+              <a href={currentCareersUrl} style={poolCloseButtonStyle}>
+                Close ×
+              </a>
+            </div>
+
+            <form
+              method="POST"
+              action="/api/nata/candidate-pool"
+              encType="multipart/form-data"
+              style={poolPopoverFormStyle}
+            >
+              <div style={compactPoolHeaderStyle}>
+                <strong>Join the pool</strong>
+                <span>
+                  Submit your resume and contact details. Solace handles the
+                  matching logic.
+                </span>
+              </div>
+
+              <div style={formGridStyle}>
+                <Input
+                  label="Full name"
+                  name="name"
+                  placeholder="Enter your full name"
+                  required
+                />
+                <Input
+                  label="Email"
+                  name="email"
+                  type="email"
+                  placeholder="name@email.com"
+                  required
+                />
+                <Input
+                  label="Phone"
+                  name="phone"
+                  placeholder="(555) 123-4567"
+                  required
+                />
+                <Input
+                  label="Location / ZIP"
+                  name="location"
+                  placeholder="Houston, TX or 77002"
+                  required
+                />
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <Input
+                  label="LinkedIn profile"
+                  name="linkedin"
+                  placeholder="linkedin.com/in/yourprofile"
+                />
+              </div>
+
+              <div style={uploadGridStyle}>
+                <UploadField
+                  label="Resume"
+                  name="resume"
+                  accept=".pdf,.doc,.docx"
+                  icon="📄"
+                  primary="Upload your resume"
+                  helper="Required. Solace uses this to extract role signals and match future dealership roles."
+                  required
                 />
 
-                <div
-                  className="candidate-pool-modal-panel"
-                  style={poolPopoverPanelStyle}
-                >
-                  <div style={poolPopoverTopStyle}>
-                    <div>
-                      <div style={poolCtaEyebrowStyle}>Candidate Pool</div>
-                      <h2 style={poolPopoverTitleStyle}>
-                        Join the NATA candidate pool.
-                      </h2>
-                      <p style={poolPopoverCopyStyle}>
-                        Submit your resume and contact details. Solace reviews
-                        the file and keeps you eligible for future dealership
-                        roles.
-                      </p>
-                    </div>
-                    <a href={currentCareersUrl} style={poolCloseButtonStyle}>
-                      Close ×
-                    </a>
-                  </div>
-
-                  <form
-                    method="POST"
-                    action="/api/nata/candidate-pool"
-                    encType="multipart/form-data"
-                    style={poolPopoverFormStyle}
-                  >
-                    <div style={compactPoolHeaderStyle}>
-                      <strong>Join the pool</strong>
-                      <span>
-                        Submit your resume and contact details. Solace handles
-                        the matching logic.
-                      </span>
-                    </div>
-
-                    <div style={formGridStyle}>
-                      <Input
-                        label="Full name"
-                        name="name"
-                        placeholder="Enter your full name"
-                        required
-                      />
-                      <Input
-                        label="Email"
-                        name="email"
-                        type="email"
-                        placeholder="name@email.com"
-                        required
-                      />
-                      <Input
-                        label="Phone"
-                        name="phone"
-                        placeholder="(555) 123-4567"
-                        required
-                      />
-                      <Input
-                        label="Location / ZIP"
-                        name="location"
-                        placeholder="Houston, TX or 77002"
-                        required
-                      />
-                    </div>
-
-                    <div style={{ marginTop: 14 }}>
-                      <Input
-                        label="LinkedIn profile"
-                        name="linkedin"
-                        placeholder="linkedin.com/in/yourprofile"
-                      />
-                    </div>
-
-                    <div style={uploadGridStyle}>
-                      <UploadField
-                        label="Resume"
-                        name="resume"
-                        accept=".pdf,.doc,.docx"
-                        icon="📄"
-                        primary="Upload your resume"
-                        helper="Required. Solace uses this to extract role signals and match future dealership roles."
-                        required
-                      />
-
-                      <UploadField
-                        label="Profile photo"
-                        name="profile_photo"
-                        accept="image/*"
-                        capture="user"
-                        icon="📷"
-                        primary="Selfie or photo"
-                        helper="Optional, but helpful for recruiter and dealer packet review."
-                      />
-                    </div>
-
-                    <label style={consentBoxStyle}>
-                      <input
-                        type="checkbox"
-                        name="sms_email_consent"
-                        value="yes"
-                        required
-                        style={consentCheckboxStyle}
-                      />
-                      <span>
-                        I agree to receive SMS and email updates from NATA Today
-                        about my application, interview scheduling, and hiring
-                        process. Message and data rates may apply. Reply STOP to
-                        opt out or HELP for help. See our{" "}
-                        <Link href="/privacy">Privacy Policy</Link> and{" "}
-                        <Link href="/terms">Terms</Link>.
-                      </span>
-                    </label>
-
-                    <div style={privacyNoticeStyle}>
-                      <span style={shieldStyle}>◇</span>
-                      <span>
-                        Candidate pool submissions stay internal unless NATA
-                        identifies a potential role fit. Your information is not
-                        sold.
-                      </span>
-                    </div>
-
-                    <button type="submit" style={poolSubmitButtonStyle}>
-                      Join candidate pool →
-                    </button>
-                  </form>
-                </div>
+                <UploadField
+                  label="Profile photo"
+                  name="profile_photo"
+                  accept="image/*"
+                  capture="user"
+                  icon="📷"
+                  primary="Selfie or photo"
+                  helper="Optional, but helpful for recruiter and dealer packet review."
+                />
               </div>
-            </div>
+
+              <label style={consentBoxStyle}>
+                <input
+                  type="checkbox"
+                  name="sms_email_consent"
+                  value="yes"
+                  required
+                  style={consentCheckboxStyle}
+                />
+                <span>
+                  I agree to receive SMS and email updates from NATA Today about
+                  my application, interview scheduling, and hiring process. Message
+                  and data rates may apply. Reply STOP to opt out or HELP for help.
+                  See our <Link href="/privacy">Privacy Policy</Link> and{" "}
+                  <Link href="/terms">Terms</Link>.
+                </span>
+              </label>
+
+              <div style={privacyNoticeStyle}>
+                <span style={shieldStyle}>◇</span>
+                <span>
+                  Candidate pool submissions stay internal unless NATA identifies a
+                  potential role fit. Your information is not sold.
+                </span>
+              </div>
+
+              <button type="submit" style={poolSubmitButtonStyle}>
+                Join candidate pool →
+              </button>
+            </form>
           </div>
         </div>
 
