@@ -32,9 +32,7 @@ function clean(value: FormDataEntryValue | string | null | undefined) {
 }
 
 function normalize(value: unknown) {
-  return String(value || "")
-    .trim()
-    .toLowerCase();
+  return String(value || "").trim().toLowerCase();
 }
 
 function label(value: unknown, fallback = "Candidate") {
@@ -131,7 +129,7 @@ async function loadJob(jobId: string | null | undefined) {
   return (job || null) as AnyRow | null;
 }
 
-async function sendInviteSafely(input: {
+async function sendInitialInviteSafely(input: {
   application: AnyRow;
   job: AnyRow | null;
   recruiter: AnyRow;
@@ -147,7 +145,7 @@ async function sendInviteSafely(input: {
       dealerName: label(input.job?.public_dealer_name || input.job?.dealer_slug, "Dealer"),
       recruiterName: label(input.recruiter.name, "your recruiter"),
       bookingUrl: input.bookingUrl,
-    });
+    } as any);
   } catch (notificationError) {
     console.error("Recruiter action notification failed:", notificationError);
   }
@@ -170,9 +168,8 @@ async function sendReengagementSafely(input: {
       recruiterName: label(input.recruiter.name, "your recruiter"),
       bookingUrl: input.bookingUrl,
       mode: "reengage",
-      emailSubject: "Still interested in scheduling your NATA interview?",
-      emailBody: `Hi ${label(input.application.name || input.application.email, "there")} — just checking in.\n\nWe previously sent your virtual interview scheduling link, but it looks like a time has not been booked yet.\n\nIf you're still interested, please use the link below to choose a time that works for you:\n\n${input.bookingUrl}\n\nIf your availability changed, no problem — reply here and we'll help coordinate.\n\n– ${label(input.recruiter.name, "NATA Today")}`,
-      smsBody: `Hi ${label(input.application.name || "", "there")}, this is NATA Today. Just checking in — we sent your interview scheduling link, but no time has been booked yet. If you're still interested, please schedule here: ${input.bookingUrl}`,
+      subject: "Still interested in scheduling your NATA interview?",
+      message: `Hi ${label(input.application.name || input.application.email, "there")} — just checking in. We previously sent your virtual interview scheduling link, but it looks like a time has not been booked yet. If you're still interested, please use this link to choose a time that works for you: ${input.bookingUrl}`,
     } as any);
   } catch (notificationError) {
     console.error("Recruiter re-engagement notification failed:", notificationError);
@@ -243,7 +240,7 @@ export async function POST(request: NextRequest) {
 
       if (error) throw new Error(error.message);
 
-      await sendInviteSafely({ application, job, recruiter, bookingUrl });
+      await sendInitialInviteSafely({ application, job, recruiter, bookingUrl });
 
       return redirectToDashboard(request, safeRecruiterSlug, { action: "invited" });
     }
@@ -257,7 +254,7 @@ export async function POST(request: NextRequest) {
       }
 
       const bookingUrl = buildCandidateScheduleUrl(applicationId);
-      const note = `[Candidate re-engaged ${now}] ${reason || "Recruiter re-engaged candidate after schedule invite went stale."}`;
+      const note = `[Candidate re-engaged ${now}] ${reason || "Recruiter re-engaged candidate after stale scheduling state."}`;
 
       const { error } = await supabaseAdmin
         .schema("nata")
@@ -290,8 +287,8 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      const note = `[Scheduling queue removal ${now}] ${reason || "Candidate removed from scheduling queue after stale or inactive response state."}`;
-      const finalReason = previousReason ? `${previousReason}\n${note}` : note;
+      const removeReason = reason || "Removed from stale scheduling queue.";
+      const note = `[Scheduling queue removal ${now}] ${removeReason}`;
 
       const { error } = await supabaseAdmin
         .schema("nata")
@@ -302,19 +299,25 @@ export async function POST(request: NextRequest) {
           virtual_interview_status: "withdrawn",
           recruiter_id: null,
           assigned_recruiter: null,
-          decision_reason: finalReason,
+          decision_reason: previousReason ? `${previousReason}\n${note}` : note,
         })
         .eq("id", applicationId)
         .eq("recruiter_id", recruiterId);
 
       if (error) throw new Error(error.message);
 
-      await returnApplicationToCandidatePool({
-        applicationId,
-        source: "withdrawn",
-        reason: reason || "Removed from stale scheduling queue.",
-      });
+      try {
+        await returnApplicationToCandidatePool({
+          applicationId,
+          source: "withdrawn",
+          reason: removeReason,
+        });
+      } catch (poolError) {
+        console.error("Candidate was removed from dashboard but pool return failed:", poolError);
+      }
 
+      // Belt-and-suspenders: if a trigger/helper touched the row after the first update,
+      // force the assignment closed again so the recruiter dashboard query cannot see it.
       await clearApplicationAssignment(applicationId);
 
       return redirectToDashboard(request, safeRecruiterSlug, {
