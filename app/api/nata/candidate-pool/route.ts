@@ -146,9 +146,9 @@ const { data } = await supabaseAdmin
 .select("*")
 .single();
 
-```
+
 candidate = data;
-```
+
 
 } else {
 const { data } = await supabaseAdmin
@@ -158,9 +158,9 @@ const { data } = await supabaseAdmin
 .select("*")
 .single();
 
-```
+
 candidate = data;
-```
+
 
 }
 
@@ -173,7 +173,7 @@ export async function POST(req: Request) {
 try {
 const contentType = req.headers.get("content-type") || "";
 
-```
+
 if (contentType.includes("multipart/form-data")) {
   const formData = await req.formData();
   const result = await upsertCandidateFromForm(formData);
@@ -186,7 +186,7 @@ if (contentType.includes("multipart/form-data")) {
 }
 
 return NextResponse.json({ error: "Unsupported" }, { status: 415 });
-```
+
 
 } catch (err) {
 console.error("candidate-pool route error:", err);
