@@ -76,7 +76,7 @@ function buildSearchUrl(input: {
 }
 
 async function getJobs(
-  searchParams: CareersSearchParams
+  searchParams: CareersSearchParams,
 ): Promise<JobsResponse> {
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ||
@@ -148,10 +148,38 @@ export default async function CareersPage({
   const totalPages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
   const showingFrom = result.total === 0 ? 0 : result.offset + 1;
   const showingTo = Math.min(result.offset + result.jobs.length, result.total);
+  const currentCareersUrl = buildSearchUrl({
+    q,
+    location,
+    role,
+    type,
+    publishMode,
+    page,
+  });
+  const candidatePoolHref = `${currentCareersUrl}#candidate-pool-form`;
 
   return (
     <main className="shell">
       <Nav />
+
+      <style>{`
+        .candidate-pool-modal {
+          display: none;
+        }
+
+        .candidate-pool-modal:target {
+          display: block;
+        }
+
+        .candidate-pool-modal:target .candidate-pool-modal-panel {
+          animation: candidatePoolPop 140ms ease-out;
+        }
+
+        @keyframes candidatePoolPop {
+          from { opacity: 0; transform: translate(-50%, -48%) scale(0.98); }
+          to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+      `}</style>
 
       <section style={pageSectionStyle}>
         <div className="eyebrow">Dealership Careers</div>
@@ -179,7 +207,9 @@ export default async function CareersPage({
                 <span>✓ Resume-based review</span>
                 <span>✓ 0–100 mile role search</span>
                 <span>✓ No dealer handoff unless there is a potential fit</span>
-                <span>✓ SMS/email updates only for your application process</span>
+                <span>
+                  ✓ SMS/email updates only for your application process
+                </span>
               </div>
             </div>
 
@@ -188,8 +218,9 @@ export default async function CareersPage({
                 <div style={poolCtaEyebrowStyle}>Candidate Pool</div>
                 <h2 style={poolCtaTitleStyle}>Want future openings?</h2>
                 <p style={poolCtaCopyStyle}>
-                  Keep the page focused on current roles, but make the pool impossible to miss.
-                  Candidates can open the form when they are ready to join.
+                  Keep the page focused on current roles, but make the pool
+                  impossible to miss. Candidates can open the form when they are
+                  ready to join.
                 </p>
               </div>
 
@@ -199,124 +230,147 @@ export default async function CareersPage({
                 <span>Contacted only when relevant</span>
               </div>
 
-              <details style={poolPopoverDetailsStyle}>
-                <summary style={poolOpenButtonStyle}>Join candidate pool →</summary>
-                <div style={poolPopoverShadeStyle} />
-                <div style={poolPopoverPanelStyle}>
+              <a href={candidatePoolHref} style={poolOpenButtonStyle}>
+                Join candidate pool →
+              </a>
+
+              <div
+                id="candidate-pool-form"
+                className="candidate-pool-modal"
+                style={poolPopoverShellStyle}
+              >
+                <a
+                  href={currentCareersUrl}
+                  aria-label="Close candidate pool form"
+                  style={poolPopoverShadeStyle}
+                />
+
+                <div
+                  className="candidate-pool-modal-panel"
+                  style={poolPopoverPanelStyle}
+                >
                   <div style={poolPopoverTopStyle}>
                     <div>
                       <div style={poolCtaEyebrowStyle}>Candidate Pool</div>
-                      <h2 style={poolPopoverTitleStyle}>Join the NATA candidate pool.</h2>
+                      <h2 style={poolPopoverTitleStyle}>
+                        Join the NATA candidate pool.
+                      </h2>
                       <p style={poolPopoverCopyStyle}>
-                        Submit your resume and contact details. Solace reviews the file and keeps you eligible for future dealership roles.
+                        Submit your resume and contact details. Solace reviews
+                        the file and keeps you eligible for future dealership
+                        roles.
                       </p>
                     </div>
-                    <span style={poolCloseHintStyle}>Click outside or toggle the button to close</span>
+                    <a href={currentCareersUrl} style={poolCloseButtonStyle}>
+                      Close ×
+                    </a>
                   </div>
 
                   <form
-              method="POST"
-              action="/api/nata/candidate-pool"
-              encType="multipart/form-data"
-              style={poolPopoverFormStyle}
-            >
-              <div style={compactPoolHeaderStyle}>
-                <strong>Join the pool</strong>
-                <span>
-                  Submit your resume and contact details. Solace handles the
-                  matching logic.
-                </span>
-              </div>
+                    method="POST"
+                    action="/api/nata/candidate-pool"
+                    encType="multipart/form-data"
+                    style={poolPopoverFormStyle}
+                  >
+                    <div style={compactPoolHeaderStyle}>
+                      <strong>Join the pool</strong>
+                      <span>
+                        Submit your resume and contact details. Solace handles
+                        the matching logic.
+                      </span>
+                    </div>
 
-              <div style={formGridStyle}>
-                <Input
-                  label="Full name"
-                  name="name"
-                  placeholder="Enter your full name"
-                  required
-                />
-                <Input
-                  label="Email"
-                  name="email"
-                  type="email"
-                  placeholder="name@email.com"
-                  required
-                />
-                <Input
-                  label="Phone"
-                  name="phone"
-                  placeholder="(555) 123-4567"
-                  required
-                />
-                <Input
-                  label="Location / ZIP"
-                  name="location"
-                  placeholder="Houston, TX or 77002"
-                  required
-                />
-              </div>
+                    <div style={formGridStyle}>
+                      <Input
+                        label="Full name"
+                        name="name"
+                        placeholder="Enter your full name"
+                        required
+                      />
+                      <Input
+                        label="Email"
+                        name="email"
+                        type="email"
+                        placeholder="name@email.com"
+                        required
+                      />
+                      <Input
+                        label="Phone"
+                        name="phone"
+                        placeholder="(555) 123-4567"
+                        required
+                      />
+                      <Input
+                        label="Location / ZIP"
+                        name="location"
+                        placeholder="Houston, TX or 77002"
+                        required
+                      />
+                    </div>
 
-              <div style={{ marginTop: 14 }}>
-                <Input
-                  label="LinkedIn profile"
-                  name="linkedin"
-                  placeholder="linkedin.com/in/yourprofile"
-                />
-              </div>
+                    <div style={{ marginTop: 14 }}>
+                      <Input
+                        label="LinkedIn profile"
+                        name="linkedin"
+                        placeholder="linkedin.com/in/yourprofile"
+                      />
+                    </div>
 
-              <div style={uploadGridStyle}>
-                <UploadField
-                  label="Resume"
-                  name="resume"
-                  accept=".pdf,.doc,.docx"
-                  icon="📄"
-                  primary="Upload your resume"
-                  helper="Required. Solace uses this to extract role signals and match future dealership roles."
-                  required
-                />
+                    <div style={uploadGridStyle}>
+                      <UploadField
+                        label="Resume"
+                        name="resume"
+                        accept=".pdf,.doc,.docx"
+                        icon="📄"
+                        primary="Upload your resume"
+                        helper="Required. Solace uses this to extract role signals and match future dealership roles."
+                        required
+                      />
 
-                <UploadField
-                  label="Profile photo"
-                  name="profile_photo"
-                  accept="image/*"
-                  capture="user"
-                  icon="📷"
-                  primary="Selfie or photo"
-                  helper="Optional, but helpful for recruiter and dealer packet review."
-                />
-              </div>
+                      <UploadField
+                        label="Profile photo"
+                        name="profile_photo"
+                        accept="image/*"
+                        capture="user"
+                        icon="📷"
+                        primary="Selfie or photo"
+                        helper="Optional, but helpful for recruiter and dealer packet review."
+                      />
+                    </div>
 
-              <label style={consentBoxStyle}>
-                <input
-                  type="checkbox"
-                  name="sms_email_consent"
-                  value="yes"
-                  required
-                  style={consentCheckboxStyle}
-                />
-                <span>
-                  I agree to receive SMS and email updates from NATA Today about
-                  my application, interview scheduling, and hiring process.
-                  Message and data rates may apply. Reply STOP to opt out or
-                  HELP for help. See our <Link href="/privacy">Privacy Policy</Link>{" "}
-                  and <Link href="/terms">Terms</Link>.
-                </span>
-              </label>
+                    <label style={consentBoxStyle}>
+                      <input
+                        type="checkbox"
+                        name="sms_email_consent"
+                        value="yes"
+                        required
+                        style={consentCheckboxStyle}
+                      />
+                      <span>
+                        I agree to receive SMS and email updates from NATA Today
+                        about my application, interview scheduling, and hiring
+                        process. Message and data rates may apply. Reply STOP to
+                        opt out or HELP for help. See our{" "}
+                        <Link href="/privacy">Privacy Policy</Link> and{" "}
+                        <Link href="/terms">Terms</Link>.
+                      </span>
+                    </label>
 
-              <div style={privacyNoticeStyle}>
-                <span style={shieldStyle}>◇</span>
-                <span>
-                  Candidate pool submissions stay internal unless NATA identifies
-                  a potential role fit. Your information is not sold.
-                </span>
-              </div>
+                    <div style={privacyNoticeStyle}>
+                      <span style={shieldStyle}>◇</span>
+                      <span>
+                        Candidate pool submissions stay internal unless NATA
+                        identifies a potential role fit. Your information is not
+                        sold.
+                      </span>
+                    </div>
 
-              <button type="submit" style={poolSubmitButtonStyle}>
-                Join candidate pool →
-              </button>
-            </form>
+                    <button type="submit" style={poolSubmitButtonStyle}>
+                      Join candidate pool →
+                    </button>
+                  </form>
                 </div>
-              </details>
+              </div>
             </div>
           </div>
         </div>
@@ -714,8 +768,10 @@ const poolCtaRulesStyle: CSSProperties = {
   fontWeight: 850,
 };
 
-const poolPopoverDetailsStyle: CSSProperties = {
-  position: "relative",
+const poolPopoverShellStyle: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 39,
 };
 
 const poolOpenButtonStyle: CSSProperties = {
@@ -731,10 +787,12 @@ const poolOpenButtonStyle: CSSProperties = {
   cursor: "pointer",
   fontSize: 15,
   boxShadow: "0 16px 34px rgba(20,115,255,0.28)",
+  textDecoration: "none",
   listStyle: "none",
 };
 
 const poolPopoverShadeStyle: CSSProperties = {
+  display: "block",
   position: "fixed",
   inset: 0,
   zIndex: 40,
@@ -787,6 +845,21 @@ const poolCloseHintStyle: CSSProperties = {
   color: "#64748b",
   fontSize: 12,
   fontWeight: 800,
+  whiteSpace: "nowrap",
+};
+
+const poolCloseButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minHeight: 38,
+  padding: "0 13px",
+  borderRadius: 999,
+  background: "rgba(15,23,42,0.08)",
+  border: "1px solid rgba(15,23,42,0.16)",
+  color: "#0f172a",
+  fontWeight: 950,
+  textDecoration: "none",
   whiteSpace: "nowrap",
 };
 
