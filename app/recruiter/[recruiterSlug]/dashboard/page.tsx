@@ -176,6 +176,14 @@ function cleanFormValue(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function toJsonSafe<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_key, currentValue) =>
+      typeof currentValue === "function" ? undefined : currentValue,
+    ),
+  ) as T;
+}
+
 function yearsSince(value?: string | null) {
   if (!value) return null;
 
@@ -1123,9 +1131,9 @@ export default async function RecruiterDashboard({
   const applications = allApplications.filter((application) => !isTerminalApplication(application));
   const archivedApplications = allApplications.filter(isTerminalApplication);
   const canOpenAdmin = hasAdminAccess(recruiter);
-  const musicTracks = await loadInitialMusicTracks();
+  const musicTracks = toJsonSafe(await loadInitialMusicTracks());
 
-  const communicationsRecruiter = {
+  const communicationsRecruiter = toJsonSafe({
     id: String(recruiter.id || ""),
     name: label(recruiter.name, "Recruiter"),
     slug: label(recruiter.slug, recruiterSlug),
@@ -1133,9 +1141,9 @@ export default async function RecruiterDashboard({
     phone: recruiter.phone || null,
     role: recruiter.role || null,
     title: recruiter.title || null,
-  };
+  });
 
-  const communicationsApplications = applications.map((application) => ({
+  const communicationsApplications = toJsonSafe(applications.map((application) => ({
     id: String(application.id || ""),
     name: application.name || null,
     email: application.email || null,
@@ -1152,7 +1160,7 @@ export default async function RecruiterDashboard({
     profile_photo_url: application.profile_photo_url || application.photo_url || application.candidate_photo_url || null,
     created_at: application.created_at || null,
     updated_at: application.updated_at || null,
-  }));
+  })));
 
   const openJobs = jobs.filter((job) => job.is_active !== false && !job.filled_at && job.publish_status !== "closed" && job.publish_status !== "filled");
 
