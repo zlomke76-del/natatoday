@@ -5,7 +5,6 @@ import Nav from "../../../components/Nav";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 import { hasDealerAccess } from "../../../../lib/dealerAccess";
 import ActionNotice from "./ActionNotice";
-import CommunicationsCenter from "./CommunicationsCenter";
 
 type PageProps = {
   params: { dealerSlug: string };
@@ -1165,12 +1164,72 @@ export default async function DealerDashboardPage({ params, searchParams }: Page
 
         <FilledRequestsSection filledJobs={filledJobs} decisions={decisions} applications={applications} />
 
-        <section style={{ marginTop: 28 }}>
-          <div className="eyebrow">Communications</div>
-          <CommunicationsCenter dealerSlug={params.dealerSlug} />
-        </section>
+        <DealerActionStatusPanel
+          activeActionCount={activeCandidateCount}
+          readyScheduleCount={readyScheduleCandidates.length}
+          decisionCount={managerCandidates.length}
+          openRequestCount={openJobs.length}
+          filledRequestCount={filledJobs.length}
+        />
       </section>
     </main>
+  );
+}
+
+
+function DealerActionStatusPanel({
+  activeActionCount,
+  readyScheduleCount,
+  decisionCount,
+  openRequestCount,
+  filledRequestCount,
+}: {
+  activeActionCount: number;
+  readyScheduleCount: number;
+  decisionCount: number;
+  openRequestCount: number;
+  filledRequestCount: number;
+}) {
+  const needsAction = activeActionCount > 0;
+
+  return (
+    <section style={dealerActionPanelStyle}>
+      <div style={dealerActionHeaderStyle}>
+        <div>
+          <div className="eyebrow">Dealer action status</div>
+          <h2 style={dealerActionTitleStyle}>{needsAction ? "Action needed" : "No action needed"}</h2>
+        </div>
+
+        <span style={needsAction ? actionNeededPillStyle : noActionPillStyle}>
+          {needsAction ? `${activeActionCount} open` : "Clear"}
+        </span>
+      </div>
+
+      <p style={dealerActionCopyStyle}>
+        {needsAction
+          ? "One or more candidate actions are ready. Use the work queue above to schedule interviews or record decisions."
+          : "NATA is handling screening, scheduling follow-up, and packet preparation. Your team only needs to act when a candidate is ready for dealer scheduling or a manager decision."}
+      </p>
+
+      <div style={dealerActionGridStyle}>
+        <div style={dealerActionMetricStyle}>
+          <strong>{readyScheduleCount}</strong>
+          <span>Need scheduling</span>
+        </div>
+        <div style={dealerActionMetricStyle}>
+          <strong>{decisionCount}</strong>
+          <span>Need decision</span>
+        </div>
+        <div style={dealerActionMetricStyle}>
+          <strong>{openRequestCount}</strong>
+          <span>Open requests</span>
+        </div>
+        <div style={dealerActionMetricStyle}>
+          <strong>{filledRequestCount}</strong>
+          <span>Filled requests</span>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1680,6 +1739,75 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 const pageSectionStyle: CSSProperties = { padding: "24px 0 70px" };
+
+const dealerActionPanelStyle: CSSProperties = {
+  marginTop: 28,
+  padding: 18,
+  borderRadius: 22,
+  background: "linear-gradient(145deg, rgba(20,115,255,0.10), rgba(255,255,255,0.035))",
+  border: "1px solid rgba(96,165,250,0.18)",
+};
+
+const dealerActionHeaderStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 16,
+  alignItems: "center",
+};
+
+const dealerActionTitleStyle: CSSProperties = {
+  margin: "6px 0 0",
+  color: "#fff",
+  fontSize: 24,
+  lineHeight: 1,
+  letterSpacing: "-0.035em",
+};
+
+const dealerActionCopyStyle: CSSProperties = {
+  margin: "10px 0 0",
+  color: "#bfd6f5",
+  lineHeight: 1.5,
+  maxWidth: 860,
+};
+
+const dealerActionGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 10,
+  marginTop: 14,
+};
+
+const dealerActionMetricStyle: CSSProperties = {
+  display: "grid",
+  gap: 3,
+  padding: "10px 12px",
+  borderRadius: 14,
+  background: "rgba(2,6,23,0.34)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  color: "#9fb4d6",
+  fontSize: 12,
+};
+
+const noActionPillStyle: CSSProperties = {
+  padding: "8px 12px",
+  borderRadius: 999,
+  background: "rgba(34,197,94,0.14)",
+  border: "1px solid rgba(34,197,94,0.28)",
+  color: "#86efac",
+  fontSize: 12,
+  fontWeight: 950,
+};
+
+const actionNeededPillStyle: CSSProperties = {
+  padding: "8px 12px",
+  borderRadius: 999,
+  background: "rgba(251,191,36,0.14)",
+  border: "1px solid rgba(251,191,36,0.28)",
+  color: "#fde68a",
+  fontSize: 12,
+  fontWeight: 950,
+};
+
 const secureAccessCardStyle: CSSProperties = { maxWidth: 760, padding: 34, borderRadius: 30, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(145deg, rgba(20,115,255,0.13), rgba(255,255,255,0.045))" };
 const opsHeaderStyle: CSSProperties = { display: "flex", justifyContent: "space-between", gap: 18, alignItems: "center", flexWrap: "wrap", marginBottom: 16 };
 const opsTitleStyle: CSSProperties = { margin: "6px 0 0", fontSize: "clamp(30px,4vw,48px)", lineHeight: 0.96, letterSpacing: "-0.05em" };
