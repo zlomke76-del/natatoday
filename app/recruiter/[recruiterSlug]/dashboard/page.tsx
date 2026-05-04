@@ -836,6 +836,15 @@ export default async function RecruiterDashboard({
     );
   }
 
+  const recruiterId = String(recruiter.id || "");
+  const recruiterName = label(recruiter.name, "your recruiter");
+  const recruiterDisplayName = label(recruiter.name, "Recruiter");
+  const recruiterEmail = recruiter.email || null;
+  const recruiterPhone = recruiter.phone || null;
+  const recruiterRole = recruiter.role || null;
+  const recruiterTitle = recruiter.title || null;
+  const recruiterRecordSlug = label(recruiter.slug, recruiterSlug);
+
   async function approveForInterview(formData: FormData) {
     "use server";
 
@@ -851,7 +860,7 @@ export default async function RecruiterDashboard({
       .from("applications")
       .select("*")
       .eq("id", applicationId)
-      .eq("recruiter_id", recruiter.id)
+      .eq("recruiter_id", recruiterId)
       .maybeSingle();
 
     if (applicationLoadError) throw new Error(applicationLoadError.message);
@@ -891,7 +900,7 @@ export default async function RecruiterDashboard({
         decision_reason: `${overridePrefix}${reason}`,
       })
       .eq("id", applicationId)
-      .eq("recruiter_id", recruiter.id);
+      .eq("recruiter_id", recruiterId);
 
     if (error) throw new Error(error.message);
 
@@ -903,7 +912,7 @@ export default async function RecruiterDashboard({
         candidatePhone: application.phone || null,
         roleTitle: label(job?.title || application.role, "Candidate"),
         dealerName: label(job?.public_dealer_name || job?.dealer_slug, "Dealer"),
-        recruiterName: label(recruiter.name, "your recruiter"),
+        recruiterName,
         bookingUrl,
       });
     } catch (notificationError) {
@@ -930,7 +939,7 @@ export default async function RecruiterDashboard({
       .from("applications")
       .select("*")
       .eq("id", applicationId)
-      .eq("recruiter_id", recruiter.id)
+      .eq("recruiter_id", recruiterId)
       .maybeSingle();
 
     if (applicationLoadError) {
@@ -968,7 +977,7 @@ export default async function RecruiterDashboard({
         decision_reason: reengageNote,
       })
       .eq("id", applicationId)
-      .eq("recruiter_id", recruiter.id);
+      .eq("recruiter_id", recruiterId);
 
     if (error) {
       console.error("Failed to re-engage waiting candidate:", error);
@@ -983,7 +992,7 @@ export default async function RecruiterDashboard({
         candidatePhone: application.phone || null,
         roleTitle: label(job?.title || application.role, "Candidate"),
         dealerName: label(job?.public_dealer_name || job?.dealer_slug, "Dealer"),
-        recruiterName: label(recruiter.name, "your recruiter"),
+        recruiterName,
         bookingUrl,
       });
     } catch (notificationError) {
@@ -1010,7 +1019,7 @@ export default async function RecruiterDashboard({
       .from("applications")
       .select("*")
       .eq("id", applicationId)
-      .eq("recruiter_id", recruiter.id)
+      .eq("recruiter_id", recruiterId)
       .maybeSingle();
 
     if (applicationLoadError) {
@@ -1038,7 +1047,7 @@ export default async function RecruiterDashboard({
         decision_reason: removalNote,
       })
       .eq("id", applicationId)
-      .eq("recruiter_id", recruiter.id);
+      .eq("recruiter_id", recruiterId);
 
     if (error) {
       console.error("Failed to remove waiting candidate:", error);
@@ -1071,7 +1080,7 @@ export default async function RecruiterDashboard({
         decision_reason: reason,
       })
       .eq("id", applicationId)
-      .eq("recruiter_id", recruiter.id);
+      .eq("recruiter_id", recruiterId);
 
     if (error) throw new Error(error.message);
 
@@ -1095,7 +1104,7 @@ export default async function RecruiterDashboard({
         decision_reason: reason,
       })
       .eq("id", applicationId)
-      .eq("recruiter_id", recruiter.id);
+      .eq("recruiter_id", recruiterId);
 
     if (error) throw new Error(error.message);
 
@@ -1121,7 +1130,7 @@ export default async function RecruiterDashboard({
     .schema("nata")
     .from("applications")
     .select("*")
-    .eq("recruiter_id", recruiter.id)
+    .eq("recruiter_id", recruiterId)
     .order("created_at", { ascending: false });
 
   if (applicationsError) console.error("Failed to load recruiter applications:", applicationsError);
@@ -1134,13 +1143,13 @@ export default async function RecruiterDashboard({
   const musicTracks = toJsonSafe(await loadInitialMusicTracks());
 
   const communicationsRecruiter = toJsonSafe({
-    id: String(recruiter.id || ""),
-    name: label(recruiter.name, "Recruiter"),
-    slug: label(recruiter.slug, recruiterSlug),
-    email: recruiter.email || null,
-    phone: recruiter.phone || null,
-    role: recruiter.role || null,
-    title: recruiter.title || null,
+    id: recruiterId,
+    name: recruiterDisplayName,
+    slug: recruiterRecordSlug,
+    email: recruiterEmail,
+    phone: recruiterPhone,
+    role: recruiterRole,
+    title: recruiterTitle,
   });
 
   const communicationsApplications = toJsonSafe(applications.map((application) => ({
@@ -1358,7 +1367,7 @@ export default async function RecruiterDashboard({
 
         <div style={headerRow}>
           <div>
-            <h1 style={{ marginTop: 0 }}>{recruiter.name} — Operations Command Center</h1>
+            <h1 style={{ marginTop: 0 }}>{recruiterDisplayName} — Operations Command Center</h1>
             <p style={{ color: "#cfe2ff", maxWidth: 860 }}>
               Daily visibility for dealer demand, role-specific scoring, recruiter review, candidate coaching, interview readiness, dealer handoff status, and protected candidate relationships.
             </p>
