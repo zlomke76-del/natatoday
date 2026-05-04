@@ -1125,6 +1125,35 @@ export default async function RecruiterDashboard({
   const canOpenAdmin = hasAdminAccess(recruiter);
   const musicTracks = await loadInitialMusicTracks();
 
+  const communicationsRecruiter = {
+    id: String(recruiter.id || ""),
+    name: label(recruiter.name, "Recruiter"),
+    slug: label(recruiter.slug, recruiterSlug),
+    email: recruiter.email || null,
+    phone: recruiter.phone || null,
+    role: recruiter.role || null,
+    title: recruiter.title || null,
+  };
+
+  const communicationsApplications = applications.map((application) => ({
+    id: String(application.id || ""),
+    name: application.name || null,
+    email: application.email || null,
+    phone: application.phone || null,
+    status: application.status || null,
+    screening_status: application.screening_status || null,
+    virtual_interview_status: application.virtual_interview_status || null,
+    recruiter_id: application.recruiter_id || null,
+    job_id: application.job_id || null,
+    role: application.role || null,
+    fit_score: typeof application.fit_score === "number" ? application.fit_score : null,
+    decision_reason: application.decision_reason || null,
+    resume_url: application.resume_url || application.resume_public_url || application.resume_path || null,
+    profile_photo_url: application.profile_photo_url || application.photo_url || application.candidate_photo_url || null,
+    created_at: application.created_at || null,
+    updated_at: application.updated_at || null,
+  }));
+
   const openJobs = jobs.filter((job) => job.is_active !== false && !job.filled_at && job.publish_status !== "closed" && job.publish_status !== "filled");
 
   const interviewQueue = applications.filter(isInterviewToComplete);
@@ -1511,9 +1540,9 @@ export default async function RecruiterDashboard({
 
         <div className="section-kicker" style={{ marginTop: 48 }}>Communications</div>
         <CommunicationsCenter
-          recruiter={recruiter}
+          recruiter={communicationsRecruiter}
           recruiterSlug={recruiterSlug}
-          applications={applications}
+          applications={communicationsApplications}
         />
       </section>
     </main>
