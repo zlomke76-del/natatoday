@@ -23,8 +23,14 @@ type Match = {
   id: string;
   candidate_id: string;
   job_id: string;
-  distance_miles: number | null;
+  distance_miles: number | string | null;
   fit_score: number | null;
+  role_score?: number | null;
+  proof_score?: number | null;
+  location_score?: number | null;
+  risk_score?: number | null;
+  risk_flags?: string[] | null;
+  verification_items?: string[] | null;
   match_status: string;
   match_reason: string | null;
   created_at: string;
@@ -85,6 +91,15 @@ const PAGE_SIZE = 50;
 const MATCH_FETCH_MULTIPLIER = 4;
 const PLACEMENT_DECAY_YEARS = 2;
 
+const visibleMatchStatuses = ["eligible", "recruiter_review", "more_state_required"];
+
+const matchStatusRank: Record<string, number> = {
+  eligible: 0,
+  recruiter_review: 1,
+  more_state_required: 2,
+  below_threshold: 3,
+};
+
 const placedStatuses = [
   "placed",
   "hired",
@@ -125,27 +140,21 @@ function isPlacedStatus(value: unknown) {
 
 function parseDate(value: unknown) {
   if (!value || typeof value !== "string") return null;
-
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function isOlderThanDecayWindow(value: unknown) {
   const date = parseDate(value);
-
   if (!date) return false;
-
   const cutoff = new Date();
   cutoff.setFullYear(cutoff.getFullYear() - PLACEMENT_DECAY_YEARS);
-
   return date < cutoff;
 }
 
 function formatShortDate(value: unknown) {
   const date = parseDate(value);
-
   if (!date) return "date unknown";
-
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     year: "numeric",
@@ -156,6 +165,12 @@ function safePositiveInteger(value: string, fallback: number) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(1, Math.floor(parsed));
+}
+
+function safeMinScore(value: string) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return MIN_VISIBLE_MATCH_SCORE;
+  return Math.max(0, Math.min(100, Math.floor(parsed)));
 }
 
 function buildQueryString(input: Record<string, string | number | null | undefined>) {
@@ -170,6 +185,17 @@ function buildQueryString(input: Record<string, string | number | null | undefin
   return query ? `?${query}` : "";
 }
 
+function formatMatchStatus(status: string) {
+  return status.replace(/_/g, " ");
+}
+
+function formatDistance(value: Match["distance_miles"]) {
+  if (value === null || value === undefined || value === "") return "distance n/a";
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "distance n/a";
+  return `${Math.round(numeric)} mi`;
+}
+
 async function getRecruiter(recruiterSlug: string) {
   const { data, error } = await supabaseAdmin
     .schema("nata")
@@ -178,10 +204,7 @@ async function getRecruiter(recruiterSlug: string) {
     .eq("slug", recruiterSlug)
     .maybeSingle();
 
-  if (error) {
-    console.error("Failed to load recruiter:", error);
-  }
-
+  if (error) console.error("Failed to load recruiter:", error);
   return data as Recruiter | null;
 }
 
@@ -202,7 +225,6 @@ async function getClientDealerships() {
   for (const row of data || []) {
     const slug = normalize(row.dealer_slug);
     if (!slug) continue;
-
     dealerMap.set(
       slug,
       typeof row.public_dealer_name === "string" && row.public_dealer_name.trim()
@@ -216,8 +238,21 @@ async function getClientDealerships() {
 
 async function getJobIdsForRole(role: string) {
   const normalizedRole = normalize(role);
-
   if (!normalizedRole || normalizedRole === "all") return null;
+
+  const roleAliases: Record<string, string[]> = {
+    sales: ["sales", "sales consultant", "senior sales", "internet sales"],
+    technician: ["technician", "tech", "master technician", "shop foreman", "lube"],
+    bdc: ["bdc", "internet", "appointment"],
+    parts: ["parts"],
+    finance: ["finance", "f&i", "business manager"],
+    "service advisor": ["service advisor", "service writer"],
+  };
+
+  const aliases = roleAliases[normalizedRole] || [normalizedRole];
+  const orFilter = aliases
+    .map((alias) => `title.ilike.%${alias.replace(/[%_]/g, "")}%`)
+    .join(",");
 
   const { data, error } = await supabaseAdmin
     .schema("nata")
@@ -226,7 +261,7 @@ async function getJobIdsForRole(role: string) {
     .eq("is_active", true)
     .eq("publish_status", "published")
     .is("filled_at", null)
-    .ilike("title", `%${normalizedRole}%`);
+    .or(orFilter);
 
   if (error) {
     console.error("Failed to load role-filtered jobs:", error);
@@ -247,20 +282,17 @@ async function getCandidateIdsForSearch(search: string) {
     .textSearch("search_text", value, { type: "plain" })
     .limit(5000);
 
-  if (!error) {
-    return (data || []).map((candidate) => String(candidate.id));
-  }
+  if (!error) return (data || []).map((candidate) => String(candidate.id));
 
   console.error("Candidate text search failed; falling back to ilike search:", error);
 
   const safe = value.replace(/[%_]/g, "");
   const pattern = `%${safe}%`;
-
   const fallback = await supabaseAdmin
     .schema("nata")
     .from("candidates")
     .select("id")
-    .or(`name.ilike.${pattern},email.ilike.${pattern},location_text.ilike.${pattern}`)
+    .or(`name.ilike.${pattern},email.ilike.${pattern},location_text.ilike.${pattern},search_text.ilike.${pattern}`)
     .limit(5000);
 
   if (fallback.error) {
@@ -290,11 +322,7 @@ async function getApplicationHistory(emails: string[]) {
 
 async function getHistoryJobs(history: ApplicationHistory[]) {
   const jobIds = Array.from(
-    new Set(
-      history
-        .map((item) => String(item.job_id || "").trim())
-        .filter(Boolean),
-    ),
+    new Set(history.map((item) => String(item.job_id || "").trim()).filter(Boolean)),
   );
 
   if (jobIds.length === 0) return new Map<string, Job>();
@@ -321,25 +349,20 @@ function buildCandidateFlags(input: {
 }): CandidateFlags {
   const { candidate, history, historyJobsById, clientDealers } = input;
   const email = normalize(candidate.email);
-
   const priorApps = history.filter((item) => normalize(item.email) === email);
   const priorStatuses = Array.from(
-    new Set(
-      priorApps
-        .map((item) => String(item.status || "").trim())
-        .filter(Boolean),
-    ),
+    new Set(priorApps.map((item) => String(item.status || "").trim()).filter(Boolean)),
   );
 
   const placedApps = priorApps.filter((item) => isPlacedStatus(item.status));
-  const latestPlaced = placedApps
-    .map((item) => item.updated_at || item.created_at)
-    .filter(Boolean)
-    .sort((a, b) => new Date(String(b)).getTime() - new Date(String(a)).getTime())[0] || null;
+  const latestPlaced =
+    placedApps
+      .map((item) => item.updated_at || item.created_at)
+      .filter(Boolean)
+      .sort((a, b) => new Date(String(b)).getTime() - new Date(String(a)).getTime())[0] || null;
 
   const isStalePlaced = Boolean(latestPlaced && isOlderThanDecayWindow(latestPlaced));
   const isRecentlyPlaced = placedApps.length > 0 && !isStalePlaced;
-
   const recentClientDealerSlugs: string[] = [];
   const recentClientDealers: string[] = [];
   const stalePlacedDealers: string[] = [];
@@ -347,16 +370,14 @@ function buildCandidateFlags(input: {
   for (const app of placedApps) {
     const job = app.job_id ? historyJobsById.get(String(app.job_id)) : null;
     const dealerSlug = normalize(job?.dealer_slug);
-
     if (!dealerSlug || !clientDealers.has(dealerSlug)) continue;
 
     const dealerName = clientDealers.get(dealerSlug) || displayDealerName(dealerSlug);
     const placementDate = app.updated_at || app.created_at;
     const stale = isOlderThanDecayWindow(placementDate);
 
-    if (stale) {
-      stalePlacedDealers.push(dealerName);
-    } else {
+    if (stale) stalePlacedDealers.push(dealerName);
+    else {
       recentClientDealerSlugs.push(dealerSlug);
       recentClientDealers.push(dealerName);
     }
@@ -430,13 +451,7 @@ function getMatchProtection(job: Job | null, flags: CandidateFlags) {
     };
   }
 
-  return {
-    blocked: false,
-    overrideAllowed: false,
-    relationshipFlag: "",
-    label: "",
-    note: "",
-  };
+  return { blocked: false, overrideAllowed: false, relationshipFlag: "", label: "", note: "" };
 }
 
 function applyRiskFilter(rows: CandidatePoolRow[], risk: string) {
@@ -451,7 +466,6 @@ function applyRiskFilter(rows: CandidatePoolRow[], risk: string) {
     if (risk === "recent_placement") return row.flags.isRecentlyPlaced;
     if (risk === "stale_placement") return row.flags.isStalePlaced;
     if (risk === "client_conflict") return row.flags.isAtClientDealership;
-
     return true;
   });
 }
@@ -463,7 +477,7 @@ async function getCandidatePool(searchParams: SearchParams | undefined) {
   const role = normalize(getParam(searchParams, "role", "all"));
   const risk = normalize(getParam(searchParams, "risk", "all"));
   const search = getParam(searchParams, "search", "").trim();
-  const minScore = Number(getParam(searchParams, "minScore", String(MIN_VISIBLE_MATCH_SCORE))) || MIN_VISIBLE_MATCH_SCORE;
+  const minScore = safeMinScore(getParam(searchParams, "minScore", String(MIN_VISIBLE_MATCH_SCORE)));
 
   const matchLimit = PAGE_SIZE * MATCH_FETCH_MULTIPLIER;
   const matchOffset = (page - 1) * matchLimit;
@@ -485,19 +499,14 @@ async function getCandidatePool(searchParams: SearchParams | undefined) {
     .schema("nata")
     .from("candidate_matches")
     .select("*")
-    .eq("match_status", "eligible")
+    .in("match_status", visibleMatchStatuses)
     .gte("fit_score", minScore)
     .order("fit_score", { ascending: false })
     .order("updated_at", { ascending: false })
     .range(matchOffset, matchOffset + matchLimit - 1);
 
-  if (roleJobIds) {
-    matchQuery = matchQuery.in("job_id", roleJobIds);
-  }
-
-  if (searchCandidateIds) {
-    matchQuery = matchQuery.in("candidate_id", searchCandidateIds);
-  }
+  if (roleJobIds) matchQuery = matchQuery.in("job_id", roleJobIds);
+  if (searchCandidateIds) matchQuery = matchQuery.in("candidate_id", searchCandidateIds);
 
   const { data: matches, error: matchError } = await matchQuery;
 
@@ -506,7 +515,17 @@ async function getCandidatePool(searchParams: SearchParams | undefined) {
     return { rows: [] as CandidatePoolRow[], page, hasNext: false, role, risk, search, minScore };
   }
 
-  const rawMatches = (matches || []) as Match[];
+  const rawMatches = ((matches || []) as Match[]).sort((a, b) => {
+    const statusDiff = (matchStatusRank[a.match_status] ?? 99) - (matchStatusRank[b.match_status] ?? 99);
+    if (statusDiff !== 0) return statusDiff;
+    const scoreDiff = Number(b.fit_score || 0) - Number(a.fit_score || 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    return (
+      new Date(String(b.updated_at || b.created_at)).getTime() -
+      new Date(String(a.updated_at || a.created_at)).getTime()
+    );
+  });
+
   const candidateIds = Array.from(new Set(rawMatches.map((match) => match.candidate_id)));
   const jobIds = Array.from(new Set(rawMatches.map((match) => match.job_id)));
 
@@ -531,9 +550,7 @@ async function getCandidatePool(searchParams: SearchParams | undefined) {
     return { rows: [] as CandidatePoolRow[], page, hasNext: false, role, risk, search, minScore };
   }
 
-  if (jobResult.error) {
-    console.error("Failed to load matched jobs:", jobResult.error);
-  }
+  if (jobResult.error) console.error("Failed to load matched jobs:", jobResult.error);
 
   const candidates = (candidateResult.data || []) as Candidate[];
   const jobs = (jobResult.data || []) as Job[];
@@ -546,12 +563,8 @@ async function getCandidatePool(searchParams: SearchParams | undefined) {
   const matchesByCandidate = new Map<string, Match[]>();
 
   for (const match of rawMatches) {
-    if (!matchesByCandidate.has(match.candidate_id)) {
-      matchesByCandidate.set(match.candidate_id, []);
-    }
-
+    if (!matchesByCandidate.has(match.candidate_id)) matchesByCandidate.set(match.candidate_id, []);
     const currentMatches = matchesByCandidate.get(match.candidate_id) || [];
-
     if (currentMatches.length < MAX_VISIBLE_MATCHES) {
       currentMatches.push(match);
       matchesByCandidate.set(match.candidate_id, currentMatches);
@@ -565,16 +578,8 @@ async function getCandidatePool(searchParams: SearchParams | undefined) {
 
       return {
         candidate,
-        flags: buildCandidateFlags({
-          candidate,
-          history,
-          historyJobsById,
-          clientDealers,
-        }),
-        matches: candidateMatches.map((match) => ({
-          match,
-          job: jobsById.get(match.job_id) || null,
-        })),
+        flags: buildCandidateFlags({ candidate, history, historyJobsById, clientDealers }),
+        matches: candidateMatches.map((match) => ({ match, job: jobsById.get(match.job_id) || null })),
       } satisfies CandidatePoolRow;
     })
     .filter((row): row is CandidatePoolRow => Boolean(row));
@@ -613,9 +618,7 @@ export default async function RecruiterCandidatePoolPage({
     const relationshipFlag = clean(formData.get("relationship_flag"));
     const overrideRelationship = clean(formData.get("override_relationship")) === "yes";
 
-    if (!candidateId || !jobId) {
-      throw new Error("Candidate and job are required.");
-    }
+    if (!candidateId || !jobId) throw new Error("Candidate and job are required.");
 
     if (relationshipFlag === "same_rooftop") {
       throw new Error("Dealer Protection Mode blocked this match because the candidate appears connected to the same rooftop.");
@@ -692,15 +695,10 @@ export default async function RecruiterCandidatePoolPage({
       const { error: matchUpdateError } = await supabaseAdmin
         .schema("nata")
         .from("candidate_matches")
-        .update({
-          match_status: "application_created",
-          updated_at: new Date().toISOString(),
-        })
+        .update({ match_status: "application_created", updated_at: new Date().toISOString() })
         .eq("id", matchId);
 
-      if (matchUpdateError) {
-        console.error("Failed to update candidate match:", matchUpdateError);
-      }
+      if (matchUpdateError) console.error("Failed to update candidate match:", matchUpdateError);
     }
 
     redirect(`/recruiter/${params.recruiterSlug}/dashboard`);
@@ -716,10 +714,7 @@ export default async function RecruiterCandidatePoolPage({
   return (
     <main style={pageStyle}>
       <div style={wrapStyle}>
-        <Link
-          href={`/recruiter/${params.recruiterSlug}/dashboard`}
-          style={backLinkStyle}
-        >
+        <Link href={`/recruiter/${params.recruiterSlug}/dashboard`} style={backLinkStyle}>
           ← Back to recruiter dashboard
         </Link>
 
@@ -771,27 +766,15 @@ export default async function RecruiterCandidatePoolPage({
             style={scoreInputStyle}
             aria-label="Minimum match score"
           />
-          <button type="submit" style={primaryButtonStyle}>
-            Apply
-          </button>
+          <button type="submit" style={primaryButtonStyle}>Apply</button>
         </form>
 
         <div style={statsGridStyle}>
           <Stat label="Loaded candidates" value={rows.length} />
-          <Stat
-            label="Top-match candidates"
-            value={rows.filter((row) => row.matches.length > 0).length}
-          />
+          <Stat label="Top-match candidates" value={rows.filter((row) => row.matches.length > 0).length} />
           <Stat
             label="Relationship flags"
-            value={
-              rows.filter(
-                (row) =>
-                  row.flags.isPriorApplicant ||
-                  row.flags.isPlaced ||
-                  row.flags.isAtClientDealership,
-              ).length
-            }
+            value={rows.filter((row) => row.flags.isPriorApplicant || row.flags.isPlaced || row.flags.isAtClientDealership).length}
           />
         </div>
 
@@ -800,8 +783,7 @@ export default async function RecruiterCandidatePoolPage({
             <div style={emptyStyle}>
               <h2 style={{ margin: 0 }}>No candidates matched this view.</h2>
               <p style={{ color: "#9fb4d6", lineHeight: 1.6 }}>
-                Adjust the score, role, risk, or search filters. Candidate pool
-                submissions are matched into indexed rows before appearing here.
+                Adjust the score, role, risk, or search filters. This view includes eligible, recruiter review, and more-state-required matches.
               </p>
             </div>
           ) : (
@@ -811,11 +793,7 @@ export default async function RecruiterCandidatePoolPage({
                   <div style={avatarStyle}>
                     {candidate.profile_photo_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={candidate.profile_photo_url}
-                        alt=""
-                        style={avatarImageStyle}
-                      />
+                      <img src={candidate.profile_photo_url} alt="" style={avatarImageStyle} />
                     ) : (
                       candidate.name.slice(0, 1).toUpperCase()
                     )}
@@ -824,56 +802,29 @@ export default async function RecruiterCandidatePoolPage({
                   <div>
                     <h2 style={candidateNameStyle}>{candidate.name}</h2>
                     <p style={candidateMetaStyle}>
-                      {candidate.location_text || "Location not provided"} ·{" "}
-                      {candidate.email} · {candidate.phone}
+                      {candidate.location_text || "Location not provided"} · {candidate.email} · {candidate.phone}
                     </p>
                     <div style={pillRowStyle}>
                       <span style={safePillStyle}>Visible</span>
                       <span style={statusPillStyle}>{candidate.status}</span>
-                      <span style={thresholdPillStyle}>
-                        Match threshold: {pool.minScore}+
-                      </span>
-
-                      {flags.isPriorApplicant ? (
-                        <span style={warningPillStyle}>Prior applicant</span>
-                      ) : null}
-
-                      {flags.isRecentlyPlaced ? (
-                        <span style={dangerPillStyle}>Recent placement</span>
-                      ) : null}
-
-                      {flags.isStalePlaced ? (
-                        <span style={decayPillStyle}>2+ year decay</span>
-                      ) : null}
-
-                      {flags.isAtClientDealership ? (
-                        <span style={conflictPillStyle}>
-                          Current client dealership
-                        </span>
-                      ) : null}
+                      <span style={thresholdPillStyle}>Match threshold: {pool.minScore}+</span>
+                      {flags.isPriorApplicant ? <span style={warningPillStyle}>Prior applicant</span> : null}
+                      {flags.isRecentlyPlaced ? <span style={dangerPillStyle}>Recent placement</span> : null}
+                      {flags.isStalePlaced ? <span style={decayPillStyle}>2+ year decay</span> : null}
+                      {flags.isAtClientDealership ? <span style={conflictPillStyle}>Current client dealership</span> : null}
                     </div>
 
                     {flags.isAtClientDealership ? (
                       <div style={conflictNoticeStyle}>
-                        Candidate appears connected to {" "}
-                        {flags.recentClientDealers.join(", ")}. Same-rooftop
-                        matches are blocked. Other client conflicts require Don
-                        override before application creation.
+                        Candidate appears connected to {flags.recentClientDealers.join(", ")}. Same-rooftop matches are blocked. Other client conflicts require Don override before application creation.
                       </div>
                     ) : flags.isStalePlaced ? (
                       <div style={decayNoticeStyle}>
-                        Prior placement from {formatShortDate(flags.latestPlacedAt)}
-                        {flags.stalePlacedDealers.length
-                          ? ` (${flags.stalePlacedDealers.join(", ")})`
-                          : ""} is older than {PLACEMENT_DECAY_YEARS} years and
-                        downgraded to advisory risk.
+                        Prior placement from {formatShortDate(flags.latestPlacedAt)}{flags.stalePlacedDealers.length ? ` (${flags.stalePlacedDealers.join(", ")})` : ""} is older than {PLACEMENT_DECAY_YEARS} years and downgraded to advisory risk.
                       </div>
                     ) : flags.isPriorApplicant || flags.isPlaced ? (
                       <div style={historyNoticeStyle}>
-                        Candidate has prior NATA history
-                        {flags.priorStatuses.length
-                          ? `: ${flags.priorStatuses.join(", ")}`
-                          : "."}
+                        Candidate has prior NATA history{flags.priorStatuses.length ? `: ${flags.priorStatuses.join(", ")}` : "."}
                       </div>
                     ) : null}
                   </div>
@@ -881,23 +832,11 @@ export default async function RecruiterCandidatePoolPage({
 
                 <div style={actionRowStyle}>
                   {candidate.resume_url ? (
-                    <a
-                      href={candidate.resume_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={secondaryButtonStyle}
-                    >
-                      View resume
-                    </a>
+                    <a href={candidate.resume_url} target="_blank" rel="noreferrer" style={secondaryButtonStyle}>View resume</a>
                   ) : null}
-
                   {candidate.linkedin ? (
                     <a
-                      href={
-                        candidate.linkedin.startsWith("http")
-                          ? candidate.linkedin
-                          : `https://${candidate.linkedin}`
-                      }
+                      href={candidate.linkedin.startsWith("http") ? candidate.linkedin : `https://${candidate.linkedin}`}
                       target="_blank"
                       rel="noreferrer"
                       style={secondaryButtonStyle}
@@ -908,12 +847,10 @@ export default async function RecruiterCandidatePoolPage({
                 </div>
 
                 <div style={matchSectionStyle}>
-                  <div style={sectionTitleStyle}>Top eligible role matches</div>
+                  <div style={sectionTitleStyle}>Top role matches</div>
 
                   {matches.length === 0 ? (
-                    <div style={noMatchStyle}>
-                      No eligible top-match roles recorded yet.
-                    </div>
+                    <div style={noMatchStyle}>No visible top-match roles recorded yet.</div>
                   ) : (
                     <div style={{ display: "grid", gap: 10 }}>
                       {matches.map(({ match, job }) => {
@@ -923,23 +860,12 @@ export default async function RecruiterCandidatePoolPage({
                         return (
                           <div key={match.id} style={matchCardStyle}>
                             <div>
-                              <div style={matchTitleStyle}>
-                                {job?.title || "Matched role"}
-                              </div>
+                              <div style={matchTitleStyle}>{job?.title || "Matched role"}</div>
+                              <div style={matchStatusTextStyle}>{formatMatchStatus(match.match_status)}</div>
                               <div style={matchMetaStyle}>
-                                {job?.publish_mode === "confidential"
-                                  ? "Confidential Dealership"
-                                  : job?.public_dealer_name || "Dealership"}{" "}
-                                ·{" "}
-                                {job?.public_location ||
-                                  job?.location ||
-                                  "Location"}
+                                {job?.publish_mode === "confidential" ? "Confidential Dealership" : job?.public_dealer_name || "Dealership"} · {job?.public_location || job?.location || "Location"}
                               </div>
-                              {match.match_reason ? (
-                                <div style={reasonStyle}>
-                                  {match.match_reason}
-                                </div>
-                              ) : null}
+                              {match.match_reason ? <div style={reasonStyle}>{match.match_reason}</div> : null}
                               {protection.relationshipFlag ? (
                                 <div
                                   style={
@@ -956,50 +882,19 @@ export default async function RecruiterCandidatePoolPage({
                             </div>
 
                             <div style={matchScoreWrapStyle}>
-                              <span style={scoreStyle}>
-                                {match.fit_score ?? "—"}
-                              </span>
-                              <span style={distanceStyle}>
-                                {match.distance_miles
-                                  ? `${Math.round(match.distance_miles)} mi`
-                                  : "distance n/a"}
-                              </span>
+                              <span style={scoreStyle}>{match.fit_score ?? "—"}</span>
+                              <span style={distanceStyle}>{formatDistance(match.distance_miles)}</span>
 
                               <form action={createApplicationFromMatch} style={formStackStyle}>
-                                <input
-                                  type="hidden"
-                                  name="candidate_id"
-                                  value={candidate.id}
-                                />
-                                <input
-                                  type="hidden"
-                                  name="job_id"
-                                  value={match.job_id}
-                                />
-                                <input
-                                  type="hidden"
-                                  name="match_id"
-                                  value={match.id}
-                                />
-                                <input
-                                  type="hidden"
-                                  name="fit_score"
-                                  value={String(match.fit_score || "")}
-                                />
-                                <input
-                                  type="hidden"
-                                  name="relationship_flag"
-                                  value={protection.relationshipFlag}
-                                />
+                                <input type="hidden" name="candidate_id" value={candidate.id} />
+                                <input type="hidden" name="job_id" value={match.job_id} />
+                                <input type="hidden" name="match_id" value={match.id} />
+                                <input type="hidden" name="fit_score" value={String(match.fit_score || "")} />
+                                <input type="hidden" name="relationship_flag" value={protection.relationshipFlag} />
 
                                 {canOverride ? (
                                   <label style={overrideLabelStyle}>
-                                    <input
-                                      type="checkbox"
-                                      name="override_relationship"
-                                      value="yes"
-                                    />
-                                    Don override reviewed
+                                    <input type="checkbox" name="override_relationship" value="yes" /> Don override reviewed
                                   </label>
                                 ) : null}
 
@@ -1042,24 +937,16 @@ export default async function RecruiterCandidatePoolPage({
         <div style={paginationStyle}>
           {pool.page > 1 ? (
             <Link
-              href={`/recruiter/${params.recruiterSlug}/candidate-pool${buildQueryString({
-                ...baseQuery,
-                page: pool.page - 1,
-              })}`}
+              href={`/recruiter/${params.recruiterSlug}/candidate-pool${buildQueryString({ ...baseQuery, page: pool.page - 1 })}`}
               style={secondaryButtonStyle}
             >
               ← Previous
             </Link>
           ) : null}
-
           <span style={pageIndicatorStyle}>Page {pool.page}</span>
-
           {pool.hasNext ? (
             <Link
-              href={`/recruiter/${params.recruiterSlug}/candidate-pool${buildQueryString({
-                ...baseQuery,
-                page: pool.page + 1,
-              })}`}
+              href={`/recruiter/${params.recruiterSlug}/candidate-pool${buildQueryString({ ...baseQuery, page: pool.page + 1 })}`}
               style={primaryLinkStyle}
             >
               Next 50 →
@@ -1080,494 +967,63 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-const pageStyle: React.CSSProperties = {
-  minHeight: "100vh",
-  background: "radial-gradient(circle at 20% 0%, rgba(20,115,255,0.16), transparent 30%), #07111f",
-  color: "#fff",
-  padding: "22px 0 52px",
-};
-
-const wrapStyle: React.CSSProperties = {
-  width: "min(1320px, calc(100% - 32px))",
-  margin: "0 auto",
-};
-
-const backLinkStyle: React.CSSProperties = {
-  color: "#93c5fd",
-  textDecoration: "none",
-  fontWeight: 850,
-  fontSize: 13,
-};
-
-const headerStyle: React.CSSProperties = {
-  marginTop: 14,
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 440px)",
-  gap: 14,
-  alignItems: "center",
-};
-
-const eyebrowStyle: React.CSSProperties = {
-  color: "#facc15",
-  fontWeight: 950,
-  letterSpacing: "0.14em",
-  textTransform: "uppercase",
-  fontSize: 11,
-};
-
-const titleStyle: React.CSSProperties = {
-  margin: "4px 0 0",
-  fontSize: "clamp(30px, 4vw, 46px)",
-  lineHeight: 0.96,
-  letterSpacing: "-0.045em",
-};
-
-const ledeStyle: React.CSSProperties = {
-  color: "#bfd6f5",
-  maxWidth: 760,
-  fontSize: 14,
-  lineHeight: 1.35,
-  margin: "6px 0 0",
-};
-
-const guardrailCardStyle: React.CSSProperties = {
-  borderRadius: 16,
-  padding: "12px 14px",
-  background: "rgba(22,163,74,0.10)",
-  border: "1px solid rgba(74,222,128,0.20)",
-  display: "grid",
-  gap: 4,
-};
-
-const guardrailTitleStyle: React.CSSProperties = {
-  color: "#bbf7d0",
-  fontWeight: 950,
-  fontSize: 13,
-};
-
-const guardrailTextStyle: React.CSSProperties = {
-  color: "#dcfce7",
-  lineHeight: 1.35,
-  fontSize: 12,
-};
-
-const filterBarStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(320px, 1fr) 150px 170px 76px auto",
-  gap: 8,
-  marginTop: 14,
-  padding: 10,
-  borderRadius: 16,
-  background: "rgba(255,255,255,0.055)",
-  border: "1px solid rgba(255,255,255,0.09)",
-  position: "sticky",
-  top: 0,
-  zIndex: 10,
-  backdropFilter: "blur(12px)",
-};
-
-const filterInputStyle: React.CSSProperties = {
-  minHeight: 36,
-  borderRadius: 10,
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(2,6,23,0.66)",
-  color: "#fff",
-  padding: "0 10px",
-  outline: "none",
-};
-
-const filterSelectStyle: React.CSSProperties = {
-  minHeight: 36,
-  borderRadius: 10,
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(2,6,23,0.92)",
-  color: "#fff",
-  padding: "0 8px",
-  outline: "none",
-};
-
-const scoreInputStyle: React.CSSProperties = {
-  ...filterInputStyle,
-  width: "100%",
-};
-
-const statsGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-  gap: 10,
-  marginTop: 12,
-};
-
-const statCardStyle: React.CSSProperties = {
-  borderRadius: 14,
-  padding: "10px 12px",
-  background: "rgba(255,255,255,0.055)",
-  border: "1px solid rgba(255,255,255,0.09)",
-};
-
-const statValueStyle: React.CSSProperties = {
-  fontSize: 24,
-  fontWeight: 950,
-};
-
-const statLabelStyle: React.CSSProperties = {
-  color: "#9fb4d6",
-  marginTop: 2,
-  fontWeight: 800,
-  fontSize: 12,
-};
-
-const listStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 10,
-  marginTop: 12,
-};
-
-const emptyStyle: React.CSSProperties = {
-  borderRadius: 28,
-  padding: 28,
-  background: "rgba(255,255,255,0.06)",
-  border: "1px solid rgba(255,255,255,0.1)",
-};
-
-const candidateCardStyle: React.CSSProperties = {
-  borderRadius: 18,
-  padding: 14,
-  background: "linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.028))",
-  border: "1px solid rgba(255,255,255,0.10)",
-};
-
-const candidateTopStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "46px minmax(0, 1fr)",
-  gap: 12,
-  alignItems: "center",
-};
-
-const avatarStyle: React.CSSProperties = {
-  width: 46,
-  height: 46,
-  borderRadius: 14,
-  display: "grid",
-  placeItems: "center",
-  background: "rgba(20,115,255,0.22)",
-  border: "1px solid rgba(147,197,253,0.22)",
-  color: "#dbeafe",
-  fontWeight: 950,
-  overflow: "hidden",
-};
-
-const avatarImageStyle: React.CSSProperties = {
-  width: "100%",
-  height: "100%",
-  objectFit: "cover",
-};
-
-const candidateNameStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 20,
-  lineHeight: 1.05,
-};
-
-const candidateMetaStyle: React.CSSProperties = {
-  margin: "4px 0 0",
-  color: "#bfd6f5",
-  fontSize: 12,
-};
-
-const pillRowStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 5,
-  flexWrap: "wrap",
-  marginTop: 6,
-};
-
-const safePillStyle: React.CSSProperties = {
-  padding: "4px 7px",
-  borderRadius: 999,
-  background: "rgba(22,163,74,0.14)",
-  border: "1px solid rgba(74,222,128,0.22)",
-  color: "#bbf7d0",
-  fontSize: 11,
-  fontWeight: 950,
-};
-
-const statusPillStyle: React.CSSProperties = {
-  padding: "4px 7px",
-  borderRadius: 999,
-  background: "rgba(147,197,253,0.12)",
-  border: "1px solid rgba(147,197,253,0.2)",
-  color: "#dbeafe",
-  fontSize: 11,
-  fontWeight: 950,
-  textTransform: "capitalize",
-};
-
-const thresholdPillStyle: React.CSSProperties = {
-  padding: "4px 7px",
-  borderRadius: 999,
-  background: "rgba(250,204,21,0.12)",
-  border: "1px solid rgba(250,204,21,0.22)",
-  color: "#fef3c7",
-  fontSize: 11,
-  fontWeight: 950,
-};
-
-const warningPillStyle: React.CSSProperties = {
-  padding: "4px 7px",
-  borderRadius: 999,
-  background: "rgba(250,204,21,0.12)",
-  border: "1px solid rgba(250,204,21,0.3)",
-  color: "#fde68a",
-  fontSize: 11,
-  fontWeight: 950,
-};
-
-const dangerPillStyle: React.CSSProperties = {
-  padding: "4px 7px",
-  borderRadius: 999,
-  background: "rgba(239,68,68,0.15)",
-  border: "1px solid rgba(248,113,113,0.4)",
-  color: "#fecaca",
-  fontSize: 11,
-  fontWeight: 950,
-};
-
-const conflictPillStyle: React.CSSProperties = {
-  padding: "4px 7px",
-  borderRadius: 999,
-  background: "rgba(147,51,234,0.18)",
-  border: "1px solid rgba(192,132,252,0.4)",
-  color: "#e9d5ff",
-  fontSize: 11,
-  fontWeight: 950,
-};
-
-const decayPillStyle: React.CSSProperties = {
-  padding: "4px 7px",
-  borderRadius: 999,
-  background: "rgba(14,165,233,0.16)",
-  border: "1px solid rgba(56,189,248,0.32)",
-  color: "#bae6fd",
-  fontSize: 11,
-  fontWeight: 950,
-};
-
-const historyNoticeStyle: React.CSSProperties = {
-  marginTop: 7,
-  padding: "7px 9px",
-  borderRadius: 10,
-  background: "rgba(250,204,21,0.08)",
-  border: "1px solid rgba(250,204,21,0.16)",
-  color: "#fde68a",
-  fontSize: 11,
-  lineHeight: 1.3,
-  fontWeight: 750,
-};
-
-const conflictNoticeStyle: React.CSSProperties = {
-  marginTop: 7,
-  padding: "7px 9px",
-  borderRadius: 10,
-  background: "rgba(147,51,234,0.11)",
-  border: "1px solid rgba(192,132,252,0.20)",
-  color: "#e9d5ff",
-  fontSize: 11,
-  lineHeight: 1.3,
-  fontWeight: 750,
-};
-
-const decayNoticeStyle: React.CSSProperties = {
-  marginTop: 7,
-  padding: "7px 9px",
-  borderRadius: 10,
-  background: "rgba(14,165,233,0.09)",
-  border: "1px solid rgba(56,189,248,0.18)",
-  color: "#bae6fd",
-  fontSize: 11,
-  lineHeight: 1.3,
-  fontWeight: 750,
-};
-
-const actionRowStyle: React.CSSProperties = {
-  display: "flex",
-  gap: 8,
-  flexWrap: "wrap",
-  marginTop: 10,
-};
-
-const secondaryButtonStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  minHeight: 34,
-  padding: "0 10px",
-  borderRadius: 999,
-  background: "rgba(147,197,253,0.12)",
-  border: "1px solid rgba(147,197,253,0.22)",
-  color: "#dbeafe",
-  fontWeight: 900,
-  fontSize: 12,
-  textDecoration: "none",
-};
-
-const primaryButtonStyle: React.CSSProperties = {
-  minHeight: 34,
-  padding: "0 10px",
-  borderRadius: 999,
-  border: "1px solid rgba(20,115,255,0.45)",
-  background: "#1473ff",
-  color: "#fff",
-  fontWeight: 950,
-  cursor: "pointer",
-  fontSize: 12,
-};
-
-const primaryLinkStyle: React.CSSProperties = {
-  ...primaryButtonStyle,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  textDecoration: "none",
-};
-
-const overrideButtonStyle: React.CSSProperties = {
-  ...primaryButtonStyle,
-  background: "#7c3aed",
-  border: "1px solid rgba(192,132,252,0.5)",
-};
-
-const disabledButtonStyle: React.CSSProperties = {
-  minHeight: 40,
-  padding: "0 14px",
-  borderRadius: 999,
-  border: "1px solid rgba(148,163,184,0.25)",
-  background: "rgba(148,163,184,0.12)",
-  color: "#cbd5e1",
-  fontWeight: 950,
-  cursor: "not-allowed",
-};
-
-const matchSectionStyle: React.CSSProperties = {
-  marginTop: 12,
-  paddingTop: 10,
-  borderTop: "1px solid rgba(255,255,255,0.08)",
-};
-
-const sectionTitleStyle: React.CSSProperties = {
-  color: "#f8fbff",
-  fontWeight: 950,
-  marginBottom: 8,
-  fontSize: 12,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-};
-
-const noMatchStyle: React.CSSProperties = {
-  borderRadius: 16,
-  padding: 14,
-  background: "rgba(2,6,23,0.42)",
-  border: "1px dashed rgba(255,255,255,0.18)",
-  color: "#9fb4d6",
-};
-
-const matchCardStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) auto",
-  gap: 10,
-  alignItems: "center",
-  borderRadius: 12,
-  padding: 10,
-  background: "rgba(2,6,23,0.48)",
-  border: "1px solid rgba(255,255,255,0.07)",
-};
-
-const matchTitleStyle: React.CSSProperties = {
-  color: "#fff",
-  fontWeight: 950,
-  fontSize: 14,
-};
-
-const matchMetaStyle: React.CSSProperties = {
-  color: "#9fb4d6",
-  marginTop: 2,
-  fontSize: 12,
-};
-
-const reasonStyle: React.CSSProperties = {
-  color: "#bfd6f5",
-  marginTop: 5,
-  fontSize: 11,
-  lineHeight: 1.35,
-};
-
-const conflictInlineStyle: React.CSSProperties = {
-  marginTop: 8,
-  color: "#fecaca",
-  fontSize: 12,
-  lineHeight: 1.4,
-  fontWeight: 800,
-};
-
-const warningInlineStyle: React.CSSProperties = {
-  marginTop: 8,
-  color: "#fde68a",
-  fontSize: 12,
-  lineHeight: 1.4,
-  fontWeight: 800,
-};
-
-const decayInlineStyle: React.CSSProperties = {
-  marginTop: 8,
-  color: "#bae6fd",
-  fontSize: 12,
-  lineHeight: 1.4,
-  fontWeight: 800,
-};
-
-const matchScoreWrapStyle: React.CSSProperties = {
-  display: "grid",
-  justifyItems: "end",
-  gap: 4,
-  minWidth: 150,
-};
-
-const scoreStyle: React.CSSProperties = {
-  color: "#facc15",
-  fontSize: 20,
-  fontWeight: 950,
-};
-
-const distanceStyle: React.CSSProperties = {
-  color: "#bfd6f5",
-  fontSize: 11,
-  fontWeight: 850,
-};
-
-const formStackStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 6,
-  justifyItems: "end",
-};
-
-const overrideLabelStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-  color: "#e9d5ff",
-  fontSize: 12,
-  fontWeight: 850,
-};
-
-const paginationStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  gap: 10,
-  marginTop: 18,
-};
-
-const pageIndicatorStyle: React.CSSProperties = {
-  color: "#bfd6f5",
-  fontWeight: 900,
-};
+const pageStyle: React.CSSProperties = { minHeight: "100vh", background: "radial-gradient(circle at 20% 0%, rgba(20,115,255,0.16), transparent 30%), #07111f", color: "#fff", padding: "22px 0 52px" };
+const wrapStyle: React.CSSProperties = { width: "min(1320px, calc(100% - 32px))", margin: "0 auto" };
+const backLinkStyle: React.CSSProperties = { color: "#93c5fd", textDecoration: "none", fontWeight: 850, fontSize: 13 };
+const headerStyle: React.CSSProperties = { marginTop: 14, display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(260px, 440px)", gap: 14, alignItems: "center" };
+const eyebrowStyle: React.CSSProperties = { color: "#facc15", fontWeight: 950, letterSpacing: "0.14em", textTransform: "uppercase", fontSize: 11 };
+const titleStyle: React.CSSProperties = { margin: "4px 0 0", fontSize: "clamp(30px, 4vw, 46px)", lineHeight: 0.96, letterSpacing: "-0.045em" };
+const guardrailCardStyle: React.CSSProperties = { borderRadius: 16, padding: "12px 14px", background: "rgba(22,163,74,0.10)", border: "1px solid rgba(74,222,128,0.20)", display: "grid", gap: 4 };
+const guardrailTitleStyle: React.CSSProperties = { color: "#bbf7d0", fontWeight: 950, fontSize: 13 };
+const guardrailTextStyle: React.CSSProperties = { color: "#dcfce7", lineHeight: 1.35, fontSize: 12 };
+const filterBarStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(320px, 1fr) 150px 170px 76px auto", gap: 8, marginTop: 14, padding: 10, borderRadius: 16, background: "rgba(255,255,255,0.055)", border: "1px solid rgba(255,255,255,0.09)", position: "sticky", top: 0, zIndex: 10, backdropFilter: "blur(12px)" };
+const filterInputStyle: React.CSSProperties = { minHeight: 36, borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(2,6,23,0.66)", color: "#fff", padding: "0 10px", outline: "none" };
+const filterSelectStyle: React.CSSProperties = { minHeight: 36, borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(2,6,23,0.92)", color: "#fff", padding: "0 8px", outline: "none" };
+const scoreInputStyle: React.CSSProperties = { ...filterInputStyle, width: "100%" };
+const statsGridStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginTop: 12 };
+const statCardStyle: React.CSSProperties = { borderRadius: 14, padding: "10px 12px", background: "rgba(255,255,255,0.055)", border: "1px solid rgba(255,255,255,0.09)" };
+const statValueStyle: React.CSSProperties = { fontSize: 24, fontWeight: 950 };
+const statLabelStyle: React.CSSProperties = { color: "#9fb4d6", marginTop: 2, fontWeight: 800, fontSize: 12 };
+const listStyle: React.CSSProperties = { display: "grid", gap: 10, marginTop: 12 };
+const emptyStyle: React.CSSProperties = { borderRadius: 28, padding: 28, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" };
+const candidateCardStyle: React.CSSProperties = { borderRadius: 18, padding: 14, background: "linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.028))", border: "1px solid rgba(255,255,255,0.10)" };
+const candidateTopStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "46px minmax(0, 1fr)", gap: 12, alignItems: "center" };
+const avatarStyle: React.CSSProperties = { width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", background: "rgba(20,115,255,0.22)", border: "1px solid rgba(147,197,253,0.22)", color: "#dbeafe", fontWeight: 950, overflow: "hidden" };
+const avatarImageStyle: React.CSSProperties = { width: "100%", height: "100%", objectFit: "cover" };
+const candidateNameStyle: React.CSSProperties = { margin: 0, fontSize: 20, lineHeight: 1.05 };
+const candidateMetaStyle: React.CSSProperties = { margin: "4px 0 0", color: "#bfd6f5", fontSize: 12 };
+const pillRowStyle: React.CSSProperties = { display: "flex", gap: 5, flexWrap: "wrap", marginTop: 6 };
+const safePillStyle: React.CSSProperties = { padding: "4px 7px", borderRadius: 999, background: "rgba(22,163,74,0.14)", border: "1px solid rgba(74,222,128,0.22)", color: "#bbf7d0", fontSize: 11, fontWeight: 950 };
+const statusPillStyle: React.CSSProperties = { padding: "4px 7px", borderRadius: 999, background: "rgba(147,197,253,0.12)", border: "1px solid rgba(147,197,253,0.2)", color: "#dbeafe", fontSize: 11, fontWeight: 950, textTransform: "capitalize" };
+const thresholdPillStyle: React.CSSProperties = { padding: "4px 7px", borderRadius: 999, background: "rgba(250,204,21,0.12)", border: "1px solid rgba(250,204,21,0.22)", color: "#fef3c7", fontSize: 11, fontWeight: 950 };
+const warningPillStyle: React.CSSProperties = { padding: "4px 7px", borderRadius: 999, background: "rgba(250,204,21,0.12)", border: "1px solid rgba(250,204,21,0.3)", color: "#fde68a", fontSize: 11, fontWeight: 950 };
+const dangerPillStyle: React.CSSProperties = { padding: "4px 7px", borderRadius: 999, background: "rgba(239,68,68,0.15)", border: "1px solid rgba(248,113,113,0.4)", color: "#fecaca", fontSize: 11, fontWeight: 950 };
+const conflictPillStyle: React.CSSProperties = { padding: "4px 7px", borderRadius: 999, background: "rgba(147,51,234,0.18)", border: "1px solid rgba(192,132,252,0.4)", color: "#e9d5ff", fontSize: 11, fontWeight: 950 };
+const decayPillStyle: React.CSSProperties = { padding: "4px 7px", borderRadius: 999, background: "rgba(14,165,233,0.16)", border: "1px solid rgba(56,189,248,0.32)", color: "#bae6fd", fontSize: 11, fontWeight: 950 };
+const historyNoticeStyle: React.CSSProperties = { marginTop: 7, padding: "7px 9px", borderRadius: 10, background: "rgba(250,204,21,0.08)", border: "1px solid rgba(250,204,21,0.16)", color: "#fde68a", fontSize: 11, lineHeight: 1.3, fontWeight: 750 };
+const conflictNoticeStyle: React.CSSProperties = { marginTop: 7, padding: "7px 9px", borderRadius: 10, background: "rgba(147,51,234,0.11)", border: "1px solid rgba(192,132,252,0.20)", color: "#e9d5ff", fontSize: 11, lineHeight: 1.3, fontWeight: 750 };
+const decayNoticeStyle: React.CSSProperties = { marginTop: 7, padding: "7px 9px", borderRadius: 10, background: "rgba(14,165,233,0.09)", border: "1px solid rgba(56,189,248,0.18)", color: "#bae6fd", fontSize: 11, lineHeight: 1.3, fontWeight: 750 };
+const actionRowStyle: React.CSSProperties = { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 };
+const secondaryButtonStyle: React.CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 34, padding: "0 10px", borderRadius: 999, background: "rgba(147,197,253,0.12)", border: "1px solid rgba(147,197,253,0.22)", color: "#dbeafe", fontWeight: 900, fontSize: 12, textDecoration: "none" };
+const primaryButtonStyle: React.CSSProperties = { minHeight: 34, padding: "0 10px", borderRadius: 999, border: "1px solid rgba(20,115,255,0.45)", background: "#1473ff", color: "#fff", fontWeight: 950, cursor: "pointer", fontSize: 12 };
+const primaryLinkStyle: React.CSSProperties = { ...primaryButtonStyle, display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none" };
+const overrideButtonStyle: React.CSSProperties = { ...primaryButtonStyle, background: "#7c3aed", border: "1px solid rgba(192,132,252,0.5)" };
+const disabledButtonStyle: React.CSSProperties = { minHeight: 40, padding: "0 14px", borderRadius: 999, border: "1px solid rgba(148,163,184,0.25)", background: "rgba(148,163,184,0.12)", color: "#cbd5e1", fontWeight: 950, cursor: "not-allowed" };
+const matchSectionStyle: React.CSSProperties = { marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.08)" };
+const sectionTitleStyle: React.CSSProperties = { color: "#f8fbff", fontWeight: 950, marginBottom: 8, fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase" };
+const noMatchStyle: React.CSSProperties = { borderRadius: 16, padding: 14, background: "rgba(2,6,23,0.42)", border: "1px dashed rgba(255,255,255,0.18)", color: "#9fb4d6" };
+const matchCardStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", borderRadius: 12, padding: 10, background: "rgba(2,6,23,0.48)", border: "1px solid rgba(255,255,255,0.07)" };
+const matchTitleStyle: React.CSSProperties = { color: "#fff", fontWeight: 950, fontSize: 14 };
+const matchStatusTextStyle: React.CSSProperties = { color: "#fef3c7", marginTop: 2, fontSize: 11, fontWeight: 900, textTransform: "capitalize" };
+const matchMetaStyle: React.CSSProperties = { color: "#9fb4d6", marginTop: 2, fontSize: 12 };
+const reasonStyle: React.CSSProperties = { color: "#bfd6f5", marginTop: 5, fontSize: 11, lineHeight: 1.35 };
+const conflictInlineStyle: React.CSSProperties = { marginTop: 8, color: "#fecaca", fontSize: 12, lineHeight: 1.4, fontWeight: 800 };
+const warningInlineStyle: React.CSSProperties = { marginTop: 8, color: "#fde68a", fontSize: 12, lineHeight: 1.4, fontWeight: 800 };
+const decayInlineStyle: React.CSSProperties = { marginTop: 8, color: "#bae6fd", fontSize: 12, lineHeight: 1.4, fontWeight: 800 };
+const matchScoreWrapStyle: React.CSSProperties = { display: "grid", justifyItems: "end", gap: 4, minWidth: 150 };
+const scoreStyle: React.CSSProperties = { color: "#facc15", fontSize: 20, fontWeight: 950 };
+const distanceStyle: React.CSSProperties = { color: "#bfd6f5", fontSize: 11, fontWeight: 850 };
+const formStackStyle: React.CSSProperties = { display: "grid", gap: 6, justifyItems: "end" };
+const overrideLabelStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: 6, color: "#e9d5ff", fontSize: 12, fontWeight: 850 };
+const paginationStyle: React.CSSProperties = { display: "flex", justifyContent: "center", alignItems: "center", gap: 10, marginTop: 18 };
+const pageIndicatorStyle: React.CSSProperties = { color: "#bfd6f5", fontWeight: 900 };
