@@ -1435,10 +1435,7 @@ function isCandidateAlignedToJobRole(candidate: AnyRow, jobRoleKey: string) {
   );
 }
 
-function inferCandidatePrimaryRole(candidate: AnyRow, job: AnyRow) {
-  const jobRoleKey = getJobRoleKey(job);
-  if (jobRoleKey !== "general") return jobRoleKey;
-
+function inferCandidatePrimaryRole(candidate: AnyRow) {
   const dominantRoleKeys = getDominantCandidateRoleKeys(candidate);
   return dominantRoleKeys[0] || "general";
 }
