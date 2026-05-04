@@ -713,12 +713,15 @@ const identityCard: React.CSSProperties = {
 
 const communicationsGrid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "420px minmax(0, 1fr)",
-  gap: 18,
+  gridTemplateColumns: "minmax(0, 390px) minmax(0, 1fr)",
+  gap: 28,
   alignItems: "start",
 };
 
 const composerPanel: React.CSSProperties = {
+  minWidth: 0,
+  maxWidth: "100%",
+  overflow: "hidden",
   display: "grid",
   gap: 8,
   padding: 12,
@@ -769,6 +772,9 @@ const recipientGrid: React.CSSProperties = {
 };
 
 const inputStyle: React.CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
   minHeight: 34,
   padding: "0 10px",
   borderRadius: 11,
@@ -792,12 +798,13 @@ const sendButtonStyle: React.CSSProperties = {
 
 const solaceRewriteRow: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gridTemplateColumns: "1fr",
   gap: 8,
-  alignItems: "end",
+  alignItems: "stretch",
 };
 
 const solaceButtonStyle: React.CSSProperties = {
+  width: "100%",
   minHeight: 34,
   padding: "0 12px",
   borderRadius: 999,
@@ -811,6 +818,8 @@ const solaceButtonStyle: React.CSSProperties = {
 
 const rightPanel: React.CSSProperties = {
   minWidth: 0,
+  position: "relative",
+  zIndex: 1,
   display: "grid",
   gap: 10,
 };
@@ -834,6 +843,7 @@ const filterPill: React.CSSProperties = {
 
 const singleScrollPane: React.CSSProperties = {
   maxHeight: 500,
+  minWidth: 0,
   overflowY: "auto",
   paddingRight: 4,
   display: "grid",
@@ -857,6 +867,8 @@ const sectionHeader: React.CSSProperties = {
 };
 
 const messageRow: React.CSSProperties = {
+  minWidth: 0,
+  overflow: "hidden",
   padding: 12,
   borderRadius: 15,
   border: "1px solid rgba(255,255,255,0.08)",
@@ -883,6 +895,8 @@ const messageAddress: React.CSSProperties = {
 };
 
 const messagePreview: React.CSSProperties = {
+  overflowWrap: "anywhere",
+  wordBreak: "break-word",
   margin: "7px 0 0",
   color: "#bfd6f5",
   lineHeight: 1.38,
