@@ -1,3 +1,4 @@
+import type React from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
@@ -194,6 +195,21 @@ function formatDistance(value: Match["distance_miles"]) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return "distance n/a";
   return `${Math.round(numeric)} mi`;
+}
+
+function getFitTier(score: number | null | undefined) {
+  const value = Number(score || 0);
+  if (value >= 85) return "Strong fit";
+  if (value >= 75) return "Good fit";
+  if (value >= 65) return "Stretch fit";
+  if (value >= 50) return "Adjacent fit";
+  return "Review fit";
+}
+
+function getPrimaryRoleReason(match: Match, job: Job | null) {
+  const title = job?.title || "this role";
+  const fit = getFitTier(match.fit_score);
+  return `${fit} primary classification for ${title}. Secondary role applicability is shown only when additional matches exist.`;
 }
 
 async function getRecruiter(recruiterSlug: string) {
@@ -713,6 +729,92 @@ export default async function RecruiterCandidatePoolPage({
     redirect(`/recruiter/${params.recruiterSlug}/dashboard`);
   }
 
+  function renderRoleMatchCard(input: {
+    candidate: Candidate;
+    flags: CandidateFlags;
+    item: CandidatePoolRow["matches"][number];
+    isPrimary?: boolean;
+  }) {
+    const { candidate, flags, item, isPrimary = false } = input;
+    const { match, job } = item;
+    const protection = getMatchProtection(job, flags);
+    const canOverride = protection.overrideAllowed && isDon;
+
+    return (
+      <div key={match.id} style={isPrimary ? primaryMatchCardStyle : matchCardStyle}>
+        <div>
+          <div style={isPrimary ? primaryMatchHeaderStyle : undefined}>
+            <div style={matchTitleStyle}>{job?.title || "Matched role"}</div>
+            {isPrimary ? <span style={primaryBadgeStyle}>Primary role</span> : null}
+          </div>
+          <div style={fitTierStyle}>{getFitTier(match.fit_score)}</div>
+          <div style={matchStatusTextStyle}>{formatMatchStatus(match.match_status)}</div>
+          <div style={matchMetaStyle}>
+            {job?.publish_mode === "confidential" ? "Confidential Dealership" : job?.public_dealer_name || "Dealership"} · {job?.public_location || job?.location || "Location"}
+          </div>
+          {isPrimary ? <div style={primaryReasonStyle}>{getPrimaryRoleReason(match, job)}</div> : null}
+          {match.match_reason ? <div style={reasonStyle}>{match.match_reason}</div> : null}
+          {protection.relationshipFlag ? (
+            <div
+              style={
+                protection.blocked
+                  ? conflictInlineStyle
+                  : protection.relationshipFlag === "stale_placement"
+                    ? decayInlineStyle
+                    : warningInlineStyle
+              }
+            >
+              {protection.label}: {protection.note}
+            </div>
+          ) : null}
+        </div>
+
+        <div style={matchScoreWrapStyle}>
+          <span style={isPrimary ? primaryScoreStyle : scoreStyle}>{match.fit_score ?? "—"}</span>
+          <span style={distanceStyle}>{formatDistance(match.distance_miles)}</span>
+
+          <form action={createApplicationFromMatch} style={formStackStyle}>
+            <input type="hidden" name="candidate_id" value={candidate.id} />
+            <input type="hidden" name="job_id" value={match.job_id} />
+            <input type="hidden" name="match_id" value={match.id} />
+            <input type="hidden" name="fit_score" value={String(match.fit_score || "")} />
+            <input type="hidden" name="relationship_flag" value={protection.relationshipFlag} />
+
+            {canOverride ? (
+              <label style={overrideLabelStyle}>
+                <input type="checkbox" name="override_relationship" value="yes" /> Don override reviewed
+              </label>
+            ) : null}
+
+            <button
+              type="submit"
+              disabled={protection.blocked || (protection.overrideAllowed && !isDon)}
+              style={
+                protection.blocked || (protection.overrideAllowed && !isDon)
+                  ? disabledButtonStyle
+                  : canOverride
+                    ? overrideButtonStyle
+                    : primaryButtonStyle
+              }
+            >
+              {protection.blocked
+                ? "Same rooftop blocked"
+                : protection.overrideAllowed && !isDon
+                  ? "Don override required"
+                  : canOverride
+                    ? "Override + create"
+                    : protection.relationshipFlag === "stale_placement"
+                      ? "Create — time-decayed"
+                      : protection.relationshipFlag === "prior_history"
+                        ? "Create with history flag"
+                        : "Create application"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   const baseQuery = {
     role: pool.role === "all" ? "" : pool.role,
     risk: pool.risk === "all" ? "" : pool.risk,
@@ -856,85 +958,35 @@ export default async function RecruiterCandidatePoolPage({
                 </div>
 
                 <div style={matchSectionStyle}>
-                  <div style={sectionTitleStyle}>Top role matches</div>
+                  <div style={sectionTitleStyle}>Primary role</div>
 
                   {matches.length === 0 ? (
-                    <div style={noMatchStyle}>No visible top-match roles recorded yet.</div>
+                    <div style={noMatchStyle}>No visible primary role recorded yet.</div>
                   ) : (
                     <div style={{ display: "grid", gap: 10 }}>
-                      {matches.map(({ match, job }) => {
-                        const protection = getMatchProtection(job, flags);
-                        const canOverride = protection.overrideAllowed && isDon;
-
-                        return (
-                          <div key={match.id} style={matchCardStyle}>
-                            <div>
-                              <div style={matchTitleStyle}>{job?.title || "Matched role"}</div>
-                              <div style={matchStatusTextStyle}>{formatMatchStatus(match.match_status)}</div>
-                              <div style={matchMetaStyle}>
-                                {job?.publish_mode === "confidential" ? "Confidential Dealership" : job?.public_dealer_name || "Dealership"} · {job?.public_location || job?.location || "Location"}
-                              </div>
-                              {match.match_reason ? <div style={reasonStyle}>{match.match_reason}</div> : null}
-                              {protection.relationshipFlag ? (
-                                <div
-                                  style={
-                                    protection.blocked
-                                      ? conflictInlineStyle
-                                      : protection.relationshipFlag === "stale_placement"
-                                        ? decayInlineStyle
-                                        : warningInlineStyle
-                                  }
-                                >
-                                  {protection.label}: {protection.note}
-                                </div>
-                              ) : null}
-                            </div>
-
-                            <div style={matchScoreWrapStyle}>
-                              <span style={scoreStyle}>{match.fit_score ?? "—"}</span>
-                              <span style={distanceStyle}>{formatDistance(match.distance_miles)}</span>
-
-                              <form action={createApplicationFromMatch} style={formStackStyle}>
-                                <input type="hidden" name="candidate_id" value={candidate.id} />
-                                <input type="hidden" name="job_id" value={match.job_id} />
-                                <input type="hidden" name="match_id" value={match.id} />
-                                <input type="hidden" name="fit_score" value={String(match.fit_score || "")} />
-                                <input type="hidden" name="relationship_flag" value={protection.relationshipFlag} />
-
-                                {canOverride ? (
-                                  <label style={overrideLabelStyle}>
-                                    <input type="checkbox" name="override_relationship" value="yes" /> Don override reviewed
-                                  </label>
-                                ) : null}
-
-                                <button
-                                  type="submit"
-                                  disabled={protection.blocked || (protection.overrideAllowed && !isDon)}
-                                  style={
-                                    protection.blocked || (protection.overrideAllowed && !isDon)
-                                      ? disabledButtonStyle
-                                      : canOverride
-                                        ? overrideButtonStyle
-                                        : primaryButtonStyle
-                                  }
-                                >
-                                  {protection.blocked
-                                    ? "Same rooftop blocked"
-                                    : protection.overrideAllowed && !isDon
-                                      ? "Don override required"
-                                      : canOverride
-                                        ? "Override + create"
-                                        : protection.relationshipFlag === "stale_placement"
-                                          ? "Create — time-decayed"
-                                          : protection.relationshipFlag === "prior_history"
-                                            ? "Create with history flag"
-                                            : "Create application"}
-                                </button>
-                              </form>
-                            </div>
-                          </div>
-                        );
+                      {renderRoleMatchCard({
+                        candidate,
+                        flags,
+                        item: matches[0],
+                        isPrimary: true,
                       })}
+
+                      {matches.length > 1 ? (
+                        <details style={secondaryRolesStyle}>
+                          <summary style={secondarySummaryStyle}>
+                            Other applicable roles ({matches.length - 1})
+                          </summary>
+                          <div style={secondaryRoleListStyle}>
+                            {matches.slice(1).map((item) =>
+                              renderRoleMatchCard({
+                                candidate,
+                                flags,
+                                item,
+                              }),
+                            )}
+                          </div>
+                        </details>
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -1021,6 +1073,15 @@ const disabledButtonStyle: React.CSSProperties = { minHeight: 40, padding: "0 14
 const matchSectionStyle: React.CSSProperties = { marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.08)" };
 const sectionTitleStyle: React.CSSProperties = { color: "#f8fbff", fontWeight: 950, marginBottom: 8, fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase" };
 const noMatchStyle: React.CSSProperties = { borderRadius: 16, padding: 14, background: "rgba(2,6,23,0.42)", border: "1px dashed rgba(255,255,255,0.18)", color: "#9fb4d6" };
+const primaryMatchCardStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 12, alignItems: "center", borderRadius: 16, padding: 12, background: "linear-gradient(135deg, rgba(20,115,255,0.16), rgba(2,6,23,0.62))", border: "1px solid rgba(147,197,253,0.22)", boxShadow: "0 14px 34px rgba(0,0,0,0.20)" };
+const primaryMatchHeaderStyle: React.CSSProperties = { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" };
+const primaryBadgeStyle: React.CSSProperties = { padding: "4px 7px", borderRadius: 999, background: "rgba(20,115,255,0.24)", border: "1px solid rgba(147,197,253,0.28)", color: "#dbeafe", fontSize: 10, fontWeight: 950, textTransform: "uppercase", letterSpacing: "0.06em" };
+const fitTierStyle: React.CSSProperties = { color: "#bbf7d0", marginTop: 3, fontSize: 11, fontWeight: 950, textTransform: "uppercase", letterSpacing: "0.04em" };
+const primaryReasonStyle: React.CSSProperties = { color: "#dbeafe", marginTop: 6, fontSize: 12, lineHeight: 1.35, fontWeight: 800 };
+const primaryScoreStyle: React.CSSProperties = { color: "#facc15", fontSize: 28, fontWeight: 950, lineHeight: 1 };
+const secondaryRolesStyle: React.CSSProperties = { borderRadius: 14, background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.075)", overflow: "hidden" };
+const secondarySummaryStyle: React.CSSProperties = { cursor: "pointer", padding: "10px 12px", color: "#bfd6f5", fontSize: 12, fontWeight: 950, letterSpacing: "0.04em", textTransform: "uppercase" };
+const secondaryRoleListStyle: React.CSSProperties = { display: "grid", gap: 8, padding: "0 10px 10px" };
 const matchCardStyle: React.CSSProperties = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", borderRadius: 12, padding: 10, background: "rgba(2,6,23,0.48)", border: "1px solid rgba(255,255,255,0.07)" };
 const matchTitleStyle: React.CSSProperties = { color: "#fff", fontWeight: 950, fontSize: 14 };
 const matchStatusTextStyle: React.CSSProperties = { color: "#fef3c7", marginTop: 2, fontSize: 11, fontWeight: 900, textTransform: "capitalize" };
