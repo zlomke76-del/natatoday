@@ -83,7 +83,9 @@ export default function Home() {
             </h1>
 
             <p className="lede">
-              Candidates are screened, evaluated, and prepared before your managers ever get involved — so your team spends time making hiring decisions, not sorting through applicants.
+              Candidates are screened, evaluated, and prepared before your
+              managers ever get involved — so your team spends time making
+              hiring decisions, not sorting through applicants.
             </p>
 
             <div className="hero-actions">
@@ -114,7 +116,10 @@ export default function Home() {
           <div className="process-hero">
             <h2>You don’t sort candidates. You meet the right ones.</h2>
             <p>
-              The dealership still makes the hiring decision — but only after candidates have been screened, organized, and prepared. For technicians, certification level, service experience, and readiness are visible before any time is spent.
+              The dealership still makes the hiring decision — but only after
+              candidates have been screened, organized, and prepared. For
+              technicians, certification level, service experience, and
+              readiness are visible before any time is spent.
             </p>
           </div>
 
@@ -179,9 +184,9 @@ export default function Home() {
             </h2>
 
             <p>
-              NATA Today removes the screening burden before it reaches your managers.
-              Candidates are organized, evaluated, and prepared first — so interviews
-              become confirmation, not discovery.
+              NATA Today removes the screening burden before it reaches your
+              managers. Candidates are organized, evaluated, and prepared first
+              — so interviews become confirmation, not discovery.
             </p>
           </div>
 
@@ -214,19 +219,20 @@ export default function Home() {
 
           <div className="closing-band">
             <div>
-              <span>Dealer-ready recruiting</span>
+              <span>Dealer-ready hiring system</span>
 
-              <h3>Stop starting from zero with every applicant.</h3>
+              <h3>Stop wasting interviews. Start hiring with clarity.</h3>
 
               <p>
-                Your team gets candidates who have already been screened, prepared,
-                and matched to the role — with technician readiness visible before
-                the interview ever happens.
+                Your team meets candidates who are already screened, prepared,
+                and aligned to the role — with readiness visible before the
+                interview ever happens. See what it costs to replace your
+                current hiring process and get started in minutes.
               </p>
             </div>
 
-            <Link className="btn btn-primary" href="/dealer-demo">
-              See the Dealer View
+            <Link className="btn btn-primary" href="/pricing">
+              View Pricing &amp; Get Started
             </Link>
           </div>
         </div>
