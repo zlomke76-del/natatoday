@@ -1287,5 +1287,46 @@ h1 {
   .nav-links a,
   .nav-cta {
     width: 100%;
+
+    .closing-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  min-width: 260px;
+}
+
+.closing-cta .btn {
+  width: 100%;
+  min-width: 240px;
+  font-size: 16px;
+  box-shadow: 0 22px 54px rgba(20, 115, 255, 0.35);
+}
+
+.closing-cta .btn:hover {
+  box-shadow: 0 26px 64px rgba(20, 115, 255, 0.45);
+}
+
+.cta-subtext {
+  font-size: 13px;
+  color: #5b6b82;
+  font-weight: 600;
+}
+
+/* Mobile */
+@media (max-width: 980px) {
+  .closing-cta {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .closing-cta .btn {
+    width: 100%;
+  }
+
+  .cta-subtext {
+    text-align: center;
+  }
+}
   }
 }
