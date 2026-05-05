@@ -16,7 +16,17 @@ export default function Nav() {
 
   const isDealerWorkspace = pathname?.startsWith("/dealer/");
 
-  const brandHref = isCandidateFlow ? "/careers" : isDealerWorkspace ? pathname || "/" : "/";
+  // 🔒 Internal system routes (no navigation allowed)
+  const isInternal =
+    pathname?.startsWith("/recruiter") ||
+    pathname?.startsWith("/admin") ||
+    pathname?.startsWith("/ops");
+
+  const brandHref = isCandidateFlow
+    ? "/careers"
+    : isDealerWorkspace
+    ? pathname || "/"
+    : "/";
 
   return (
     <header className="nav">
@@ -24,7 +34,9 @@ export default function Nav() {
         <Link
           href={brandHref}
           className="brand"
-          aria-label={isCandidateFlow ? "NATA Today careers" : "NATA Today home"}
+          aria-label={
+            isCandidateFlow ? "NATA Today careers" : "NATA Today home"
+          }
           onClick={closeMenu}
         >
           <span className="brand-logo-wrap" aria-hidden="true">
@@ -40,7 +52,8 @@ export default function Nav() {
           <span className="brand-text">NATA Today</span>
         </Link>
 
-        {!isCandidateFlow && !isDealerWorkspace ? (
+        {/* 🚫 Hide ALL navigation for internal system */}
+        {!isCandidateFlow && !isDealerWorkspace && !isInternal ? (
           <>
             <button
               className="nav-menu-button"
@@ -72,7 +85,11 @@ export default function Nav() {
               <Link href="/careers" onClick={closeMenu}>
                 Careers
               </Link>
-              <Link className="nav-cta" href="/candidate-demo" onClick={closeMenu}>
+              <Link
+                className="nav-cta"
+                href="/candidate-demo"
+                onClick={closeMenu}
+              >
                 View Candidate
               </Link>
             </nav>
