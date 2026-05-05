@@ -123,7 +123,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="role-strip" aria-label="Roles supported">
+          <div className="role-strip">
             {roles.map((role) => (
               <span key={role}>{role}</span>
             ))}
@@ -147,7 +147,6 @@ export default function Home() {
             ))}
           </div>
 
-          {/* CONTRAST BLOCK */}
           <div className="contrast-block">
             <div className="contrast-col">
               <h4>Without NATA Today</h4>
@@ -217,6 +216,7 @@ export default function Home() {
             </div>
           </div>
 
+          {/* 🔥 FIXED CLOSING BAND */}
           <div className="closing-band">
             <div>
               <span>Dealer-ready hiring system</span>
@@ -231,14 +231,19 @@ export default function Home() {
               </p>
             </div>
 
-            <Link className="btn btn-primary" href="/pricing">
-              View Pricing &amp; Get Started
-            </Link>
+            <div className="closing-cta">
+              <Link className="btn btn-primary" href="/pricing">
+                View Pricing &amp; Get Started
+              </Link>
+
+              <div className="cta-subtext">
+                Plans start at $595/month per rooftop
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* FOOTER */}
       <footer className="footer">
         <div className="wrap">NATA Today · Powered by clarity</div>
       </footer>
