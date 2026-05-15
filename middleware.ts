@@ -2,15 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 
 function isPublicRecruiterPath(pathname: string) {
   return (
+    pathname === "/recruiter/login" ||
+    pathname === "/recruiter/password-reset" ||
     pathname.startsWith("/recruiter/invite") ||
     pathname === "/recruiter/admin" ||
+    pathname.startsWith("/api/nata/recruiters/login") ||
+    pathname.startsWith("/api/nata/recruiters/logout") ||
+    pathname.startsWith("/api/nata/recruiters/password-reset") ||
     pathname.startsWith("/api/nata/recruiters/invite") ||
     pathname.startsWith("/api/nata/recruiters/accept-invite")
   );
 }
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, search } = request.nextUrl;
 
   if (!pathname.startsWith("/recruiter")) {
     return NextResponse.next();
@@ -25,7 +30,10 @@ export function middleware(request: NextRequest) {
   const recruiterRole = request.cookies.get("nata_recruiter_role")?.value;
 
   if (!recruiterId || !recruiterSlug) {
-    return NextResponse.redirect(new URL("/careers", request.url));
+    const loginUrl = new URL("/recruiter/login", request.url);
+    loginUrl.searchParams.set("next", `${pathname}${search}`);
+    loginUrl.searchParams.set("reason", "session_required");
+    return NextResponse.redirect(loginUrl);
   }
 
   const routeSlug = pathname.split("/")[2];
