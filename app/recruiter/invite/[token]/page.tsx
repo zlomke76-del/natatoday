@@ -94,12 +94,20 @@ export default async function RecruiterInvitePage({ params }: InvitePageProps) {
             <p style={copyStyle}>
               {recruiter.name}, your recruiter workspace is already active.
             </p>
-            <Link
-              href={`/recruiter/${recruiter.slug}/dashboard`}
-              style={primaryButtonStyle}
-            >
-              Open workspace
-            </Link>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 20 }}>
+              <Link
+                href="/recruiter/login"
+                style={primaryButtonStyle}
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/recruiter/password-reset"
+                style={secondaryButtonStyle}
+              >
+                Reset password
+              </Link>
+            </div>
           </>
         ) : (
           <>
@@ -129,9 +137,31 @@ export default async function RecruiterInvitePage({ params }: InvitePageProps) {
             <form
               method="POST"
               action="/api/nata/recruiters/accept-invite"
-              style={{ marginTop: 20 }}
+              style={{ marginTop: 20, display: "grid", gap: 14 }}
             >
               <input type="hidden" name="token" value={token} />
+              <label style={fieldStyle}>
+                Create password
+                <input
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={10}
+                  required
+                  style={inputStyle}
+                />
+              </label>
+              <label style={fieldStyle}>
+                Confirm password
+                <input
+                  name="confirm_password"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={10}
+                  required
+                  style={inputStyle}
+                />
+              </label>
               <button type="submit" style={primaryButtonStyle}>
                 Activate workspace
               </button>
@@ -215,4 +245,23 @@ const secondaryButtonStyle: React.CSSProperties = {
   background: "rgba(147,197,253,0.14)",
   border: "1px solid rgba(147,197,253,0.24)",
   color: "#dbeafe",
+};
+
+
+const fieldStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+  color: "#dbeafe",
+  fontWeight: 850,
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  minHeight: 48,
+  borderRadius: 16,
+  border: "1px solid rgba(148,163,184,0.28)",
+  background: "rgba(2,6,23,0.56)",
+  color: "#fff",
+  padding: "0 14px",
+  fontSize: 16,
 };
