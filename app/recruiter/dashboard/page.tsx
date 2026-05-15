@@ -2,10 +2,10 @@ import { redirect } from "next/navigation";
 import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 
 export default async function RecruiterRoot() {
-  // TEMP: hardcode Don for now (replace with auth later)
   const recruiterSlug = "don";
 
   const { data } = await supabaseAdmin
+    .schema("nata")
     .from("recruiters")
     .select("slug, role")
     .eq("slug", recruiterSlug)
