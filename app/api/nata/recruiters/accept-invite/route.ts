@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { hashPassword, setRecruiterSessionCookies } from "@/lib/recruiterAuth";
 
 function hashInviteToken(token: string) {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -10,9 +11,18 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const token = String(formData.get("token") || "").trim();
+    const password = String(formData.get("password") || "").trim();
+    const confirmPassword = String(formData.get("confirm_password") || "").trim();
 
     if (!token) {
       return NextResponse.json({ error: "Missing invite token" }, { status: 400 });
+    }
+
+    if (!password || password.length < 10 || password !== confirmPassword) {
+      return NextResponse.json(
+        { error: "Password must be at least 10 characters and both fields must match" },
+        { status: 400 }
+      );
     }
 
     const tokenHash = hashInviteToken(token);
@@ -71,6 +81,8 @@ export async function POST(request: NextRequest) {
         status: "active",
         is_active: true,
         activated_at: recruiter.activated_at || now,
+        password_hash: hashPassword(password),
+        password_updated_at: now,
         updated_at: now,
       })
       .eq("id", invite.recruiter_id);
@@ -102,29 +114,7 @@ export async function POST(request: NextRequest) {
     const redirectUrl = new URL(`/recruiter/${recruiter.slug}/dashboard`, request.url);
     const response = NextResponse.redirect(redirectUrl, { status: 303 });
 
-    response.cookies.set("nata_recruiter_id", recruiter.id, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
-
-    response.cookies.set("nata_recruiter_slug", recruiter.slug, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
-
-    response.cookies.set("nata_recruiter_role", recruiter.role || "recruiter", {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
+    setRecruiterSessionCookies(response, recruiter);
 
     return response;
   } catch (error) {
